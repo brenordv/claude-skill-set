@@ -214,3 +214,17 @@ skills/
 Point Claude Code at this repo (or deploy `skills/` and `CLAUDE.md` into your `~/.claude/` setup). The root
 `CLAUDE.md` bootstraps the knowledge base per project; the global one applies everywhere. The repo is the
 source of truth; deploying it to the global location is a manual step.
+
+## Making things easier with Claude Code
+
+To speed things up, you can allow the agents to read the Knowledge files without asking you for permissions all the time,
+by updating the `.claude/settings.json` file:
+```json
+{
+  "permissions": {
+    "allow": [
+      "Read(~/.claude/skills/brain/**)"
+    ]
+  }    
+}
+```
