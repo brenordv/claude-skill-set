@@ -147,7 +147,9 @@ Before writing any code:
 
 - **Minimal diffs**: Change only what is necessary. Avoid scope creep.
 - **Never commit secrets**: .env, credentials, API keys stay out of version control.
-- **Never run git commit**: Leave committing to the user. Your job is to write and verify the code.
+- **Never run git write commands**: no `git commit`, and no staging either (`git add`, `git stash`),
+  even to "snapshot a baseline". Leave the working tree exactly as your file edits made it; the user
+  manages git and commits when ready. To inspect state, use the read-only git-ops MCP tools.
 - **Follow existing commit conventions**: Match the repo's style.
 
 ---
@@ -165,3 +167,13 @@ Before delivering work:
 ## 11. Interacting with git
 1. When interacting with git, use the specialized MCP (Read and apply the instructions here: `./git-readonly-operations.md`)
 2. You are forbidden from using git commands that generate/persist changes, like `commit`, or `push`.
+
+## 12. Shell & Tooling Hygiene
+
+- **Never rewrite source files through a shell text pipeline** (piping file content through string
+  replacement and writing it back). Shell string handling is encoding-lossy: Windows PowerShell 5.1
+  reads BOM-less UTF-8 as ANSI and writes UTF-16, silently mojibaking every non-ASCII character in the
+  file, not just the edited part. Use a real file-edit tool or a script with explicit encoding.
+- **Run every command you publish in docs once before writing it down.** Shell quirks (PowerShell 5.1
+  mangling native stderr on redirection, quoting differences between shells) make plausible-looking
+  commands produce garbage. A documented command that was never executed is a guess.

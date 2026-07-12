@@ -148,6 +148,7 @@ When an Error Handling Middleware is present:
 
 - Create domain-specific folders for models, requests, responses, and constants when adding new domains.
 - Prefer extension methods over helper classes; document extension methods with summaries.
+- SQL data access uses Dapper, not hand-rolled ADO.NET command/reader code. EF Core only when an ORM is genuinely warranted, never as the default.
 
 ### 14. Testing
 

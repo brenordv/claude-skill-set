@@ -43,6 +43,8 @@ These guidelines apply to all security-related skills, covering application secu
 - Use environment variables, vaults (HashiCorp Vault, Azure Key Vault, AWS Secrets Manager).
 - Rotate secrets regularly.
 - Never log secrets, tokens, or credentials.
+- An embedded/local database is not encryption: to a same-user or filesystem-read adversary, a secret
+  stored in SQLite or similar is plaintext unless the store or the value itself is actually encrypted.
 
 ---
 

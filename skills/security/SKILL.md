@@ -37,6 +37,7 @@ Use this skill when the user needs:
 - Never claim formal compliance without a qualified audit
 - Avoid running auto-fix or dependency upgrades without user approval
 - Protect sensitive data and limit access to audit artifacts
+- Treat ML model weight files in pickle-based formats (`torch.load`, joblib, fairseq checkpoints) as untrusted code, not data: they execute arbitrary code at load time. Load only from trusted sources; prefer safetensors.
 
 ## Instructions
 

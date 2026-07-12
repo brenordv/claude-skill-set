@@ -69,6 +69,11 @@ with open(file_path) as f:
 **Common Utilities:**
 If the project has shared utility libraries (retry, logging, caching helpers), prefer them over reimplementing common patterns.
 
+**ML model files:**
+Weight files in pickle-based formats (`torch.load`, `joblib.load`, fairseq checkpoints) execute
+arbitrary code at load time. Treat them as untrusted code, not data: load only from trusted sources,
+prefer safetensors, and pass `weights_only=True` to `torch.load` where the call supports it.
+
 ### 3. Performance
 
 **Caching:**

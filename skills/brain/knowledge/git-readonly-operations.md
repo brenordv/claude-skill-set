@@ -15,7 +15,8 @@ don't shell out to `git` for anything the tools below cover.
    capability-gap protocol below. Silently reaching for shell git is never the answer.
 4. Shell `git` remains acceptable **only for write operations** (`commit`, `add`, `push`, `checkout`,
    `reset`, `merge`, `rebase`, `tag`, `fetch`, `pull`, etc.), and only after checking your own, the
-   user's, and the project's guidelines first. This user's standing rule: never stage, never commit.
+   user's, and the project's guidelines first. Standing rule of this skill set: never stage, never
+   commit; leave both to the user.
 5. **Exemption against over-application**: `git` inside shell scripts authored as deliverables for
    the user (the `linux-shell-scripting` templates, for example) is product code. The rule governs
    what the agent executes, not what it writes for others to run.

@@ -67,5 +67,8 @@ These guidelines apply to all database skills regardless of specific technology 
 
 - **Constraints at the database level**: NOT NULL, CHECK, UNIQUE, foreign keys where applicable.
 - **Validate at boundaries**: Application validates input, database enforces invariants.
+- **INNER JOIN silently drops rows**: a required join to a lookup table discards rows whose FK is NULL
+  or unmatched. In detection or aggregation paths this presents as "the feature does nothing", not as
+  an error. Choose INNER vs LEFT deliberately and say why when the join can eliminate rows.
 - **Immutability where possible**: Audit trails, temporal tables, soft deletes for critical data.
 - **Consistent naming**: snake_case for identifiers, singular table names or match existing convention.

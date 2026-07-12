@@ -154,9 +154,15 @@ CREATE POLICY user_orders ON orders
 
 Performance rules:
 - Wrap function calls in `(SELECT ...)` to evaluate once, not per-row: `USING ((SELECT auth.uid()) = user_id)`.
-- Use `SECURITY DEFINER` functions for complex permission checks -- bypasses RLS, runs as definer.
+- Use `SECURITY DEFINER` functions for complex permission checks; they run as the definer role, and skip RLS only under the conditions below.
 - Always index columns used in RLS policies.
-- Set `search_path = ''` in security definer functions.
+- Set `search_path = ''` in security definer functions and schema-qualify every name inside them.
+
+Membership-model traps (authorization via a join table granting users a role on a resource):
+- **Bootstrap trap**: an owner-gated INSERT policy can never be satisfied by the transaction that creates the resource and its first owner row; each side requires the other to already exist. Drop the end-user INSERT policy and route creation, first-owner grant, restore, and purge through one `SECURITY DEFINER` provisioning function that validates the caller and inserts atomically. Test that path under hardened RLS, not as a bypass role.
+- **`SECURITY DEFINER` alone does not bypass `FORCE ROW LEVEL SECURITY`.** RLS is skipped only when the definer role has the `BYPASSRLS` attribute. Helper predicates used inside policies (`is_member(...)`, `is_owner(...)`) must be owned by a `BYPASSRLS` role, or a policy on the membership table re-enters itself and recurses. Pin that ownership invariant in a comment or migration note; re-owning the function to a non-bypass role breaks it silently.
+- **Soft delete does not follow `ON DELETE CASCADE`.** Cascade fires on hard deletes only, so soft-deleting a parent leaves children live and, under membership RLS, still visible. Stamp `deleted_at` on children in the same transaction.
+- **RLS is row-level, not column-level.** Enforce rules like "only the owner may change `owner_id` or `deleted_at`" with a `BEFORE UPDATE` trigger.
 
 ## Security
 
@@ -184,6 +190,7 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO app_writer;
 - **Session mode**: Needed for prepared statements, temp tables, advisory locks.
 - Pool size formula: `(CPU cores * 2) + effective_spindle_count`. Typically 10-25 for most workloads.
 - Configure idle timeouts: `idle_in_transaction_session_timeout = '30s'`, `idle_session_timeout = '10min'`.
+- **Multiplexing and per-request session state are mutually exclusive.** A multiplexing driver (e.g. Npgsql `Multiplexing=true`) interleaves commands across physical connections, so `SET LOCAL` / `set_config(..., true)` GUCs for RLS-by-claim can run on a different connection than the query that needs them, or leak a previous tenant's claims. RLS-by-claim requires multiplexing off and each request's config-set plus queries inside one explicit transaction; parameterize claim values, never string-interpolate them. Add a concurrent cross-tenant test: serial tests pass even while state leaks.
 
 ## Concurrency and Locking
 
@@ -347,6 +354,8 @@ See `references/ecosystem.md` for ORM integration (SQLAlchemy, Prisma, general O
 - **UNIQUE + NULLs**: UNIQUE allows multiple NULLs. Use `NULLS NOT DISTINCT` (PG15+).
 - **FK indexes**: Not auto-created. Add them manually.
 - **Sequences have gaps**: Normal behavior. Do not try to make IDs consecutive.
+- **Sequences are not streaming cursors**: values are allocated before commit and commit order differs from allocation order, so a reader paging on `id > last_seen` under concurrent writers can permanently skip a row whose lower id commits late. Use a committed watermark (e.g. a timestamp column with lag tolerance) or logical decoding for at-least-once readers.
+- **Day buckets follow the session timezone**: a raw `date_trunc('day', ts)` or `ts::date` on `timestamptz` buckets in the database's timezone (usually UTC), filing near-midnight events on the wrong calendar day for the user and corrupting every daily total, streak, and "today" query. Bucket with `ts AT TIME ZONE <user_tz>` at the source.
 - **Heap storage**: No clustered PK by default. `CLUSTER` is a one-off reorganization.
 - **MVCC dead tuples**: Updates/deletes leave dead tuples. VACUUM handles cleanup. Design to avoid hot wide-row churn.
 

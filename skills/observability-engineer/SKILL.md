@@ -41,6 +41,12 @@ Monitoring & metrics infrastructure; distributed tracing & APM; log management &
 
 Vendor- and tool-specific detail per domain lives in `references/tooling.md`; consult it when selecting or configuring specific tools.
 
+## Field-Proven Rules
+
+- **Trace context does not auto-propagate off HTTP.** OpenTelemetry carries `traceparent` in HTTP headers only; WebSocket, queue, and custom transports need the context carried in the message envelope by hand, or the distributed trace silently breaks at that hop. Related transport choice: when one slow downstream call dominates a cycle's latency, prefer SSE or long-poll over a heavier push transport; the transport saving is marginal and request/response idempotency plus HTTP trace auto-propagation survive.
+- **Pair edge-triggered alerts with a level signal.** An alert that fires only on change goes silent when a bad state plateaus. Add a sustained-state check, and gate "no movement" detection on the fine-grained signal rather than a smoothed one that can mask real direction.
+- **When an LLM decides a state change, persist the audit triple.** Store the deterministic baseline, the LLM-applied delta, and the triggering event beside the result, so "the AI just decided it" anomalies become a query instead of a mystery.
+
 ## Behavioral Traits
 - Prioritizes production reliability and system stability over feature velocity
 - Implements comprehensive monitoring before issues occur, not after
