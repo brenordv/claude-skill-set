@@ -38,7 +38,9 @@ instructions load each session; this file is the standing directive on *when* to
   `parent`). Don't keep appending to a note the server is already flagging.
 - Mutating an archived note fails with `archived`: run `vault_restore` first, or pick a new name.
 - **The store is plain text; never save secrets.** Redact tokens, connection strings, and credentials
-  before archiving anything (review and PR bodies quote diffs; scrub them first).
+  before archiving anything (review and PR bodies quote diffs; scrub them first). Machine-identifying
+  details get the same scrub: absolute local paths, OS usernames, and hostnames never go into a note,
+  per `machine-privacy.md`.
 - This is separate from the auto-memory index (`MEMORY.md`): the vault is for user content the user owns
   and names; memory is for facts *you* record about how to work. Don't conflate them.
 
@@ -53,6 +55,7 @@ cross-repo searchable precedent:
 | `code-reviews`              | every code or branch review result                 |
 | `pr-descriptions`           | every pull-request description you author           |
 | `ticket-descriptions`       | every ticket / issue description you draft           |
+| `git-ops-backlog`           | capability-gap tickets for the git-ops MCP (see `git-readonly-operations.md` §"Capability-gap protocol") |
 
 **Pin the project on every call.** Pass `project: "<name>"` explicitly on every `vault_save`,
 `vault_list`, and `vault_get` against these archives. On `vault_save`/`vault_get`, an omitted project is
@@ -65,6 +68,11 @@ you're after. This is the same linchpin as the `lessons` namespace.
 `project` is the namespace (*which* archive); `parent` is for hierarchy *within* a namespace (splitting one
 large note into linked children). Never use `parent` to group artifacts into an archive; that is what
 `project` is for.
+
+**Progress checkpoints** live in `implementation-plans` too: `parent`-linked to their plan note, named
+`<repo>--<scope>-progress--<YYYY-MM-DD>`, summary prefixed `PROGRESS:` while live and flipped to `DONE:`
+(via `vault_set_meta`) when the work lands. The prefix is what lets plan retrieval skip them, so keep it
+accurate. Mechanics live in `task-workflows.md` §"Progress checkpoints (crash recovery)".
 
 This is a **two-sided** protocol; the save half is worthless without the retrieve half.
 

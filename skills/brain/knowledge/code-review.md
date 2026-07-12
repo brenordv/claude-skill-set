@@ -34,6 +34,8 @@ These guidelines apply to code review processes regardless of language or projec
 - No injection vulnerabilities?
 - Secrets not exposed?
 - Authentication/authorization enforced?
+- No machine-identifying details (absolute local paths, usernames, hostnames)? See `machine-privacy.md`;
+  on touched lines this blocks approval.
 
 ### Performance
 
@@ -47,6 +49,7 @@ These guidelines apply to code review processes regardless of language or projec
 - Does it follow project conventions?
 - Are dependencies justified and minimal?
 - Is there unnecessary complexity?
+- Does comment/doc prose pass `writing-style.md`? (Concrete greps: `review-heuristics.md` §Prose.)
 
 ### Testing
 

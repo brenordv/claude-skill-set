@@ -112,6 +112,8 @@ Before writing any code:
 ## 6. Code Clarity
 
 - **Comments explain "why", not "what"**: The code itself should be readable enough to explain "what."
+- **Comment and doc prose follows `writing-style.md`**: the hard bans (em-dashes first among them) bind
+  inside code comments, docstrings, and documentation exactly as they do in chat and PR prose.
 - **No commented-out code**: Use version control for history.
 - **Remove dead code you introduced**: If code you wrote becomes unused during the task, delete it. However, do not remove pre-existing dead code unrelated to your change; that increases diff scope. Instead, point it out to the user.
 - **Document new code**: Add summaries/docstrings to new methods and classes so added code is properly documented.

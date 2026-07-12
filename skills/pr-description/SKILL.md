@@ -101,11 +101,15 @@ clauses, no closing summary (the list is the summary), and none of the AI vocabu
 engineer describing the change to a teammate. Prefer concrete over abstract ("Returns `0` when the member
 has no transfers" beats "gracefully handles the empty case"). Vary bullet openings.
 
+Also run the `brain/knowledge/machine-privacy.md` self-check before outputting: no absolute local paths,
+OS usernames, or hostnames in the description; paths go repo-relative.
+
 ## Step 4: Archive in the Vault
 
 After the description is settled, archive it: `vault_save` with `project: "pr-descriptions"` passed
-explicitly, the full description as the body. Name, summary, and tags follow `vault-operations.md`
-§"Artifact archives (pinned vault projects)".
+explicitly, the full description as the body. Run the machine-privacy self-check once more before
+saving. Name, summary, and tags follow `vault-operations.md` §"Artifact archives (pinned vault
+projects)".
 
 ## Example Output
 

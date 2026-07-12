@@ -1,13 +1,20 @@
 ## Execution workflows
 
 > **Vault artifact protocol (applies throughout):** Before a planning stage begins, retrieve prior plans
-> from the `implementation-plans` vault project; before a review stage begins, retrieve prior reviews from
+> from the `implementation-plans` vault project (skip notes whose summary starts `PROGRESS:` or `DONE:`;
+> those are checkpoints, not plans); before a review stage begins, retrieve prior reviews from
 > the `code-reviews` project, and let close matches inform the work. After a plan is finalized, save it to
 > `implementation-plans`; after a review is complete, save it to `code-reviews`. Pass `project: "<name>"`
 > explicitly on every vault call for these archives; unpinned, they silo per-repo and stop being
 > cross-project precedent. Mechanics (project names, naming convention, retrieve-vs-save rules) live in
 > `brain/knowledge/vault-operations.md` §"Artifact archives (pinned vault projects)". Do this every time,
 > not just for large tasks.
+
+> **Subagent dispatch protocol (applies to every stage that spawns subagents):** every subagent prompt
+> carries, verbatim, the two canonical dispatch restatements: the git-ops rule from
+> `brain/knowledge/git-readonly-operations.md` §"Dispatch restatement" and the machine-privacy rule from
+> `brain/knowledge/machine-privacy.md` §"Dispatch restatement". Subagents don't inherit knowledge-file
+> discipline on their own; the dispatcher carries it to them. The token cost is accepted.
 
 ### Choosing a workflow
 
@@ -87,6 +94,28 @@ and the workflow proceeds directly to Stage 2 without pausing.
 
 On completion, the review is saved to the vault, and the workflow returns to the user with a summary of the
 work, the verify results (build and test status), and the review outcome.
+
+#### Progress checkpoints (crash recovery)
+
+Every full-work task keeps a live checkpoint note in the vault so a crash, freeze, BSOD, or
+token-exhaustion mid-task resumes cleanly instead of re-deriving state. Lightweight-path and
+planning-only work skip this.
+
+- **Create** right after the plan is archived: `vault_save` in `project: "implementation-plans"`,
+  `parent`-linked to the plan note, name `<repo>--<scope>-progress--<YYYY-MM-DD>`, summary prefixed
+  `PROGRESS:`. Tags: `progress`, `handoff`, the repo, plus a concept tag.
+- **Content**: DONE / IN FLIGHT / NEXT as a checklist, current branch, a one-line uncommitted-state
+  summary, verify-gate status. Repo-relative paths only, no machine-identifying details, secrets
+  redacted; never paste raw `git_status` or diff output (see `machine-privacy.md`).
+- **Update** with `vault_edit_section` (not full resaves): after each stage or phase completes, after
+  the verify gate, after the review verdict, and BEFORE any risky step (roughly: anything expected to
+  touch more than ~5 files or run longer than a build). A checkpoint written only after success is
+  useless for the crash it was meant to survive.
+- **Close**: when the workflow returns to the user, flip the summary prefix to `DONE:` via
+  `vault_set_meta`.
+- **Resume**: at the start of any full-work task, and whenever the user says "continue" or "pick up",
+  `vault_list` `project: "implementation-plans"` for a `PROGRESS:` note on this repo first, and resume
+  from it.
 
 ---
 

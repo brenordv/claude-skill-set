@@ -17,6 +17,19 @@ general principle. Distilled from real review findings.
 
 - **Don't expose error details at API boundaries.** Return generic, human-safe messages; log the details
   server-side. Exception text and internal descriptions hand an attacker a map of the system.
+- **No machine-identifying details in the diff.** Absolute local paths, drive-letter paths, UNC shares,
+  OS usernames, hostnames. Use the `machine-privacy.md` self-check patterns and judge hits against its
+  carve-outs. On touched lines this is Critical and blocks approval.
+
+## Prose (comments, docs, and other human-facing text)
+
+- **Run the diff's prose against the `writing-style.md` hard bans.** Concrete greps over added/modified
+  lines: the em-dash character, `, ensuring` / `, allowing` / `, making it` clause tails, "not just X,
+  but Y", throat-clearing transitions (Moreover, Furthermore, Additionally, It's worth noting), and the
+  AI vocabulary set (delve, leverage, robust, seamless, comprehensive, and the rest of the list in
+  `writing-style.md`). A hard-ban violation on a touched line is at minimum Important.
+- **Softer tells are Suggestions.** Tricolon flourishes, uniform sentence rhythm, and over-formatting in
+  new docs get flagged as Suggestions, not demands.
 
 ## API Design & HTTP Semantics
 

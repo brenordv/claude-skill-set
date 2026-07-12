@@ -88,9 +88,12 @@ events").
 - Keep it tight. A small ticket doesn't need every heading; drop the ones with nothing to say.
 - Follow `brain/knowledge/writing-style.md`: no em-dashes, no throat-clearing, no "..., ensuring..."
   clauses, none of the AI vocabulary set. Write like an engineer filing an issue for a teammate.
+- Run the `brain/knowledge/machine-privacy.md` self-check before outputting: no absolute local paths,
+  OS usernames, or hostnames; paths go repo-relative.
 
 ## Step 5: Archive in the Vault
 
 After the ticket is settled, archive it: `vault_save` with `project: "ticket-descriptions"` passed
-explicitly, the title and description as the body. Name, summary, and tags follow
-`brain/knowledge/vault-operations.md` §"Artifact archives (pinned vault projects)".
+explicitly, the title and description as the body. Run the machine-privacy self-check once more before
+saving. Name, summary, and tags follow `brain/knowledge/vault-operations.md` §"Artifact archives
+(pinned vault projects)".

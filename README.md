@@ -27,6 +27,7 @@ knowledge files at the start of every conversation:
 5. `vault-operations.md`: when and how to use the vault MCP
 6. `os-doctor-operations.md`: local machine diagnostics via the os-doctor MCP
 7. `writing-style.md`: how to write prose that doesn't read as AI-generated
+8. `machine-privacy.md`: keep machine-identifying details (paths, usernames, hostnames) out of anything durable
 
 Everything else in `skills/brain/knowledge/` is loaded on demand when a task relates to it. Individual
 skills are surfaced by the Claude Code runtime and applied when their domain comes up.
@@ -122,7 +123,10 @@ review outcome) or when a cap is hit.
 ### Precedent through the vault
 
 The workflows have memory. Before a planning stage starts, prior plans are retrieved from the [vault](https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.FileVault) and
-close matches inform the new one; before a review, prior reviews. Finished artifacts are archived back,
+close matches inform the new one; before a review, prior reviews. Full-work tasks also keep a live
+progress checkpoint in the vault (created with the plan, updated at stage boundaries and before risky
+steps), so a crash, freeze, or token exhaustion resumes from the checkpoint instead of re-deriving
+state. Finished artifacts are archived back,
 so every plan, review, PR description, and ticket becomes searchable precedent for the next one. Each
 archive lives in a pinned vault namespace so it stays cross-project instead of siloing per repo:
 
@@ -133,6 +137,7 @@ archive lives in a pinned vault namespace so it stays cross-project instead of s
 | `pr-descriptions`      | `pr-description`                                                                  |
 | `ticket-descriptions`  | `ticket-description`                                                              |
 | `lessons`              | cross-project lessons captured automatically per `general-remembering-lessons.md` |
+| `git-ops-backlog`      | capability-gap tickets filed when the git-ops MCP can't do something an agent needed |
 
 Every archive runs the same two-sided loop:
 
@@ -170,7 +175,7 @@ something a competent practitioner does by default), and they're consulted befor
 | `observability-engineer` | Monitoring, logging, tracing; SLI/SLO management; incident response                                         |
 | `system-architect`       | Architecture planning: ADRs, C4 diagrams, roadmaps. Never writes implementation code                        |
 | `security`               | Security and pentest entry point: SAST, dependency scanning, compliance, threat modeling                    |
-| `branch-review`          | Reviews the current branch against main across correctness, security, performance, maintainability, testing |
+| `branch-review`          | Reviews the current branch against main across correctness, security, performance, maintainability, testing; also checks prose style and blocks on machine-detail leaks |
 | `pr-description`         | Generates a PR description in the house format from the diff; retrieves precedent and archives it           |
 | `ticket-description`     | Drafts a ticket title and description from a branch or via Q&A; retrieves precedent and archives it         |
 | `theme-factory`          | Styling toolkit for artifacts, with preset themes                                                           |
@@ -178,7 +183,7 @@ something a competent practitioner does by default), and they're consulted befor
 ## The knowledge layer
 
 `skills/brain/knowledge/` holds the shared, language-agnostic guidance every skill builds on. Beyond the
-seven always-on files listed above, it covers general coding conventions, testing, code review and its
+eight always-on files listed above, it covers general coding conventions, testing, code review and its
 heuristics checklist, game-dev coding, databases, DevOps operations, and security. These load on demand
 when a task touches their topic.
 

@@ -9,7 +9,7 @@ description: >-
 
 # Branch Review
 
-> **Shared Knowledge**: This skill builds on `brain/knowledge/code-review.md`, `brain/knowledge/coding-general.md`, and `brain/knowledge/writing-style.md`. Apply the first two when evaluating changes and the last when writing up the review.
+> **Shared Knowledge**: This skill builds on `brain/knowledge/code-review.md`, `brain/knowledge/coding-general.md`, `brain/knowledge/writing-style.md`, and `brain/knowledge/machine-privacy.md`. Apply the first two when evaluating changes; writing-style applies both to prose in the diff (Step 4) and to the review write-up itself. All git inspection goes through the `git-ops` MCP per `brain/knowledge/git-readonly-operations.md`; never shell git.
 
 ## Purpose
 
@@ -34,9 +34,12 @@ Review the work done in the current branch by comparing it against the base bran
 
 ### Step 1: Scope the Review
 
-1. Identify the base branch (`main` or `master`)
-2. Run `git diff <base>...HEAD --stat` to see all changed files
-3. Run `git log <base>..HEAD --oneline` to understand the commit narrative
+1. Identify the base branch (`main` or `master`) via `git_branch_list`
+2. `git_log` with `ref: "<base>..HEAD"` to understand the commit narrative
+3. `git_diff` for the change set: pass `fromRef: "<oldest-sha-from-step-2>^"` (the fork point as a
+   revision expression) and `toRef: "HEAD"`, with `statOnly: true` first to see all changed files. If
+   the branch contains merges from the base (fork point ambiguous), use `fromRef: "<base>"` instead and
+   disclose in the review that base drift may appear in the diff.
 4. Identify which languages/frameworks are present in the diff
 5. **Retrieve prior reviews.** `vault_list` with `project: "code-reviews"` (pass it explicitly) and scan
    for earlier reviews of this repo or these files; `vault_get` close matches so recurring issues and prior
@@ -71,6 +74,15 @@ For every changed file, evaluate it across the review dimensions defined in `bra
 - [ ] Consistent style with the rest of the codebase
 - [ ] Dependencies added are justified and pinned
 - [ ] **Hard Rules of the routed language skill hold on every added/modified line.** These override repo conventions: "the codebase already does it" is not a pass. For C#, walk the ⛔ Hard Rules list in `csharp/SKILL.md` explicitly (no Moq/FluentAssertions, one public type per file, `init` over `set`, interfaces over concrete types, no useless defaults, `const` locals, `IsNullOrWhiteSpace`, enums starting at 1, no comments in tests beyond AAA markers, no doc references in code). Each violation is at minimum an Important finding. The scope boundary cuts both ways: pre-existing violations in untouched code are a Note at most, never a demand to refactor; and conversely, a diff that DID refactor untouched code to satisfy a Hard Rule is itself a scope-creep finding.
+- [ ] **Prose passes `writing-style.md`.** Check every added/modified comment, docstring, doc file, and
+  markdown block in the diff against the hard bans; the Prose section of
+  `brain/knowledge/review-heuristics.md` has the concrete greps. A hard-ban violation on a touched line
+  is at minimum an Important finding; on untouched lines it's a Note, never a refactor demand.
+- [ ] **No machine-identifying details (blocking).** Run the `machine-privacy.md` self-check over the
+  diff. Any absolute local path, OS username, or hostname on an added/modified line is a Critical
+  finding, and the overall outcome cannot be APPROVED while one exists. On unchanged context lines it's
+  Important: report it, don't deadlock the branch on it. Judge hits against the file's "Not a violation"
+  carve-outs (OS-fixed paths, assessed-target details) before flagging.
 
 ### Step 5: Produce Feedback
 

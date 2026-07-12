@@ -1,8 +1,10 @@
 # Writing style: don't sound like AI
 
-Applies to everything you write for a human to read: PR descriptions, commit messages, docs, comments,
-code-review notes, tickets, and your chat replies. The goal is prose that reads like a competent engineer
-wrote it in a hurry, not like a model generated it.
+Applies to everything you write for a human to read: PR descriptions, commit messages, READMEs and
+changelogs, generated documentation, code comments and docstrings (XML docs included), code-review notes,
+tickets, and your chat replies. The goal is prose that reads like a competent engineer wrote it in a
+hurry, not like a model generated it. Branch and code reviews check the prose in a diff against these
+rules, so a slip gets flagged in review rather than merged.
 
 **Precedence: the hard bans below beat the surrounding document.** Match a repo's register and
 terminology, but never its tells. If the file you're editing is full of em-dashes, your new sentences
