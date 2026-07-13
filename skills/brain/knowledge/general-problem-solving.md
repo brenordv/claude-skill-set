@@ -36,6 +36,22 @@ Once the problem is understood:
   - Which edge cases matter
 - **Break into steps**: Decompose the work into small, verifiable increments.
 
+### Back external assumptions with an official source
+
+Every claim your plan leans on about how an *external* technology behaves (a library's API or conventions, a framework's
+defaults, a service's requirements, limits, or performance characteristics) must be backed by a link to that 
+technology's **official, version-current documentation**. Both of these need a citation before they go in a plan:
+
+- "React Query's `useMutation` has built-in conventions around X."
+- "We send X and Y from the frontend because Azure Cosmos needs them to query this efficiently."
+
+- **Official only.** Vendor or project docs, the API reference, the source repository, or a formal spec. Not blog posts, forum answers, or a model's own recollection.
+- **Verify, never fabricate.** Actually open the page (`WebFetch`/`WebSearch`) and confirm it resolves *and* states what you claim. A plausible-looking URL you did not read is worse than no citation: a hallucinated source turns a guess into a false certainty.
+- **Version-current.** The doc must match the version in play; if the project pins an older version whose behavior differs, cite that version and call out the difference.
+- **Internal behavior is the exception.** Claims about *this* codebase are backed by reading the actual code, not a URL. The link rule is for third-party and external systems.
+
+If you cannot find an official source for an assumption, say so and mark it unverified rather than presenting it as fact.
+
 ---
 
 ## 3. Execute

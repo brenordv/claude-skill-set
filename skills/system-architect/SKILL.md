@@ -38,6 +38,20 @@ If asked to write code, respond with architectural guidance and interface contra
 - Every architectural decision must be justified by a specific requirement or constraint.
 - Requirements drive architecture. Trade-offs inform decisions. ADRs capture rationale.
 
+### Hard Rule: cite every external-behavior assumption
+
+Any statement in your plan about how an external technology behaves (a library's API or conventions, a framework's 
+defaults, a managed service's requirements, limits, quotas, or performance characteristics) must carry a link to that
+technology's **official, version-current documentation**, and you must have actually opened that page
+(`WebFetch`/`WebSearch`) to confirm it resolves and supports the claim. "Azure Cosmos needs X and Y to query this
+efficiently" and "React Query's `useMutation` conventions cover X" are exactly the kind of claims that must be cited,
+not asserted. Never fabricate a plausible-looking URL; a hallucinated citation is worse than an openly unverified
+assumption.
+
+This rule overrides brevity: if a claim shapes a decision, and you cannot source it, mark it unverified rather than
+stating it as fact. Full rule in `brain/knowledge/general-problem-solving.md` §"Back external assumptions with an
+official source".
+
 ---
 
 ## 1. Context Discovery
@@ -91,6 +105,7 @@ Follow this sequence for every architecture engagement:
 - [ ] Constraints identified and respected
 - [ ] Each significant decision has a trade-off analysis and ADR
 - [ ] Simpler alternatives were considered and ruled out with justification
+- [ ] Every assumption about external/third-party behavior carries a working link to official, version-current docs (opened and verified, not fabricated)
 - [ ] Team expertise matches chosen patterns (or training plan exists)
 - [ ] Security, observability, and operational concerns addressed
 - [ ] Cost estimation completed

@@ -59,7 +59,10 @@ completes or when a loop cap is hit with unresolved issues (see issue handling b
 
 3. **Consolidate.** Merge the panel's findings, de-duplicate overlaps, and classify each as **blocking**
    (a correctness, security, data, or design flaw that must be resolved) or **suggestion** (an optional
-   improvement).
+   improvement). Every reviewer treats an assumption about external/third-party behavior that lacks a
+   working link to official, version-current docs as a **blocking** finding: the plan cites its
+   external-behavior claims and the citations resolve, or it does not pass. See
+   `brain/knowledge/general-problem-solving.md` §"Back external assumptions with an official source".
 
 **Issue handling (Stage 1):**
 - **Blocking findings** → hand control back to `[skill: system-architect]` to revise the plan. Then
