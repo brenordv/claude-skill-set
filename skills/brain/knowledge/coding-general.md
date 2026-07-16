@@ -40,6 +40,8 @@ These guidelines apply to all coding skills regardless of language or framework.
 - **Avoid over-engineering**: The right amount of complexity is what the task actually requires. No speculative abstractions, but no half-finished implementations either.
 - **Avoid code duplication through thoughtfulness**: Before writing new code, check if similar logic already exists. If it does, reuse or extend it. If you're about to write similar code in multiple places, extract it once.
 - **Minimal changes**: Solve the problem asked. Don't add features, refactor surrounding code, or make "improvements" beyond what was requested.
+- **Contain the blast radius**: A change that tightens or fixes one thing must not loosen or alter anything unrelated. Making one field's validation stricter must never make another field's more lenient. Keep a change's effect scoped to exactly what it targets.
+- **A deliberate change outranks stale tests and legacy code**: When behavior changes on purpose, conform failing tests and old assumptions to it; never revert it, relax a validation, or weaken code to satisfy a test or to match the code it replaced. Full statement in `general-problem-solving.md` §3.
 
 ### Modern Language Features & Hygiene
 

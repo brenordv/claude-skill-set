@@ -27,7 +27,7 @@ break these. Re-read this list before writing code, and walk it again at handoff
 3. **No comments in test bodies except `// Arrange` / `// Act` / `// Assert`.** The test name and plainly written test code must carry the meaning on their own. If a test seems to need an explanatory comment, the test is too clever; rewrite it instead.
 4. **`init` over `set`.** Every property defaults to `init` (or get-only/`readonly`). Use `set` only when post-construction mutation is a genuine requirement of the flow.
 5. **Depend on interfaces, not concrete types.** Constructor dependencies, public members, and collection-typed properties use the narrowest fitting abstraction (`IUserService`, `IReadOnlyList<T>`), not the concrete class, and not `List<T>` where an interface fits.
-6. **No useless default values.** Never initialize a property or field to `string.Empty`, `0`, `false`, or `new()` "just in case". Add a default only when it is a real, meaningful domain default.
+6. **No useless default values.** Never initialize a property or field to `string.Empty`, `0`, `false`, or `new()` "just in case", and never coalesce to one as a fallback (`value ?? string.Empty`) when `null` produces the same downstream result. Add a default only when it is a real, meaningful domain default.
 7. **`const` over `var` for locals when possible.** A local whose value is a compile-time constant and is never reassigned is declared `const`.
 8. **`string.IsNullOrWhiteSpace`, never `string.IsNullOrEmpty`**, unless whitespace-only is explicitly documented as a valid value for that field.
 9. **No magic values or magic behavior.** Every enum member gets an explicit value and numbering starts at 1, so `0`/`default` always means "bug: never assigned". Never rely on an implicit default (enum, config value, parameter) to make a flow work.
@@ -36,7 +36,7 @@ break these. Re-read this list before writing code, and walk it again at handoff
 
 ### 1. Prime Directives
 
-- Treat the repository as the source of truth; match existing patterns and structure, **except where a Hard Rule above says otherwise. Hard Rules always win over repo conventions.**
+- Treat the repository as the source of truth **for patterns and structure**; match existing conventions, **except where a Hard Rule above says otherwise. Hard Rules always win over repo conventions.** A deliberate change the user just made outranks both old code and old tests: when it breaks a test or diverges from the code being ported, conform the test to the change. Never revert the change or relax a validation to satisfy a stale test (see `brain/knowledge/general-problem-solving.md` §3, "A deliberate change is the source of truth").
 - Follow `.editorconfig` strictly, even when other guidance conflicts. The canonical `.editorconfig` lives in this skill's folder; it must be used and never modified. If the project does not have one, copy it there from the skill folder.
 - Prefer design patterns already present in the repo; do not introduce new ones unless required.
 - Any new code should always follow the prime directives, be testable, and have well-thought-out unit tests.

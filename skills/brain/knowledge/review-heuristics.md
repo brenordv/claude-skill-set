@@ -64,6 +64,10 @@ general principle. Distilled from real review findings.
 
 ## Correctness
 
+- **A change reverted or weakened to pass a test is a defect, not a fix.** If the diff loosens a
+  validation, reintroduces a useless default, or rolls back a deliberate tightening so an existing test
+  goes green, flag it: the stale test should have been updated, not the production code weakened. Also
+  flag a validation relaxation that leaked past its target onto unrelated fields.
 - **Preserve null guards when extracting a method.** Inline code often inherits a null check from its
   surroundings; the extracted method receives the raw parameter and loses that guarantee. Guard at the top
   or document that the caller is responsible.

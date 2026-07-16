@@ -83,6 +83,11 @@ For every changed file, evaluate it across the review dimensions defined in `bra
   finding, and the overall outcome cannot be APPROVED while one exists. On unchanged context lines it's
   Important: report it, don't deadlock the branch on it. Judge hits against the file's "Not a violation"
   carve-outs (OS-fixed paths, assessed-target details) before flagging.
+- [ ] **No deliberate change reverted or weakened to pass a test.** If the diff loosened a validation,
+  reintroduced a useless default, or rolled back an intentional tightening so an existing test passes,
+  that is a Critical finding: the stale test should change, not the production code. Also flag a
+  validation relaxation that spilled onto fields the change did not target. See
+  `brain/knowledge/review-heuristics.md` §Correctness.
 
 ### Step 5: Produce Feedback
 

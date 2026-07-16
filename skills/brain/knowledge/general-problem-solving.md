@@ -64,13 +64,22 @@ With a plan in hand:
 - **Keep changes minimal**: Solve only what was asked. Resist scope creep.
 - **Write tests alongside code**: Don't defer testing until the end.
 
+### A deliberate change is the source of truth
+
+When the user changes behavior on purpose, or the plan alters it by design, that change is the source of truth for the rest of the task. Whatever contradicts it is now stale and conforms to it, not the reverse.
+
+- **Never revert or weaken a deliberate change to make a test pass.** A test asserting the old behavior went stale the moment the behavior changed by design. Update it or delete it. Rolling back the change, relaxing a validation, or loosening production code to turn a test green throws away the intent the user just expressed. A red test after an intentional behavior change means the test is wrong, not the code.
+- **Old, legacy, or ported code is precedent, not an oracle.** "The previous version accepted null here" or "this diverges from the API we ported" does not override a change made on purpose. Don't argue that a deliberate change will break in production by diffing it against the code it was written to replace. The user changed it knowingly.
+- **Keep the blast radius exact.** Tightening one field's validation must not relax, or even touch, the validation on any other field. A change that makes one property stricter must never make an unrelated property more lenient. Fix what the change targets, nothing around it.
+- **If a failing test looks like it caught a real regression** the change did not intend, raise it with the user. Don't silently revert, and don't blindly delete a test that might be flagging a genuine bug.
+
 ---
 
 ## 4. Verify
 
 After implementation:
 
-- **Run tests**: Execute the project's test suite. Ensure nothing is broken.
+- **Run tests**: Execute the project's test suite. A test that fails only because it asserts behavior this change intentionally altered is a stale test to fix or remove, not a reason to undo the change (see §3, "A deliberate change is the source of truth").
 - **Check against the plan**: Does the implementation match the testing plan from step 2?
 - **Run formatters and linters**: Fix any style issues.
 - **Review your own work**: Read through the changes. Does anything look wrong, fragile, or unclear?
@@ -107,3 +116,4 @@ Before handing off to the user:
 - **Ignoring existing patterns** in the codebase.
 - **Not testing**: every change should be verifiable.
 - **Silent completion**: always communicate what was done and any risks.
+- **Reverting or weakening a deliberate change** to satisfy a stale test, instead of updating the test.

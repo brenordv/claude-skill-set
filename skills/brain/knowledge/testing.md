@@ -10,6 +10,7 @@ These guidelines apply to all coding and game development skills regardless of l
 - **Test behavior, not implementation**: Tests should verify *what* the code does, not *how* it does it internally.
 - **Tests enable refactoring**: Good tests give you confidence to change code without fear.
 - **Test at the right level**: Unit tests for logic, integration tests for connections, E2E for critical flows.
+- **Tests serve the intended behavior, not the reverse**: When a change deliberately alters behavior, the tests that asserted the old behavior are stale. Update or delete them; never revert the change or weaken the code to keep an obsolete test green. A test is not a veto over an intentional change (see `general-problem-solving.md` §3).
 
 ---
 
@@ -163,3 +164,4 @@ When multiple test cases share the same logic but differ in input/output:
 | Comments narrating the test | Signals the test is too complex to read | Simplify until name + code speak for themselves |
 | Slow test suites | Developers skip running them | Isolate slow tests |
 | No tests at all | Refactoring is terrifying | Start with critical paths |
+| Reverting code to satisfy a stale test | Locks in behavior the change meant to replace | Update or delete the test to match the intended behavior |

@@ -30,6 +30,8 @@ dotnet_sort_system_directives_first = true
 file_header_template = unset
 # IDE0005: Remove unnecessary using directives
 dotnet_diagnostic.IDE0005.severity = error
+# CS8632: reject the `?` nullable annotation while nullable reference types stay disabled project-wide
+dotnet_diagnostic.CS8632.severity = error
 
 # this. and Me. preferences
 dotnet_style_qualification_for_event = false:silent

@@ -46,7 +46,7 @@ These rules reflect the `.editorconfig` and formatting conventions for C# projec
 - Implement nullable only when necessary.
 - Nullable reference types must be **disabled** in all projects.
 - Do not use `dynamic` type. If it's the absolute only option, explain to the user and ask for insights.
-- **Never add useless default values** (Hard Rule 6). A string property receiving `string.Empty` as a default is useless: validations against it use `string.IsNullOrWhiteSpace`, which fails for both `string.Empty` and `null`. The same applies to defaulting to `0`, `false`, or `new()` "just in case". Add a default only when it is a real, meaningful domain default; otherwise leave it unset.
+- **Never add useless default values** (Hard Rule 6). A string property receiving `string.Empty` as a default is useless: validations against it use `string.IsNullOrWhiteSpace`, which fails for both `string.Empty` and `null`. The same applies to defaulting to `0`, `false`, or `new()` "just in case". Add a default only when it is a real, meaningful domain default; otherwise leave it unset. The same holds for fallback expressions, not just initializers: `value ?? string.Empty` is the same useless default whenever every consumer downstream treats `null` and `""` alike. Fall back to `null`, or don't coalesce at all, unless the empty string is a distinct, meaningful value.
 - **No magic values or magic behavior** (Hard Rule 9). Never design a flow that only works because some part of the system silently initializes a value to its default. Magic behavior always comes back to bite.
 - **Enums: every member gets an explicit value, and numbering starts at 1.** That way `0` (the CLR default for an unassigned enum) always means "bug: this was never set" and gets caught instead of silently behaving like a valid member:
   ```csharp
@@ -113,7 +113,7 @@ These rules reflect the `.editorconfig` and formatting conventions for C# projec
 - When a method returning a list fails, return empty list, not `null`.
 - Prefer `is null` / `is not null` over `== null` / `!= null` for null checks: idiomatic and clearer in chains.
 - Don't use `?.` on a value the surrounding control flow already guarantees non-null (e.g. inside `if (error != null)`). It implies a null case that can't happen. Use direct member access.
-- Since nullable reference types are disabled project-wide, don't annotate reference types with `?` (e.g. `string?`); a reference type is already nullable, so it's just noise.
+- Since nullable reference types are disabled project-wide, don't annotate reference types with `?` (e.g. `string?`); a reference type is already nullable, so it's just noise. The canonical `.editorconfig` enforces this as a build error (`dotnet_diagnostic.CS8632.severity = error`): a stray `?` annotation fails the build instead of slipping through.
 
 ---
 
