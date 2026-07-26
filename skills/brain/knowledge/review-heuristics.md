@@ -25,11 +25,18 @@ general principle. Distilled from real review findings.
 
 - **Run the diff's prose against the `writing-style.md` hard bans.** Concrete greps over added/modified
   lines: the em-dash character, `, ensuring` / `, allowing` / `, making it` clause tails, "not just X,
-  but Y", throat-clearing transitions (Moreover, Furthermore, Additionally, It's worth noting), and the
+  but Y" and flat "not X, but Y" contrasts, copula dodges (`serves as`, `stands as`, `functions as`,
+  `acts as`), significance inflation (`plays a crucial role`, `a testament to`, `underscores the`),
+  throat-clearing transitions (Moreover, Furthermore, Additionally, It's worth noting), and the
   AI vocabulary set (delve, leverage, robust, seamless, comprehensive, and the rest of the list in
   `writing-style.md`). A hard-ban violation on a touched line is at minimum Important.
-- **Softer tells are Suggestions.** Tricolon flourishes, uniform sentence rhythm, and over-formatting in
-  new docs get flagged as Suggestions, not demands.
+- **Commit messages and PR text get the summary-specific checks.** Virtue summaries ("improved clarity
+  and readability"), compliance assurances ("ensured adherence to standards"), reflexive "while
+  preserving existing behavior" tails, and chat voice ("I hope this helps," "let me know if") per
+  `writing-style.md` §Commit messages.
+- **Softer tells are Suggestions.** Tricolon flourishes, uniform sentence rhythm, synonym-cycling for one
+  concept, `- **Label:** text` bullet lists, and over-formatting in new docs get flagged as Suggestions,
+  not demands.
 
 ## API Design & HTTP Semantics
 

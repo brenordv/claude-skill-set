@@ -97,9 +97,12 @@ across the team. Treat them as precedent for *form*, not as facts about the curr
 
 Follow `brain/knowledge/writing-style.md` in full. The hard bans matter most here: **no em-dashes**, no
 "not just X but Y," no throat-clearing transitions, no trailing "..., ensuring/allowing/making it..."
-clauses, no closing summary (the list is the summary), and none of the AI vocabulary set. Write like an
-engineer describing the change to a teammate. Prefer concrete over abstract ("Returns `0` when the member
-has no transfers" beats "gracefully handles the empty case"). Vary bullet openings.
+clauses, no closing summary (the list is the summary), and none of the AI vocabulary set. Apply its
+"Commit messages, PR descriptions, and summaries" section too: name changes, not virtues ("Split
+`parse()` in two," never "improved clarity and readability"), no compliance assurances, no reflexive
+"while preserving existing behavior" tails, no chat voice. Write like an engineer describing the change
+to a teammate. Prefer concrete over abstract ("Returns `0` when the member has no transfers" beats
+"gracefully handles the empty case"). Vary bullet openings.
 
 Also run the `brain/knowledge/machine-privacy.md` self-check before outputting: no absolute local paths,
 OS usernames, or hostnames in the description; paths go repo-relative.
