@@ -59,7 +59,7 @@ server easy.
 | Instead of                                                              | Use                                                                                            |
 |-------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
 | `git status`                                                            | `git_status`                                                                                   |
-| `git diff`, `git diff --cached`, `git diff <a>..<b>`, `git diff --stat` | `git_diff` (mode picked by params: `staged`, `fromRef`/`toRef`, `statOnly`)                    |
+| `git diff`, `git diff --cached`, `git diff <a>..<b>`, `git diff <a>...<b>`, `git diff --stat` | `git_diff` (mode picked by params: `staged`, `fromRef`/`toRef`, `statOnly`; `fromRef` also takes a range `A..B` / `A...B`, where three-dot is the merge-base diff) |
 | `git log ...`                                                           | `git_log` (filters: `author`, `since`, `until`, `grep`, `pickaxe`, `paths`, `ref`, `follow`, `maxCount`) |
 | `git show <ref>`                                                        | `git_show`                                                                                     |
 | `git blame <file>`                                                      | `git_blame` (supports `lineStart`/`lineEnd` and `ref`)                                         |
@@ -92,4 +92,5 @@ Collection-returning tools wrap their payload in `{ results, count, filters_appl
 - "Find usages of X in the repo": `git_grep` with `pattern: "X"` (set `fixedString: false` if X is a regex).
 - "Find usages of X as of commit Y": `git_grep` with `pattern: "X"` and `ref: "Y"`.
 - "What did commit X change?": `git_show` with `ref: "X"`.
-- "What's on this branch that isn't on main?": `git_log` with `ref: "main..feature-branch"` style ref expression (verified via `rev-parse` before use).
+- "What's on this branch that isn't on main?": `git_log` with `ref: "main..feature-branch"` (a two-dot range; each side is verified to a SHA before use, so an omitted side defaults to `HEAD`).
+- "How does this branch differ from its fork point?": `git_diff` with `fromRef: "main...feature-branch"` (three-dot: the diff from the merge base of the two, not between the endpoints). A range must be the sole ref; don't also pass `toRef`.
