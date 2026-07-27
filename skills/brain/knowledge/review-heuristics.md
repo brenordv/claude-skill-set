@@ -54,6 +54,11 @@ general principle. Distilled from real review findings.
 
 ## Maintainability
 
+- **Logic added that already exists elsewhere in the repo is a finding.** Before approving a new
+  helper, mapper, validator, or utility, grep the repo for its distinctive tokens: name fragments,
+  domain terms, a characteristic constant or format string. A near-duplicate the diff didn't reuse is
+  at minimum Important, unless the handoff names it and justifies the divergence
+  (`coding-general.md` ⛔ Hard Rule 1).
 - **Extract reusable, dependency-free logic into an independently testable unit.** When a private method
   operates purely on its parameters (no services, no side effects) and the logic could be needed elsewhere,
   pull it out (in C#, an extension method on the parameter's type). It becomes testable without
@@ -71,6 +76,11 @@ general principle. Distilled from real review findings.
 
 ## Correctness
 
+- **An added call to a deprecated or obsolete API is at minimum Important.** Judge against the
+  version the project pins, not the latest release: deprecated means deprecated in the version
+  actually in use. Build and linter output is the cheap detector; check it for deprecation warnings
+  attributable to the diff, and flag any the author scrolled past
+  (`coding-general.md` ⛔ Hard Rule 2).
 - **A change reverted or weakened to pass a test is a defect, not a fix.** If the diff loosens a
   validation, reintroduces a useless default, or rolls back a deliberate tightening so an existing test
   goes green, flag it: the stale test should have been updated, not the production code weakened. Also

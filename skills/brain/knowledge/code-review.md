@@ -27,6 +27,8 @@ These guidelines apply to code review processes regardless of language or projec
 - Are edge cases handled?
 - Is error handling appropriate?
 - Are business logic invariants maintained?
+- No added calls to APIs deprecated/obsolete in the version the project pins? See
+  `coding-general.md` ⛔ Hard Rules; build/linter deprecation warnings are the detector.
 
 ### Security
 
@@ -49,6 +51,8 @@ These guidelines apply to code review processes regardless of language or projec
 - Does it follow project conventions?
 - Are dependencies justified and minimal?
 - Is there unnecessary complexity?
+- Does the diff re-implement logic that already exists elsewhere in the repo? See
+  `coding-general.md` ⛔ Hard Rules and `review-heuristics.md` §Maintainability.
 - Does comment/doc prose pass `writing-style.md`? (Concrete greps: `review-heuristics.md` §Prose.)
 
 ### Testing

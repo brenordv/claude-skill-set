@@ -73,7 +73,21 @@ For every changed file, evaluate it across the review dimensions defined in `bra
 - [ ] No secrets, credentials, or PII in the diff
 - [ ] Consistent style with the rest of the codebase
 - [ ] Dependencies added are justified and pinned
-- [ ] **Hard Rules of the routed language skill hold on every added/modified line.** These override repo conventions: "the codebase already does it" is not a pass. For C#, walk the ⛔ Hard Rules list in `csharp/SKILL.md` explicitly (no Moq/FluentAssertions, one public type per file, `init` over `set`, interfaces over concrete types, no useless defaults, `const` locals, `IsNullOrWhiteSpace`, enums starting at 1, no comments in tests beyond AAA markers, no doc references in code). Each violation is at minimum an Important finding. The scope boundary cuts both ways: pre-existing violations in untouched code are a Note at most, never a demand to refactor; and conversely, a diff that DID refactor untouched code to satisfy a Hard Rule is itself a scope-creep finding.
+- [ ] **Hard Rules hold on every added/modified line: the language-agnostic ⛔ block in
+  `brain/knowledge/coding-general.md` (no re-implemented logic without an acknowledged reason, no
+  deprecated/obsolete APIs) plus the routed language skill's. Open that skill and walk its ⛔ Hard Rules
+  block item by item against the changed lines rather than gesturing at it.** These override repo
+  conventions: "the codebase already does it" is not a pass. Each violation is at minimum an Important
+  finding. The scope boundary cuts both ways: pre-existing violations in untouched code are a Note at
+  most, never a demand to refactor; and conversely, a diff that DID refactor untouched code to satisfy a
+  Hard Rule is itself a scope-creep finding.
+- [ ] **No duplicated logic.** The diff doesn't re-implement something the repo already has: grep
+  the distinctive tokens of each new helper, mapper, or validator per
+  `brain/knowledge/review-heuristics.md` §Maintainability. An unacknowledged near-duplicate is at
+  minimum Important.
+- [ ] **No deprecated APIs.** No added call is deprecated or obsolete in the version the project
+  pins, and build/linter output shows no new deprecation warnings from the diff. See
+  `brain/knowledge/review-heuristics.md` §Correctness.
 - [ ] **Prose passes `writing-style.md`.** Check every added/modified comment, docstring, doc file, and
   markdown block in the diff against the hard bans; the Prose section of
   `brain/knowledge/review-heuristics.md` has the concrete greps. A hard-ban violation on a touched line

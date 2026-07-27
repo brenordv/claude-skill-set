@@ -83,8 +83,10 @@ and the workflow proceeds directly to Stage 2 without pausing.
 
 2. **Verify gate (mandatory before review).** Run the formatter/linter, the build/typecheck, and the test
    suite, per `coding-general.md` "before delivering"; use the `verify` skill to exercise the change
-   end to end where it has a runtime surface. Fix every failure here. **Do not proceed to review with a red
-   build, failing tests, or lint errors**: reviewing unrun code reviews a guess. **"Fix" never means revert:**
+   end to end where it has a runtime surface. Fix every failure here, and a deprecation warning on a
+   line the change touched counts as a failure, not noise (⛔ Hard Rules in `coding-general.md`).
+   **Do not proceed to review with a red build, failing tests, lint errors, or new deprecation
+   warnings**: reviewing unrun code reviews a guess. **"Fix" never means revert:**
    when a test fails because it encodes behavior this change intentionally altered, the test is stale, so
    update or remove it. Never roll back the deliberate change, relax a validation, or weaken production code
    to turn a test green (see `general-problem-solving.md` §3, "A deliberate change is the source of truth").

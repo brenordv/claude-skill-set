@@ -4,6 +4,29 @@ These guidelines apply to all coding skills regardless of language or framework.
 
 ---
 
+## ⛔ Hard Rules: Non-Negotiable
+
+These bind every line of code you add or modify, in every language, and they beat repository
+conventions: an existing duplicate or an existing deprecated call in the repo is precedent, not
+permission. The scope boundary cuts both ways: leave pre-existing violations in untouched code
+alone (mention them in the handoff; never mass-refactor), but nothing new may break these.
+Re-read this list before writing code and walk it again at handoff (§10).
+
+1. **Search before you write.** Before adding any function, class, helper, mapping, or constant,
+   search the repo for an existing implementation: grep the domain terms, the names you'd expect
+   it to have, and the sibling modules where it would live. If something close exists, reuse or
+   extend it; if you deliberately don't, name it in the handoff summary and say why. Writing a
+   new helper without having searched first is a defect even when no duplicate turns out to exist.
+2. **No deprecated or obsolete APIs.** Never add a call to an API that is deprecated or obsolete
+   in the version this project pins. An API you know only from memory is an unverified
+   assumption: before using one you haven't seen working in this repo, confirm it is current for
+   the pinned version in the official docs. This is the codegen-time extension of
+   `general-problem-solving.md` §"Back external assumptions with an official source". Every
+   deprecation warning the compiler, linter, or build emits on a line you touched is a blocking
+   failure to fix before handoff, not noise to scroll past.
+
+---
+
 ## 1. Core Principles
 
 ### SOLID
@@ -38,14 +61,14 @@ These guidelines apply to all coding skills regardless of language or framework.
 - **Readability over cleverness**: Always. A clear 10-line solution beats a clever 3-line one that requires a comment to explain.
 - **Avoid premature abstraction**: Don't create helpers, utilities, or frameworks for things that only happen once. Wait until you see the pattern repeat.
 - **Avoid over-engineering**: The right amount of complexity is what the task actually requires. No speculative abstractions, but no half-finished implementations either.
-- **Avoid code duplication through thoughtfulness**: Before writing new code, check if similar logic already exists. If it does, reuse or extend it. If you're about to write similar code in multiple places, extract it once.
+- **Avoid code duplication through thoughtfulness**: Before writing new code, check if similar logic already exists. If it does, reuse or extend it. If you're about to write similar code in multiple places, extract it once. The pre-write search is mandatory, not aspirational: ⛔ Hard Rule 1.
 - **Minimal changes**: Solve the problem asked. Don't add features, refactor surrounding code, or make "improvements" beyond what was requested.
 - **Contain the blast radius**: A change that tightens or fixes one thing must not loosen or alter anything unrelated. Making one field's validation stricter must never make another field's more lenient. Keep a change's effect scoped to exactly what it targets.
 - **A deliberate change outranks stale tests and legacy code**: When behavior changes on purpose, conform failing tests and old assumptions to it; never revert it, relax a validation, or weaken code to satisfy a test or to match the code it replaced. Full statement in `general-problem-solving.md` §3.
 
 ### Modern Language Features & Hygiene
 
-- **Use the latest stable language syntax**: When the language offers a cleaner, more expressive way to write something (pattern matching, destructuring, collection expressions, etc.), prefer it over the older equivalent.
+- **Use the latest stable language syntax**: When the language offers a cleaner, more expressive way to write something (pattern matching, destructuring, collection expressions, etc.), prefer it over the older equivalent. And never the withdrawn one: deprecated/obsolete APIs are banned outright (⛔ Hard Rule 2).
 - **Use imports, not fully-qualified names**: Always add an import/using directive and reference types by their short name. Never inline fully-qualified type names (e.g., `Namespace.TypeName`) when an import would suffice.
 - **Make functions/methods static when possible**: If a method does not access instance state, mark it as static. This communicates intent, avoids accidental coupling, and can enable compiler optimizations.
 - **Keep dependencies current**: Before delivering work, verify that project dependencies (packages, libraries) are on the latest stable version. Outdated dependencies are a source of bugs, security vulnerabilities, and missing improvements.
@@ -161,10 +184,13 @@ Before writing any code:
 Before delivering work:
 
 1. Run the project's formatter and linters; fix all issues.
-2. Ensure new code is covered by tests.
-3. Run the test suite; confirm nothing is broken.
-4. Summarize the change, its rationale, and any caveats or warnings.
-5. Report which skills/tools were used.
+2. Walk the ⛔ Hard Rules block at the top of this file: the build/linter output shows zero new
+   deprecation warnings on lines you touched, and the pre-write reuse search happened. Name any
+   near-duplicate you deliberately did not reuse in the summary, with the reason.
+3. Ensure new code is covered by tests.
+4. Run the test suite; confirm nothing is broken.
+5. Summarize the change, its rationale, and any caveats or warnings.
+6. Report which skills/tools were used.
 
 ## 11. Interacting with git
 1. When interacting with git, use the specialized MCP (Read and apply the instructions here: `./git-readonly-operations.md`)
