@@ -25,6 +25,22 @@ mod tests {
 }
 ```
 
+## Integration Tests
+
+Integration tests exercise the crate through its public API only, the way an external caller would. They live in a top-level `tests/` directory next to `src/`.
+
+- Each file directly under `tests/` compiles as its own separate crate, and cargo lists it separately in the test output. No `#[cfg(test)]` is needed; cargo only builds `tests/` under `cargo test`.
+- They reach only your public API. Anything private stays covered by the in-file `#[cfg(test)]` unit tests above.
+- Shared helper code goes in `tests/common/mod.rs`, not `tests/common.rs`. The `mod.rs` form tells cargo `common` is a helper module, not a test crate, so it stays out of the test output. Pull it in with `mod common;` and call `common::setup()`.
+- Files in subdirectories of `tests/` are not compiled as separate test crates. Only files placed directly in `tests/` become test binaries.
+- Integration tests need something to import. A binary-only crate (just `src/main.rs`, no `src/lib.rs`) exposes nothing, so keep the logic in `lib.rs` and let `main.rs` stay a thin shell; both unit and integration tests can then reach it.
+
+Reference: The Rust Programming Language, ch. 11.3 ["Test Organization"](https://doc.rust-lang.org/book/ch11-03-test-organization.html).
+
+### No mirrored test tree
+
+Do not build a separate test project that mirrors `src/`'s folder layout (the C# and pytest convention). It does not fit Rust: unit tests already sit in-file next to the code, and integration tests are organized by the public behavior they exercise, not by the internal module that implements it. Mirroring `src/foo/bar.rs` into `tests/foo/bar.rs` also breaks discovery, since a file inside a `tests/` subdirectory is not compiled as a test crate.
+
 ## File-Based Tests
 
 Use `tempfile::tempdir()` for tests that interact with the filesystem:

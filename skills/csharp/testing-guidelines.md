@@ -17,7 +17,7 @@ Framework-specific testing patterns for C#/.NET applications. These complement t
 
 ## Comments in Tests
 
-The **only** comments allowed in a test are the three AAA markers: `// Arrange`, `// Act`, `// Assert`. Never add comments explaining what the test is doing or why: the test name states the scenario and expectation, and the test body must be simple enough to read without narration. If a test feels like it needs an explanatory comment, that's a signal to simplify the test, not to comment it.
+Every test body carries all three AAA markers (`// Arrange`, `// Act`, `// Assert`) and no other comment. The markers are required, not optional: a test written with none of them is as wrong as one with an explanatory comment. They are also the **only** comments allowed. Never add comments explaining what the test is doing or why: the test name states the scenario and expectation, and the test body must be simple enough to read without narration. If a test feels like it needs an explanatory comment, that's a signal to simplify the test, not to comment it.
 
 ## Test Structure
 
@@ -39,7 +39,7 @@ public void CalculateTotal_WithDiscount_ReturnsReducedPrice()
 }
 ```
 
-The AAA comments should be capitalized, with a space between the comment slashes and the word (`// Arrange`, `// Act`, `// Assert`).
+All three markers appear in every test, capitalized, with a space between the comment slashes and the word (`// Arrange`, `// Act`, `// Assert`). A test that omits them is not following this pattern, regardless of how clean the body looks.
 
 ### Test Naming Convention
 
@@ -135,8 +135,9 @@ Fakes stay minimal: implement only what the tests exercise, expose captured stat
 
 ## Project Structure
 
-- Mirror production folder structure in `*.Tests` projects
+- Mirror the production folder structure in `*.Tests` projects; never flatten every test file into the project root (Hard Rule 11).
 - Example: `src/MyApp.Domain/Services/OrderService.cs` -> `tests/MyApp.Domain.Tests/Services/OrderServiceTests.cs`
+- This holds when you scaffold the test project yourself. An empty project has no folders to copy, which is exactly when files end up at the root by default; create the mirrored folders (`Services/`, and so on) as you add each test file instead.
 
 ## Coverage & Quality
 

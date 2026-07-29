@@ -24,7 +24,7 @@ break these. Re-read this list before writing code, and walk it again at handoff
 
 1. **One public type per file.** Never declare two public classes/records/enums/structs in the same file, even when neighboring files in the repo do.
 2. **Never use Moq or FluentAssertions. Ever.** Not one new usage, even in a repo already full of them. Assert with native xUnit `Assert`; replace mocking with small hand-rolled fakes/stubs that implement the interface.
-3. **No comments in test bodies except `// Arrange` / `// Act` / `// Assert`.** The test name and plainly written test code must carry the meaning on their own. If a test seems to need an explanatory comment, the test is too clever; rewrite it instead.
+3. **Mark every test body with `// Arrange`, `// Act`, `// Assert`, and add no other comment.** All three markers are required, not optional: capitalized, one space after the slashes, each above its section, in that order. Act and Assert are always present, and Arrange whenever the test sets anything up, which is nearly always. A test written with the markers missing breaks this rule exactly as a stray explanatory comment does. No other comment appears in a test body: the test name and plainly written code carry the meaning, and a test that seems to need one is too clever, so rewrite it.
 4. **`init` over `set`.** Every property defaults to `init` (or get-only/`readonly`). Use `set` only when post-construction mutation is a genuine requirement of the flow.
 5. **Depend on interfaces, not concrete types.** Constructor dependencies, public members, and collection-typed properties use the narrowest fitting abstraction (`IUserService`, `IReadOnlyList<T>`), not the concrete class, and not `List<T>` where an interface fits.
 6. **No useless default values.** Never initialize a property or field to `string.Empty`, `0`, `false`, or `new()` "just in case", and never coalesce to one as a fallback (`value ?? string.Empty`) when `null` produces the same downstream result. Add a default only when it is a real, meaningful domain default.
@@ -32,7 +32,8 @@ break these. Re-read this list before writing code, and walk it again at handoff
 8. **`string.IsNullOrWhiteSpace`, never `string.IsNullOrEmpty`**, unless whitespace-only is explicitly documented as a valid value for that field.
 9. **No magic values or magic behavior.** Every enum member gets an explicit value and numbering starts at 1, so `0`/`default` always means "bug: never assigned". Never rely on an implicit default (enum, config value, parameter) to make a flow work.
 10. **Never point at separate documentation.** Code, XML docs, comments, READMEs, and summaries must not reference ADRs, design docs, wikis, or tickets. Briefly explain the relevant decision inline instead; documentation does not ship with the code.
-11. **Hard Rules apply to YOUR code only; never expand the task's scope to enforce them.** If a class is full of `set` properties, the property you add uses `init` and the existing ones stay untouched. If the test project uses FluentAssertions or Moq, your new tests use native `Assert` and hand-rolled fakes while the existing tests stay as they are. Fixing pre-existing violations is a separate task: mention them in your handoff summary and move on.
+11. **Test files mirror the source folder structure; never flatten them to the test project root.** A test for `src/App.Domain/Services/OrderService.cs` lives at `tests/App.Domain.Tests/Services/OrderServiceTests.cs`, and you create the `Services/` folder to hold it. Scaffolding the test project yourself is not an exception: a fresh, empty project is where this mistake happens most, so build the mirrored folders as you add each file instead of dropping everything at the root.
+12. **Hard Rules apply to YOUR code only; never expand the task's scope to enforce them.** If a class is full of `set` properties, the property you add uses `init` and the existing ones stay untouched. If the test project uses FluentAssertions or Moq, your new tests use native `Assert` and hand-rolled fakes while the existing tests stay as they are. Fixing pre-existing violations is a separate task: mention them in your handoff summary and move on.
 
 ### 1. Prime Directives
 
@@ -152,7 +153,7 @@ When an Error Handling Middleware is present:
 
 ### 14. Testing
 
-Use xUnit with native `Assert` methods and the AAA (Arrange, Act, Assert) pattern with capitalized `// Arrange` / `// Act` / `// Assert` comments, and **no other comments anywhere in a test** (Hard Rule 3). **Moq and FluentAssertions are banned outright** (Hard Rule 2), including in repos that already use them: new tests use native `Assert` and hand-rolled fakes. Before writing tests, understand the code and the flow it participates in, then plan happy path, sad/broken path, and grounded edge cases; avoid tests that differ only in test data. Test projects and files mirror the source with a `.Tests` / `Tests.cs` suffix, and coverage should stay at least 90% where ROI justifies it. See `testing-guidelines.md` for `[Theory]`/`TheoryData`, `Faker`/`MockDataGenerators`, `BuildSut` helpers, naming, and coverage detail.
+Use xUnit with native `Assert` methods and the AAA (Arrange, Act, Assert) pattern. Every test carries all three capitalized `// Arrange` / `// Act` / `// Assert` markers and **no other comments anywhere in the body** (Hard Rule 3): the markers are mandatory, so a test written without them is a violation, not a shortcut. **Moq and FluentAssertions are banned outright** (Hard Rule 2), including in repos that already use them: new tests use native `Assert` and hand-rolled fakes. Before writing tests, understand the code and the flow it participates in, then plan happy path, sad/broken path, and grounded edge cases; avoid tests that differ only in test data. Test files mirror the source folder structure with a `.Tests` / `Tests.cs` suffix and are never dumped at the test project root, even when you created that project yourself (Hard Rule 11). Coverage should stay at least 90% where ROI justifies it. See `testing-guidelines.md` for `[Theory]`/`TheoryData`, `Faker`/`MockDataGenerators`, `BuildSut` helpers, naming, folder layout, and coverage detail.
 
 ### 15. NuGet packages
 
@@ -182,9 +183,10 @@ Before handing off your work:
 1. **Walk the Hard Rules list (⛔ section at the top) item by item against your diff.** For each rule, scan the changed lines and fix every violation. This step is mandatory even for small changes; these are the rules that keep regressing.
 2. Run `dotnet format` and fix any reported problems.
 3. Make sure the code is changed, and the new use-case is covered by unit tests. If there are no tests, create test coverage for it to improve repository maintainability.
-4. Run `dotnet test` to make sure you didn't break anything.
-5. Check that all NuGet packages are on the latest stable version. Run `dotnet list package --outdated` and update any that are behind.
-6. Summarize the change to the user and report any problems, caveats, or warnings with the code change. In the summary, include the skills that were used to solve the request.
+4. **Open every test file you added or touched and confirm two things:** each test has its `// Arrange` / `// Act` / `// Assert` markers (Hard Rule 3), and the file sits in a folder mirroring its source, not at the test project root (Hard Rule 11). These two regress the most on test scaffolding, so verify them by looking, not by assuming.
+5. Run `dotnet test` to make sure you didn't break anything.
+6. Check that all NuGet packages are on the latest stable version. Run `dotnet list package --outdated` and update any that are behind.
+7. Summarize the change to the user and report any problems, caveats, or warnings with the code change. In the summary, include the skills that were used to solve the request.
 
 ### 19. AI Guardrails
 

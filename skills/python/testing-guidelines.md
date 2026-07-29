@@ -6,6 +6,14 @@ Framework-specific testing patterns for Python applications. These complement th
 
 - **pytest** as the test framework (not unittest directly)
 
+## Test Layout
+
+Mirror the source package structure under a top-level `tests/` directory; never dump every test file flat at the `tests/` root. A test for `src/myapp/services/order.py` lives at `tests/services/test_order.py`, and you create the `services/` folder to hold it. This holds when you scaffold the suite yourself: a fresh, empty `tests/` is exactly where files pile up at the root by default, so build the mirrored folders as you add each file.
+
+- Keep tests outside the application code (the "src layout"), in a top-level `tests/` next to `src/`, so the suite can run against the installed package. pytest recommends this layout for new projects (see [Good Integration Practices](https://docs.pytest.org/en/stable/explanation/goodpractices.html)).
+- pytest discovers `test_*.py` (or `*_test.py`) files; keep the `test_` prefix on files and functions.
+- **Mirroring gotcha (`__init__.py`):** test folders need no `__init__.py` by default, with one exception, and it is the one mirroring creates: two test files sharing a basename in different folders (`tests/orders/test_service.py` and `tests/users/test_service.py`) collide under pytest's default import mode. Add an empty `__init__.py` to each such test folder so pytest imports them as `tests.orders.test_service` and `tests.users.test_service` instead of clashing on `test_service`.
+
 ## Test Naming Convention
 
 ```

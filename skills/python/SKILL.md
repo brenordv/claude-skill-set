@@ -101,7 +101,7 @@ def expensive_computation(param: str) -> dict:
 
 ### 4. Testing
 
-Use **pytest** with the Arrange-Act-Assert structure. Test happy paths, error conditions, and boundary values; aim for >80% coverage on critical modules. See `testing-guidelines.md` in this skill folder for fixtures, parametrization, mocking, and coverage detail.
+Use **pytest** with the Arrange-Act-Assert structure. Test happy paths, error conditions, and boundary values; aim for >80% coverage on critical modules. Test files mirror the source package layout under a top-level `tests/` directory and are never dumped flat at the `tests/` root, even in a suite you created yourself. See `testing-guidelines.md` in this skill folder for the test layout, fixtures, parametrization, mocking, and coverage detail.
 
 ### 5. Quality Validation & Completion Checklist
 
@@ -112,6 +112,7 @@ Run these checks before marking work complete:
 - [ ] No linting errors: `flake8 src/` and `pylint src/`
 - [ ] No security warnings: `bandit -r src/`
 - [ ] Tests pass with coverage (>=80% for critical paths): `pytest --cov=src --cov-report=term-missing`
+- [ ] Test files mirror the source package layout under `tests/` (not dumped flat at the root)
 - [ ] Documentation complete (docstrings)
 - [ ] Performance profiled if applicable
 - [ ] Code reviewed (use `code-review` skill)

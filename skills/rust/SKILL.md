@@ -57,6 +57,7 @@ description: >-
 ### 5. Testing
 
 - Unit tests: `#[cfg(test)] mod tests` at the bottom of each file; `use super::*`
+- Integration tests: separate crates in a top-level `tests/` dir, exercising the public API; shared helpers go in `tests/common/mod.rs`. Do not mirror `src/`'s folder layout into a separate test tree (that is a C#/pytest convention, not Rust's). See `testing-guidelines.md`.
 - File-based tests: `tempfile::tempdir()` for temporary directories
 - Follow Arrange-Act-Assert; use helper functions to build test fixtures
 - Use `assert!(matches!(...))` for enum variant checks

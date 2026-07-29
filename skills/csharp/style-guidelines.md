@@ -40,7 +40,7 @@ These rules reflect the `.editorconfig` and formatting conventions for C# projec
 ## 4. Immutability, Types & Magic Values
 
 - When creating a class that will only hold data, prefer `record` over `class`.
-- **Default every property to `init`** (or get-only/`readonly`). Reach for `set` only when post-construction mutation is a genuine requirement of the flow; mutable-by-default is a defect, not a style choice (Hard Rule 4). This binds new properties only: in a class full of `set` properties, add yours with `init` and leave the existing ones untouched (Hard Rule 11: no scope creep).
+- **Default every property to `init`** (or get-only/`readonly`). Reach for `set` only when post-construction mutation is a genuine requirement of the flow; mutable-by-default is a defect, not a style choice (Hard Rule 4). This binds new properties only: in a class full of `set` properties, add yours with `init` and leave the existing ones untouched (Hard Rule 12: no scope creep).
 - **Depend on interfaces, not concrete types** (Hard Rule 5). Constructor dependencies and public members are typed as the abstraction (`IUserService`), not the implementation. Same for collections: prefer the narrowest interface that fits the usage: a property only populated during deserialization and then read is `IReadOnlyList<T>`, not `IList<T>` or `List<T>`. It states intent and blocks accidental mutation at call sites.
 - **Declare a local `const` when you can** (Hard Rule 7). If the value is a compile-time constant (string, numeric, bool, enum) and never reassigned, it's `const`, not `var`. Follow the constant naming convention (PascalCase).
 - Implement nullable only when necessary.
@@ -101,6 +101,7 @@ These rules reflect the `.editorconfig` and formatting conventions for C# projec
 
 - Classes holding extension methods live inside an `Extensions` folder.
 - Code projects live under `src/`, test projects under `src/tests/`.
+- Inside a test project, mirror the source folder structure: a test for `Services/OrderService.cs` goes under `Services/`, never at the project root, and this holds for test projects you create from scratch (Hard Rule 11).
 - Declare fields and properties before methods, so the class's data is visible before its behavior.
 - Organize code to improve readability and reduce nesting.
 
