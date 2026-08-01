@@ -28,6 +28,8 @@ knowledge files at the start of every conversation:
 6. `os-doctor-operations.md`: local machine diagnostics via the os-doctor MCP
 7. `writing-style.md`: how to write prose that doesn't read as AI-generated
 8. `machine-privacy.md`: keep machine-identifying details (paths, usernames, hostnames) out of anything durable
+9. `text-search-operations.md`: read-only file search, reading, and inspection via the text-search MCP
+10. `text-edit-operations.md`: bulk text mutation with journaled undo via the text-edit MCP
 
 Everything else in `skills/brain/knowledge/` is loaded on demand when a task relates to it. Individual
 skills are surfaced by the Claude Code runtime and applied when their domain comes up.

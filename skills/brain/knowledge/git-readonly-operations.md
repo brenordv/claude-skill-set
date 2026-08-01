@@ -89,7 +89,7 @@ Collection-returning tools wrap their payload in `{ results, count, filters_appl
 - "What changed?": `git_status` for the working tree, `git_diff` with `staged: true` for the index, `git_diff` with `fromRef`/`toRef` between commits.
 - "Who wrote line N?": `git_blame` with `lineStart` and `lineEnd` both set to N.
 - "When was this string added or removed?": `git_log` with `pickaxe: "<string>"`.
-- "Find usages of X in the repo": `git_grep` with `pattern: "X"` (set `fixedString: false` if X is a regex). A `pattern` that begins with `-` is rejected (`RejectedArgument`, `param: "pattern"`); to match a leading-dash literal, use regex mode with the dash escaped, e.g. `pattern: "\\-flag", fixedString: false`.
+- "Find usages of X in the repo": `git_grep` with `pattern: "X"` (set `fixedString: false` if X is a regex). An empty `pattern`, or one that begins with `-`, is rejected (`RejectedArgument`, `param: "pattern"`); to match a leading-dash literal, use regex mode with the dash escaped, e.g. `pattern: "\\-flag", fixedString: false`. `git_grep` searches **tracked content only**; for untracked, ignored, or generated files, or dependency sources, use the text-search server per `brain/knowledge/text-search-operations.md`.
 - "Find usages of X as of commit Y": `git_grep` with `pattern: "X"` and `ref: "Y"`.
 - "What did commit X change?": `git_show` with `ref: "X"`.
 - "What's on this branch that isn't on main?": `git_log` with `ref: "main..feature-branch"` (a two-dot range; each side is verified to a SHA before use, so an omitted side defaults to `HEAD`).

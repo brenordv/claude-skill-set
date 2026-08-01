@@ -56,6 +56,8 @@ cross-repo searchable precedent:
 | `pr-descriptions`           | every pull-request description you author           |
 | `ticket-descriptions`       | every ticket / issue description you draft           |
 | `git-ops-backlog`           | capability-gap tickets for the git-ops MCP (see `git-readonly-operations.md` §"Capability-gap protocol") |
+| `text-search-backlog`       | capability-gap tickets for the text-search MCP (see `text-search-operations.md` §"Capability-gap protocol") |
+| `text-edit-backlog`         | capability-gap tickets for the text-edit MCP (see `text-edit-operations.md` §"Capability-gap protocol") |
 
 **Pin the project on every call.** Pass `project: "<name>"` explicitly on every `vault_save`,
 `vault_list`, and `vault_get` against these archives. On `vault_save`/`vault_get`, an omitted project is

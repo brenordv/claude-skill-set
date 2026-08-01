@@ -11,10 +11,13 @@
 > not just for large tasks.
 
 > **Subagent dispatch protocol (applies to every stage that spawns subagents):** every subagent prompt
-> carries, verbatim, the two canonical dispatch restatements: the git-ops rule from
-> `brain/knowledge/git-readonly-operations.md` §"Dispatch restatement" and the machine-privacy rule from
-> `brain/knowledge/machine-privacy.md` §"Dispatch restatement". Subagents don't inherit knowledge-file
-> discipline on their own; the dispatcher carries it to them. The token cost is accepted.
+> carries, verbatim, the canonical dispatch restatements: the git-ops rule from
+> `brain/knowledge/git-readonly-operations.md` §"Dispatch restatement", the text-search rule from
+> `brain/knowledge/text-search-operations.md` §"Dispatch restatement", the text-edit rule from
+> `brain/knowledge/text-edit-operations.md` §"Dispatch restatement" (for any subagent that may edit
+> files), and the machine-privacy rule from `brain/knowledge/machine-privacy.md` §"Dispatch
+> restatement". Subagents don't inherit knowledge-file discipline on their own; the dispatcher carries
+> it to them. The token cost is accepted.
 
 ### Choosing a workflow
 

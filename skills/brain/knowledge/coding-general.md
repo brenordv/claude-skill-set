@@ -201,7 +201,11 @@ Before delivering work:
 - **Never rewrite source files through a shell text pipeline** (piping file content through string
   replacement and writing it back). Shell string handling is encoding-lossy: Windows PowerShell 5.1
   reads BOM-less UTF-8 as ANSI and writes UTF-16, silently mojibaking every non-ASCII character in the
-  file, not just the edited part. Use a real file-edit tool or a script with explicit encoding.
+  file, not just the edited part. Use a real file-edit tool; bulk mechanical edits (multi-file replace,
+  whitespace/line-ending normalization) go through the text-edit MCP per `./text-edit-operations.md`.
+- **Never shell out for read-only text probing** (`grep`/`rg`, `find`, `cat`, `head`, `tail`,
+  `Select-String`, `Get-Content` used to locate or inspect file content). Use the runtime's native
+  file tools or the text-search MCP per `./text-search-operations.md`.
 - **Run every command you publish in docs once before writing it down.** Shell quirks (PowerShell 5.1
   mangling native stderr on redirection, quoting differences between shells) make plausible-looking
   commands produce garbage. A documented command that was never executed is a guess.
