@@ -132,13 +132,13 @@ state. Finished artifacts are archived back,
 so every plan, review, PR description, and ticket becomes searchable precedent for the next one. Each
 archive lives in a pinned vault namespace so it stays cross-project instead of siloing per repo:
 
-| Vault project          | Filled by                                                                         |
-|------------------------|-----------------------------------------------------------------------------------|
-| `implementation-plans` | `system-architect` and Stage 1 of the pipeline                                    |
-| `code-reviews`         | `branch-review`                                                                   |
-| `pr-descriptions`      | `pr-description`                                                                  |
-| `ticket-descriptions`  | `ticket-description`                                                              |
-| `lessons`              | cross-project lessons captured automatically per `general-remembering-lessons.md` |
+| Vault project          | Filled by                                                                            |
+|------------------------|--------------------------------------------------------------------------------------|
+| `implementation-plans` | `system-architect` and Stage 1 of the pipeline                                       |
+| `code-reviews`         | `branch-review`                                                                      |
+| `pr-descriptions`      | `pr-description`                                                                     |
+| `ticket-descriptions`  | `ticket-description`                                                                 |
+| `lessons`              | cross-project lessons captured automatically per `general-remembering-lessons.md`    |
 | `git-ops-backlog`      | capability-gap tickets filed when the git-ops MCP can't do something an agent needed |
 
 Every archive runs the same two-sided loop:
@@ -155,32 +155,32 @@ something a competent practitioner does by default), and they're consulted befor
 
 ## Skill catalog
 
-| Skill                    | What it covers                                                                                              |
-|--------------------------|-------------------------------------------------------------------------------------------------------------|
-| `csharp`                 | Production C#: formatting, naming, async, DI, xUnit; nullable disabled, one public type per file            |
-| `python`                 | Production Python: PEP 8, type safety, testing                                                              |
-| `rust`                   | Idiomatic Rust: `anyhow`-only error handling, borrow over clone, clippy-clean                               |
-| `angular`                | Angular v17+: Signals, standalone components, zoneless, SSR/hydration, RxJS                                 |
-| `reactjs`                | React 19+/TypeScript: hooks, component architecture, state, performance, a11y                               |
-| `nextjs`                 | Next.js App Router: Server/Client Components, Server Actions, deployment                                    |
-| `game-developer`         | Game design and system architecture, applied before any game code is written                                |
-| `godot`                  | Godot 4.6.1: GDScript/C#, scenes and nodes, physics, shaders, export                                        |
-| `unity`                  | Unity 6.3: C#, ECS/DOTS, URP/HDRP, Netcode for GameObjects                                                  |
-| `unreal-engine`          | Unreal 5.7: C++/Blueprints, Nanite, Lumen, GAS, replication                                                 |
-| `postgres`               | PostgreSQL 16+: schema, indexing, query optimization, partitioning, replication                             |
-| `azure-sql-server`       | Azure SQL: T-SQL optimization, security, HA, migrations, IaC                                                |
-| `azure-cosmos`           | Cosmos DB NoSQL: data modeling, polyglot SDKs (Python/Java/TS/Rust)                                         |
-| `nosql-database`         | NoSQL architecture: document, key-value, wide-column, graph, vector; query-first modeling                   |
-| `azure-eventhub`         | Event Hubs: high-throughput streaming, polyglot SDKs                                                        |
-| `linux-shell-scripting`  | Production shell-script templates for Linux administration                                                  |
-| `linux-troubleshooting`  | A workflow for diagnosing system, performance, and service issues                                           |
-| `observability-engineer` | Monitoring, logging, tracing; SLI/SLO management; incident response                                         |
-| `system-architect`       | Architecture planning: ADRs, C4 diagrams, roadmaps. Never writes implementation code                        |
-| `security`               | Security and pentest entry point: SAST, dependency scanning, compliance, threat modeling                    |
+| Skill                    | What it covers                                                                                                                                                          |
+|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `csharp`                 | Production C#: formatting, naming, async, DI, xUnit; nullable disabled, one public type per file                                                                        |
+| `python`                 | Production Python: PEP 8, type safety, testing                                                                                                                          |
+| `rust`                   | Idiomatic Rust: `anyhow`-only error handling, borrow over clone, clippy-clean                                                                                           |
+| `angular`                | Angular v17+: Signals, standalone components, zoneless, SSR/hydration, RxJS                                                                                             |
+| `reactjs`                | React 19+/TypeScript: hooks, component architecture, state, performance, a11y                                                                                           |
+| `nextjs`                 | Next.js App Router: Server/Client Components, Server Actions, deployment                                                                                                |
+| `game-developer`         | Game design and system architecture, applied before any game code is written                                                                                            |
+| `godot`                  | Godot 4.6.1: GDScript/C#, scenes and nodes, physics, shaders, export                                                                                                    |
+| `unity`                  | Unity 6.3: C#, ECS/DOTS, URP/HDRP, Netcode for GameObjects                                                                                                              |
+| `unreal-engine`          | Unreal 5.7: C++/Blueprints, Nanite, Lumen, GAS, replication                                                                                                             |
+| `postgres`               | PostgreSQL 16+: schema, indexing, query optimization, partitioning, replication                                                                                         |
+| `azure-sql-server`       | Azure SQL: T-SQL optimization, security, HA, migrations, IaC                                                                                                            |
+| `azure-cosmos`           | Cosmos DB NoSQL: data modeling, polyglot SDKs (Python/Java/TS/Rust)                                                                                                     |
+| `nosql-database`         | NoSQL architecture: document, key-value, wide-column, graph, vector; query-first modeling                                                                               |
+| `azure-eventhub`         | Event Hubs: high-throughput streaming, polyglot SDKs                                                                                                                    |
+| `linux-shell-scripting`  | Production shell-script templates for Linux administration                                                                                                              |
+| `linux-troubleshooting`  | A workflow for diagnosing system, performance, and service issues                                                                                                       |
+| `observability-engineer` | Monitoring, logging, tracing; SLI/SLO management; incident response                                                                                                     |
+| `system-architect`       | Architecture planning: ADRs, C4 diagrams, roadmaps. Never writes implementation code                                                                                    |
+| `security`               | Security and pentest entry point: SAST, dependency scanning, compliance, threat modeling                                                                                |
 | `branch-review`          | Reviews the current branch against main across correctness, security, performance, maintainability, testing; also checks prose style and blocks on machine-detail leaks |
-| `pr-description`         | Generates a PR description in the house format from the diff; retrieves precedent and archives it           |
-| `ticket-description`     | Drafts a ticket title and description from a branch or via Q&A; retrieves precedent and archives it         |
-| `theme-factory`          | Styling toolkit for artifacts, with preset themes                                                           |
+| `pr-description`         | Generates a PR description in the house format from the diff; retrieves precedent and archives it                                                                       |
+| `ticket-description`     | Drafts a ticket title and description from a branch or via Q&A; retrieves precedent and archives it                                                                     |
+| `theme-factory`          | Styling toolkit for artifacts, with preset themes                                                                                                                       |
 
 ## The knowledge layer
 
@@ -197,9 +197,15 @@ during reviews so the same trap isn't hit twice.
 
 Three custom MCP servers back parts of this set:
 
-1. File Vault: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.FileVault
-2. Git Ops: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.GitOps
-3. OS-Doctor: https://github.com/brenordv/mcp-os-doctor
+1. OS-Doctor: https://github.com/brenordv/mcp-os-doctor
+2. File Vault: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.FileVault
+3. Git Ops: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.GitOps
+4. Text Search: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.TextSearch
+5. Text Edit: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.TextEdit
+
+> [!NOTE]
+> With the exception of OS-Doctor, all other MCP servers live in [a single repo](https://github.com/brenordv/mcp-toolset), and are all cross-platform.
+
 
 > The vault and git-ops servers are cross-platform. OS-Doctor is Windows-only and used only on my personal
 > machine. The skills degrade gracefully without a given server, but the vault-backed precedent archives
