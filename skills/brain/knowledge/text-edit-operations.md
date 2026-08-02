@@ -69,9 +69,9 @@ When text-edit lacks a capability you need:
 
 ### Usage notes
 
-- **`root` here is a root-relative subdirectory scope, not a root name.** This is the opposite of
-  text-search's `root` parameter; there is only one configured root, and `root: "src"` narrows the
-  walk to that folder. Omit it for the whole root.
+- **`root` here is a root-relative subdirectory scope.** Don't confuse it with text-search's `cwd`
+  scoping; text-edit has exactly one configured root, and `root: "src"` narrows the walk to that
+  folder. Omit it for the whole root.
 - **Selector** (shared with text-search): exactly one of `glob` (primary), `regex` (over the path), or
   `paths`, or none for the whole scope; `extensions` ANDs with it; a glob with no `/` matches the
   basename at any depth. Ignore rules (`.gitignore`/`.mcpignore`) always apply on the write path; there
