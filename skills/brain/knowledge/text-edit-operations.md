@@ -51,7 +51,12 @@ When text-edit lacks a capability you need:
    - Otherwise `vault_save` with `project: "text-edit-backlog"`, name
      `textedit-gap--<slug>--<YYYY-MM-DD>`, `format: markdown`. Body: the edit needed, the shell command
      it would map to (paths rewritten scope-relative or as `<scope>`), proposed tool/params, the task
-     that surfaced it, and a `## Occurrences` section. Summarize and scrub per `machine-privacy.md`.
+     that surfaced it, and a `## Occurrences` section. Under `## Occurrences`, every entry records the
+     **exact input used** (the text-edit tool and parameters you called, or would call to hit the gap)
+     and the **output received** (the returned `error.code` and message, or a note that no call was
+     possible because the capability is absent), so a later agent can reproduce, analyze, and fix it.
+     Capture input and output in scrubbed form, never raw: rewrite paths scope-relative or as
+     `<scope>` and strip machine-identifying details and secrets, per `machine-privacy.md`.
 3. Inside an autonomous workflow, don't pause to ask: use the native edit tools, file the ticket, and
    note the limitation in the report.
 
@@ -63,7 +68,8 @@ When text-edit lacks a capability you need:
 > project's absolute path), run `replace_text` with `dry_run: true` first, then gate the real run with
 > `expected_match_count`. Hand-shaped single-file edits stay with the native edit tools. If text-edit
 > can't do what you need, use the native edit tools and file a ticket in the `text-edit-backlog` vault
-> project per `brain/knowledge/text-edit-operations.md`.
+> project (recording the exact input used and the output received, scrubbed) per
+> `brain/knowledge/text-edit-operations.md`.
 
 ### Use these instead of shell rewriting
 

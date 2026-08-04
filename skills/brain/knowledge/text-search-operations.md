@@ -53,7 +53,12 @@ When text-search (and the native tools) lack a capability you need:
    - Otherwise `vault_save` with `project: "text-search-backlog"`, name
      `textsearch-gap--<slug>--<YYYY-MM-DD>`, `format: markdown`. Body: the operation needed, the shell
      command it would map to (paths rewritten scope-relative or as `<scope>`), proposed tool/params, the
-     task that surfaced it, and a `## Occurrences` section. Summarize and scrub; the ticket passes the
+     task that surfaced it, and a `## Occurrences` section. Under `## Occurrences`, every entry records
+     the **exact input used** (the text-search tool and parameters you called, or would call to hit the
+     gap) and the **output received** (the returned `error.code` and message, or a note that no call
+     was possible because the capability is absent), so a later agent can reproduce, analyze, and fix
+     it. Capture input and output in scrubbed form, never raw: rewrite paths scope-relative or as
+     `<scope>` and strip machine-identifying details and secrets; the ticket passes the
      `machine-privacy.md` self-check like any other save.
 3. Inside an autonomous workflow, don't pause to ask: work around the gap with the available tools (the
    no-shell rule holds even when you can't ask), file the ticket, and note the limitation in the report.
@@ -65,7 +70,8 @@ When text-search (and the native tools) lack a capability you need:
 > PowerShell equivalents, even one-liners. Scope text-search calls with `cwd` (the project's absolute
 > path); dependency-source reads go through package roots (`cwd: "@<name>"`, ideally
 > `@<name>/<package>/<version>`). If neither covers what you need, report the gap and file a ticket in
-> the `text-search-backlog` vault project per `brain/knowledge/text-search-operations.md`.
+> the `text-search-backlog` vault project (recording the exact input used and the output received,
+> scrubbed) per `brain/knowledge/text-search-operations.md`.
 
 ### Use these instead of shell probing
 

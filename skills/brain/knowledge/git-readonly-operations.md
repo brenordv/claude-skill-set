@@ -36,9 +36,13 @@ When git-ops lacks a capability you need:
    - Otherwise `vault_save` with `project: "git-ops-backlog"`, name
      `gitops-gap--<slug>--<YYYY-MM-DD>`, `format: markdown`. Body: the operation needed, the shell
      command it would map to (paths rewritten repo-relative or as `<repo-root>`), proposed
-     tool/params, the task that surfaced it, and a `## Occurrences` section. Never paste raw command
-     or error output; summarize and scrub. The ticket passes the `machine-privacy.md` self-check like
-     any other save.
+     tool/params, the task that surfaced it, and a `## Occurrences` section. Under `## Occurrences`,
+     every entry records the **exact input used** (the git-ops tool and parameters you called, or
+     would call to hit the gap) and the **output received** (the returned `error.code` and message, or
+     a note that no call was possible because the capability is absent), so a later agent can
+     reproduce, analyze, and fix it. Capture input and output in scrubbed form, never raw: rewrite
+     paths repo-relative or as `<repo-root>` and strip machine-identifying details and secrets, so the
+     ticket passes the `machine-privacy.md` self-check like any other save.
 3. **Shell git for the missing capability only with the user's explicit approval**, and the approval
    covers that one invocation, never a standing waiver. Inside an autonomous workflow, don't pause to
    ask: work around the gap using only the available MCP tools (the no-shell-git rule holds even when
@@ -51,8 +55,8 @@ server easy.
 
 > Use the `git-ops` MCP tools for every read-only git operation; never shell out to `git` to inspect
 > anything, even one-liners. If git-ops can't do what you need, don't fall back to shell git: report
-> the gap and file a ticket in the `git-ops-backlog` vault project per
-> `brain/knowledge/git-readonly-operations.md`.
+> the gap and file a ticket in the `git-ops-backlog` vault project (recording the exact input used and
+> the output received, scrubbed) per `brain/knowledge/git-readonly-operations.md`.
 
 ### Use these instead of shell `git`
 
