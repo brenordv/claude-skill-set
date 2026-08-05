@@ -7,13 +7,59 @@ from prompt to a reviewed, verified result. The workflows are the part you won't
 collections, so they get the longest section below.
 
 ## This is opinionated
+...but not unreasonable.
 
-These skills encode best practices with specific preferences, not neutral best practice. Some choices are deliberate 
-and would be wrong for other people: Rust uses `anyhow` as the sole error crate, C# keeps nullable reference types
-disabled (which should be the default, IMO), prose avoids em-dashes and the usual AI vocabulary, plans and reviews get
-archived to a personal vault, and tests follow particular naming and structure rules. Treat it as one person's 
-calibrated setup.
-Fork it and change what doesn't fit you rather than adopting it wholesale.
+I have preferred setups when working with certain programming languages, like Rust, C#, and Python, and to help keep
+code quality, and allow for better, fast collaboration with other humans (and machines), I made a few choices. 
+While I admit that they fall into "opinionated" territory, they will probably fit a lot of people setups also.
+
+As a high level, here are some examples:
+
+### Coding in general (regardless of the language)
+- Search before writing: before adding any helper, mapper, or constant, the agent looks for an existing
+  implementation to reuse or extend. Duplicating logic the repo already has counts as a defect, even
+  when the new copy works.
+- No deprecated APIs, ever. A deprecation warning on a line the agent touched blocks delivery; it's a
+  failure to fix, not noise to scroll past.
+- A deliberate change is the source of truth. When it breaks an old test, the test gets updated; the
+  agent never reverts the change or relaxes a validation just to go green.
+- Minimal diffs with a contained blast radius: solve what was asked, tighten only the thing being
+  tightened, leave the rest alone.
+- Git stays human. The agent inspects freely (through a read-only MCP) but never stages or commits.
+- Pushes the agents to follow Clean Code, best practices, SOLID, etc.
+
+### For C#
+- Nullable reference types stay disabled in all projects (which should be the default, IMO), and the
+  canonical `.editorconfig` turns a stray `?` annotation into a build error.
+- One public type per file, even when neighboring files disagree.
+- `init` over `set`: properties are immutable after construction unless mutation is a genuine
+  requirement of the flow.
+- No Moq, no FluentAssertions. Tests assert with native xUnit `Assert` and replace mocks with small
+  hand-rolled fakes.
+- No AutoMapper.
+- Every test body carries `// Arrange`, `// Act`, `// Assert` and no other comment; a test that seems
+  to need more commentary is too clever and gets rewritten.
+- No "just in case" defaults (`string.Empty`, `?? string.Empty`), and enum members get explicit values
+  starting at 1, so a `0` always means "bug: never assigned".
+- Test files mirror the source folder structure instead of piling up at the test project root.
+
+### For Python
+- Type hints everywhere, and docstrings (Google or NumPy style) on every public API.
+- Done means the toolchain passes: `black`, `isort`, `mypy`, `flake8`, `pylint`, `bandit`, and
+  `pytest` with coverage, all clean before work is called complete.
+- Tests use pytest with Arrange-Act-Assert and mirror the source package layout under `tests/`, never
+  dumped flat at the root.
+- Pickle-based model weights (`torch.load`, `joblib`) are treated as untrusted code, not data: trusted
+  sources only, prefer safetensors, and `weights_only=True` where the call supports it.
+
+### For Rust
+- `anyhow` is the sole error-handling crate, with `.context(...)` attached at every level. No
+  `thiserror`, no `eyre`.
+- No `unwrap()` or `expect()` outside test code; errors propagate with `?`.
+- Borrow over clone: `&str` instead of `&String`, `&[T]` instead of `&Vec<T>`.
+- The type system does the guarding: enums and newtypes make illegal states unrepresentable, and raw
+  input is parsed into typed structures at the boundary.
+- `rustfmt` and `clippy` run with the repo's defaults, never tweaked, and every warning gets fixed.
 
 ## How it works
 
