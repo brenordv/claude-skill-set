@@ -81,10 +81,15 @@ For every changed file, evaluate it across the review dimensions defined in `bra
   finding. The scope boundary cuts both ways: pre-existing violations in untouched code are a Note at
   most, never a demand to refactor; and conversely, a diff that DID refactor untouched code to satisfy a
   Hard Rule is itself a scope-creep finding.
-- [ ] **No duplicated logic.** The diff doesn't re-implement something the repo already has: grep
-  the distinctive tokens of each new helper, mapper, or validator per
+- [ ] **No duplicated logic.** The diff doesn't re-implement something the repo already has: search
+  for the distinctive tokens of each new helper, mapper, or validator (`git_grep` or the native
+  search tools, never shell grep) per
   `brain/knowledge/review-heuristics.md` §Maintainability. An unacknowledged near-duplicate is at
   minimum Important.
+- [ ] **No change-narration comments.** Every comment the diff adds or edits describes the current
+  code, not the edit: nothing referencing the fix, the request, the old behavior, or the task that
+  produced it. Concrete tells in `brain/knowledge/review-heuristics.md` §Prose;
+  `coding-general.md` ⛔ Hard Rule 3. At minimum Important on touched lines.
 - [ ] **No deprecated APIs.** No added call is deprecated or obsolete in the version the project
   pins, and build/linter output shows no new deprecation warnings from the diff. See
   `brain/knowledge/review-heuristics.md` §Correctness.

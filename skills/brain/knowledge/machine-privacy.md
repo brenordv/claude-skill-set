@@ -39,11 +39,17 @@ Triggers: file writes destined for the repo, `vault_save` of any kind, PR/ticket
 text, memory writes. Images too: the scan below can't see pixels, so visually verify screenshots or
 crop machine-identifying regions before embedding one.
 
-Run this over the artifact text:
+Search the artifact text for these case-insensitive regexes. When the artifact is a file, use the
+runtime's native search tool or text-search `search_text` with `is_regex: true`; never shell
+`rg`/`grep` (`text-search-operations.md` ⛔ Hard Rules). When the text isn't on disk yet (a commit
+message, a vault body being composed), check the draft against the same patterns before sending it:
 
 ```
-rg -i -e '(^|[^A-Za-z0-9])[A-Za-z]:[\\/]' -e '[\\/](Users|home)[\\/]' -e '\\\\[\w.-]+\\' \
-   -e 'AppData[\\/]Local[\\/]Te?mp' -e '[\\/]te?mp[\\/]' <artifact>
+(^|[^A-Za-z0-9])[A-Za-z]:[\\/]
+[\\/](Users|home)[\\/]
+\\\\[\w.-]+\\
+AppData[\\/]Local[\\/]Te?mp
+[\\/]te?mp[\\/]
 ```
 
 The first pattern's left boundary keeps URL schemes (`https://`, `res://`) and SSH remotes from

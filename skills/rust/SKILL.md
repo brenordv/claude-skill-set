@@ -43,7 +43,9 @@ description: >-
 - `snake_case` for functions/variables/modules/files; `PascalCase` for types; `UPPER_SNAKE_CASE` for constants
 - Group imports: `crate::`, external crates, `std::`; no glob imports in production code
 - Doc comments (`///`) on all public items with `# Errors` / `# Panics` sections where applicable
-- Comments explain "why", not "what"; no commented-out code
+- Comments explain "why", not "what"; the code's why, never the edit's (no comments narrating the
+  fix, the request, or the old behavior; `brain/knowledge/coding-general.md` ⛔ Hard Rule 3); no
+  commented-out code
 - Functions ~50 lines max; extract helpers when they grow
 - `match` over `if let` chains for multiple variants; guard clauses for early returns
 

@@ -23,6 +23,13 @@ general principle. Distilled from real review findings.
 
 ## Prose (comments, docs, and other human-facing text)
 
+- **A comment that narrates the change instead of describing the code is a finding.** Tells on
+  added/modified comment lines: "fixed", "changed to", "now handles", "no longer", "previously",
+  "was returning", "per the request/ticket/review", "to address", "as requested", "updated to". A
+  valid comment states a constraint, invariant, or domain fact of the current code and would still
+  make sense to a reader who never saw the old version or the task
+  (`coding-general.md` ⛔ Hard Rule 3). At minimum Important on touched lines; the change story
+  belongs in the commit message or PR text, not the source.
 - **Run the diff's prose against the `writing-style.md` hard bans.** Concrete greps over added/modified
   lines: the em-dash character, `, ensuring` / `, allowing` / `, making it` clause tails, "not just X,
   but Y" and flat "not X, but Y" contrasts, copula dodges (`serves as`, `stands as`, `functions as`,
@@ -55,7 +62,8 @@ general principle. Distilled from real review findings.
 ## Maintainability
 
 - **Logic added that already exists elsewhere in the repo is a finding.** Before approving a new
-  helper, mapper, validator, or utility, grep the repo for its distinctive tokens: name fragments,
+  helper, mapper, validator, or utility, search the repo for its distinctive tokens (`git_grep`,
+  the native search tools, or text-search; never shell grep): name fragments,
   domain terms, a characteristic constant or format string. A near-duplicate the diff didn't reuse is
   at minimum Important, unless the handoff names it and justifies the divergence
   (`coding-general.md` ⛔ Hard Rule 1).

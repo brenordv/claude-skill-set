@@ -13,8 +13,9 @@ alone (mention them in the handoff; never mass-refactor), but nothing new may br
 Re-read this list before writing code and walk it again at handoff (§10).
 
 1. **Search before you write.** Before adding any function, class, helper, mapping, or constant,
-   search the repo for an existing implementation: grep the domain terms, the names you'd expect
-   it to have, and the sibling modules where it would live. If something close exists, reuse or
+   search the repo for an existing implementation: the domain terms, the names you'd expect
+   it to have, and the sibling modules where it would live (native search tools or `git_grep` /
+   text-search, never shell grep; see §12). If something close exists, reuse or
    extend it; if you deliberately don't, name it in the handoff summary and say why. Writing a
    new helper without having searched first is a defect even when no duplicate turns out to exist.
 2. **No deprecated or obsolete APIs.** Never add a call to an API that is deprecated or obsolete
@@ -24,6 +25,14 @@ Re-read this list before writing code and walk it again at handoff (§10).
    `general-problem-solving.md` §"Back external assumptions with an official source". Every
    deprecation warning the compiler, linter, or build emits on a line you touched is a blocking
    failure to fix before handoff, not noise to scroll past.
+3. **No change-narration comments.** A comment describes the code as it now stands: a constraint,
+   an invariant, a domain fact the code can't show. It never describes the change that produced
+   it: not the bug it fixes, the request or review finding that prompted it, the behavior it
+   replaces, and never an argument that the new version is correct. "Why, not what" (§6) means the
+   why of the code, never the why of the edit. The test: a comment that only makes sense to a
+   reader who knows the previous version, the task, or the conversation is narration; delete it
+   and put that story in the handoff summary or commit message. This bites hardest when fixing
+   code: the urge to annotate the fix at the fix site is exactly the pattern banned here.
 
 ---
 
@@ -137,6 +146,9 @@ Before writing any code:
 ## 6. Code Clarity
 
 - **Comments explain "why", not "what"**: The code itself should be readable enough to explain "what."
+  The "why" is the why of the *code* (a constraint, an invariant, a non-obvious domain fact), never the
+  why of the change you just made. Narrating the edit (the fix, the request, the old behavior) in a
+  comment is banned outright: ⛔ Hard Rule 3.
 - **Comment and doc prose follows `writing-style.md`**: the hard bans (em-dashes first among them) bind
   inside code comments, docstrings, and documentation exactly as they do in chat and PR prose.
 - **No commented-out code**: Use version control for history.
@@ -186,7 +198,9 @@ Before delivering work:
 1. Run the project's formatter and linters; fix all issues.
 2. Walk the ⛔ Hard Rules block at the top of this file: the build/linter output shows zero new
    deprecation warnings on lines you touched, and the pre-write reuse search happened. Name any
-   near-duplicate you deliberately did not reuse in the summary, with the reason.
+   near-duplicate you deliberately did not reuse in the summary, with the reason. Then reread every
+   comment the diff adds or edits: any that narrates the change rather than the current code gets
+   deleted here, its story moved to the summary (Hard Rule 3).
 3. Ensure new code is covered by tests.
 4. Run the test suite; confirm nothing is broken.
 5. Summarize the change, its rationale, and any caveats or warnings.
