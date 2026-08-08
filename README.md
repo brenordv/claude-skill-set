@@ -239,6 +239,30 @@ when a task touches their topic.
 `skills/brain/gotchas/` holds worked, one-file-per-incident write-ups of traps already hit, consulted
 during reviews so the same trap isn't hit twice.
 
+## Enforcement hooks
+
+`skills/brain/hooks/` holds optional Claude Code `PreToolUse` hooks that enforce the shell rules the
+knowledge files describe, so they hold even when a reflex fires before the rule is salient (a fresh
+chat, a long context, deep in a task). A knowledge rule is a nudge the model can forget mid-task; a
+hook intercepts the tool call and does not depend on recall. Two are included, each shipped as a Windows
+`.ps1` and a POSIX `.sh` with identical behavior, each failing open so a fault never blocks a legitimate
+command:
+
+- **route-to-text-tools** denies shell commands that read or search files, rewrite files in place, or
+  inspect a repo read-only through `git`, and points the agent at the `text-search`, `text-edit`, and
+  `git-ops` MCPs instead.
+- **block-secrets** hard-blocks shell commands that read or copy secret-looking files (`.env`,
+  `secrets.*`, `*.key`, and the like).
+
+They are opt-in machine config, not auto-loaded like the knowledge files: copy the script for your OS
+into `~/.claude/hooks/` and register it under `hooks.PreToolUse` in your settings. They need only a
+stock interpreter (`powershell.exe` on Windows; `bash` plus `perl` on macOS/Linux), nothing to install.
+`skills/brain/hooks/README.md` has the per-OS install, the exact block and allow behavior, and tuning.
+
+For setting up a hardened global config from scratch (an MCP allow list and secret deny list, the
+enforcement hooks, dangerous-command blocks, the non-functional keys to avoid, and an optional
+sandbox), see [`security-hardening.md`](security-hardening.md).
+
 ## MCP dependencies
 
 Three custom MCP servers back parts of this set:
@@ -264,7 +288,8 @@ CLAUDE.md                     # bootstrap: what to read at the start of every co
 skills/
 ├── brain/
 │   ├── knowledge/            # shared, always-on and on-demand guidance, incl. task-workflows.md
-│   └── gotchas/              # worked write-ups of traps already hit
+│   ├── gotchas/              # worked write-ups of traps already hit
+│   └── hooks/                # optional PreToolUse hooks that enforce the shell rules (ps1 + sh)
 ├── <language/domain skills>/ # each has a SKILL.md, some add references/ or guideline files
 └── ...
 ```

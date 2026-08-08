@@ -2,11 +2,14 @@
 
 There is a read-only, root-confined text-search MCP server registered as `text-search`. Its tools list,
 grep, read, and inspect text files under one configured **base root** (the directory that holds the
-projects), plus optional named **package roots** exposing locally cached dependency sources (NuGet,
-cargo, npm, Maven). A per-call `cwd` argument picks the scope: pass the absolute path of one project
-inside the base to work in that project, omit it to search every project at once (the heavy path), or
-pass `@name[/subpath]` to target a package root. Every path in and out is scope-relative, the server
-never reads denylisted secret files, and no argument, `cwd` included, can widen a call past its root.
+projects), plus optional named **package roots** exposing locally cached dependency sources (currently
+NuGet and Cargo; `describe_scope` lists the live names). A per-call `cwd` argument picks the scope: pass
+the absolute path of one project inside the base to work in that project, omit it to search every project
+at once (the heavy path), or pass `@name[/subpath]` to target a package root. Every path in and out is
+scope-relative, and no argument, `cwd` included, can widen a call past its root. Two independent layers
+keep secrets out: a non-overridable filename **denylist** the server never reads, and, on by default,
+**content-based secret detection** that withholds a file whose *content* matches a known secret shape
+from the read tools (`read_lines`, `search_text`, `inspect_files`) even when its name looks innocuous.
 
 ### ⛔ Hard Rules
 
@@ -81,7 +84,7 @@ When text-search (and the native tools) lack a capability you need:
 | `grep -rn`, `rg`, `Select-String`                       | `search_text` (literal by default, `is_regex: true` for regex) |
 | `cat`, `head`, `tail`, `sed -n 'a,bp'`, `Get-Content`   | `read_lines` (numbered, span-capped slice of one file)     |
 | `file`, encoding/line-ending guesswork                  | `inspect_files` (encoding + confidence, BOM, endings, counts) |
-| orienting in an unknown scope                           | `describe_scope` (base root, package roots, ignore tiers, denylist, caps; call it first) |
+| orienting in an unknown scope                           | `describe_scope` (base root, package roots, ignore tiers, denylist, content-scan status, caps; call it first) |
 
 ### Usage notes
 
@@ -102,16 +105,32 @@ When text-search (and the native tools) lack a capability you need:
   `match_start`, and `match_end` are 1-based UTF-16 code units. `files_only: true` lists matching files
   instead of matches. `case_sensitive: true` applies to both file selection and content matching
   (default false).
-- **`include_ignored` takes globs, not a boolean.** Three ignore tiers prune every walk: a built-in
-  default set (heavy build and dependency directories like `node_modules/`, `bin/`, `obj/`, `target/`),
-  then `.gitignore`, then `.mcpignore`, most specific tier winning. Pass globs (for example
-  `["node_modules/**"]`) to re-include named ignored paths for one call; omit or pass an empty list to
-  keep every tier in force. It never bypasses the secret denylist. Ignored files are where local secrets
-  live; reach for it only when the ignored or generated content is the point.
-- **Scoped calls skip ancestor ignore files.** Ignore files in directories between the base root and the
-  `cwd` are not consulted, so a scoped call can surface a non-secret file a parent `.gitignore` would
-  hide. The whole-base walk does honor each project's ignore files, and the denylist is unaffected
-  either way.
+- **Four ignore tiers prune every walk, applied least-specific first (git last-match-wins).** (1) a
+  built-in **default set** of heavy build and dependency directories (`node_modules/`, `bin/`, `obj/`,
+  `target/`, `dist/`, and the like); (2) `.gitignore`; (3) the AI-agent ignore files (`.claudeignore`,
+  `.cursorignore`, `.aiexclude`, `.aiignore`, `.codeiumignore`, `.continueignore`, `.aiderignore`,
+  `.geminiignore`); (4) `.mcpignore`, the most specific, overriding the rest. `describe_scope` reports
+  the exact default set and the honored ignore-file names.
+- **`include_ignored` takes globs, not a boolean, and re-includes only the default tier.** Pass globs
+  (for example `["node_modules/**"]`) to re-surface otherwise default-ignored paths for one call; omit or
+  pass an empty list to keep it in force. The `.gitignore`, agent-ignore, and `.mcpignore` tiers are a
+  hard boundary it can never cross, and it never reaches the secret denylist or content scan. So it only
+  ever brings back heavy build or generated output, never a `.gitignore`'d file; reach for it only when
+  that generated content is the point.
+- **Only the default tier is skipped above a scoped `cwd`.** The project-ignore tiers (`.gitignore`,
+  agent-ignore, `.mcpignore`) are anchored at the base root and evaluated root-down with ancestor rules
+  included, so a scoped call still honors an ancestor `.gitignore` above the `cwd` and never surfaces a
+  file it hides. The built-in default tier is the exception: it is not consulted between the base root
+  and a scoped `cwd`, so a scoped call can surface a `bin/` or `dist/` entry the default tier hides from
+  a whole-base walk. The denylist and content scan are unaffected either way.
+- **Content-based secret detection withholds by content, not name.** On by default, it withholds a file
+  whose *content* matches a known secret shape (private keys, cloud-provider keys, common service tokens,
+  URL-embedded credentials; `describe_scope` lists the active detectors) from `read_lines`, `search_text`,
+  and `inspect_files`, whatever its name. `find_files` still lists it, so a file can appear in a listing
+  yet be withheld from a read: `read_lines` returns `WithheldSecret`, and `search_text`/`inspect_files`
+  silently skip it. It is a strong default, not a structural guarantee (an operator can disable or widen
+  it), and it never withholds a secret of no recognizable shape, an arbitrary `const TOKEN = "..."`, which
+  `search_text` returns like any source line.
 - **Denylisted files are silently omitted** from walks, and a direct read of one reports `NotFound`
   rather than confirming the file exists. Don't read `NotFound` as proof of absence.
 - Every result carries a scope-relative path, and the `filters_applied.cwd` echo is base-relative (`.`
@@ -124,10 +143,12 @@ When text-search (and the native tools) lack a capability you need:
 Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filters_applied, error }`.
 
 - Check `error` first; branch on `error.code` (stable values: `SelectorInvalid`, `PatternInvalid`,
-  `PathOutsideRoot`, `NotFound`, `IsBinary`, `TooLarge`, `OperationBudgetExceeded`, `InvalidArgument`,
-  `InternalError`), not on message text. `InvalidArgument` also covers a malformed cursor and every bad
-  `cwd`: one that escapes its root, is not a directory, is denylisted, names an unknown package root,
-  or carries a subpath escaping its cache.
+  `NotFound`, `IsBinary`, `TooLarge`, `OperationBudgetExceeded`, `InvalidArgument`,
+  `WithheldSecret`, `InternalError`), not on message text. `WithheldSecret` is a `read_lines` of a file
+  whose content matched a secret detector (see the content-scan note above). `PatternInvalid` covers a
+  regex, or an `include_ignored` glob, that is too long, over the repetition cap, or invalid.
+  `InvalidArgument` also covers a malformed cursor and every bad `cwd`: one that escapes its root, is not
+  a directory, is denylisted, names an unknown package root, or carries a subpath escaping its cache.
 - `truncated: true` with a `cursor` means more pages: pass the cursor back, keeping `cwd` and
   `files_only` stable across pages. `truncated: true` with a null cursor means a ceiling was hit:
   narrow the selector instead of guessing what got cut.
@@ -145,5 +166,6 @@ Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filte
 - "What does this dependency's source actually do?": `find_files`/`search_text` with
   `cwd: "@nuget/<Package>/<version>"` (or another cache name from `describe_scope`).
 - "Is this file UTF-16? CRLF? Missing a final newline?": `inspect_files` with `paths: ["<the file>"]`.
-- "Search untracked or generated files" (which `git_grep` can't see): `search_text`; add an
-  `include_ignored` glob only when the ignored content itself is the point.
+- "Search default-ignored build output" (a `bin/` or `dist/` tree `git_grep` also won't show):
+  `search_text` with an `include_ignored` glob naming that path. A `.gitignore`'d or agent-ignored file
+  stays hidden regardless; `include_ignored` cannot reach it.

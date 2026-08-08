@@ -83,12 +83,13 @@ When text-edit lacks a capability you need:
 ### Usage notes
 
 - **Scoping with `cwd`**: pass the absolute path of the project being edited. Any directory inside the
-  base works, so a subfolder tightens the firewall further, but prefer the project root: ignore files
-  in directories *between* the base root and the `cwd` are not consulted, so a `cwd` deep inside a
-  project stops the project's own `.gitignore` from shielding its generated files. A `cwd` that
-  escapes the base, is not a directory, or lands on or inside a protected directory is refused
-  (`InvalidArgument`) with a path-free message. `@` has no special meaning here; there are no package
-  roots on the write path.
+  base works, so a subfolder tightens the firewall further, and a deep `cwd` does not shed the project's
+  own ignore rules: the project-ignore tiers (`.gitignore`, agent-ignore, `.mcpignore`) are anchored at
+  the base root and honored root-down with ancestors, so an ancestor `.gitignore` above the `cwd` still
+  shields its generated files from a write. Only the built-in default tier is not consulted between the
+  base root and the `cwd`. A `cwd` that escapes the base, is not a directory, or lands on or inside a
+  protected directory is refused (`InvalidArgument`) with a path-free message. `@` has no special meaning
+  here; there are no package roots on the write path.
 - **Input is cwd-relative, reporting is base-relative, undo is base-global.** Explicit `paths` resolve
   against the `cwd` and are confined to it. Per-file results, the journal, and undo always speak
   base-relative paths; a batch is base-scoped, so `undo_batch` and `list_recent_batches` see every
@@ -97,22 +98,29 @@ When text-edit lacks a capability you need:
   `paths`, or none for the whole scope; `extensions` ANDs with it; a glob with no `/` matches the
   basename at any depth. `case_sensitive: true` makes glob/regex (and `replace_text` content) matching
   case-sensitive; `max_files` caps the files acted on (0 uses the server default, clamped to the
-  ceiling). The ignore tiers (a built-in default set of heavy build and dependency directories, then
-  `.gitignore`, then `.mcpignore`) always apply on the write path; there is no `include_ignored`.
+  ceiling). The ignore tiers always apply on the write path and there is no `include_ignored`: a built-in
+  default set of heavy build and dependency directories, then `.gitignore`, then the AI-agent ignore
+  files (`.claudeignore`, `.cursorignore`, `.aiexclude`, and the like), then `.mcpignore`. The
+  project-ignore tiers are anchored at the base root and honored root-down with ancestor rules included,
+  so a target an ancestor `.gitignore` hides is refused (`refusal_reason: "ignored"`); only the built-in
+  default tier is skipped above a scoped `cwd`.
 - `replace_text` is literal by default; `is_regex: true` enables .NET regex with back-references in the
-  replacement (`$1`, `${name}`, `$$` for a literal `$`). `expected_match_count` counts matches only in
-  files that would actually be rewritten, and a mismatch (`ExpectedMatchCountMismatch`) writes nothing.
+  replacement (`$1`, `${name}`, `$$` for a literal `$`). An over-long or invalid regex is rejected up
+  front (`PatternInvalid`; the agent-supplied pattern length is capped, currently 2048 chars).
+  `expected_match_count` counts matches only in files that would actually be rewritten, and a mismatch
+  (`ExpectedMatchCountMismatch`) writes nothing.
 - `normalize_files` takes `trim_trailing_whitespace`, `line_endings` (`preserve`/`lf`/`crlf`),
   `final_newline` (`preserve`/`ensure`/`trim`), and `bom` (`preserve`/`strip`). It is idempotent, and
   under `preserve` a mixed-ending file keeps each physical terminator.
-- **Encoding gate**: a file whose encoding is detected below the confidence threshold is refused
-  (`low_confidence_encoding`) rather than risked. Confirm the real encoding with text-search's
-  `inspect_files`, then pass `source_encoding` explicitly. Never pass one you haven't verified.
+- **Encoding gate**: a file whose encoding is detected below the confidence threshold (the
+  rewrite-confidence gate, default 0.65) is refused (`low_confidence_encoding`) rather than risked.
+  Confirm the real encoding with text-search's `inspect_files`, then pass `source_encoding` explicitly.
+  Never pass one you haven't verified.
 - **Read the per-file outcomes.** A mutation result is one element carrying `batch_id` (absent on a dry
   run or a no-op batch), `attempted`/`changed`/`refused` counts, and per-file entries with `outcome`
-  and, when refused, a `refusal_reason` (`denied`, `out_of_root`, `ignored`, `binary`, `too_large`,
-  `low_confidence_encoding`, `regex_timeout`, `is_directory`, `write_failed`). Refused files mean the
-  sweep was partial; say so instead of reporting full coverage.
+  and, when refused, a `refusal_reason` (`denied`, `out_of_root`, `ignored`, `not_found`,
+  `is_directory`, `binary`, `too_large`, `low_confidence_encoding`, `regex_timeout`, `io_error`,
+  `write_failed`). Refused files mean the sweep was partial; say so instead of reporting full coverage.
 - **Undo is hash-gated and short-horizon.** `undo_batch` restores only files whose current content
   still equals what the batch wrote; a file changed since is skipped and named, never clobbered, and a
   since-deleted file is recreated. A journal row that no longer confines under the base, or is now
