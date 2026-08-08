@@ -32,19 +32,19 @@ rail. The hook removes the dependency on the rule being remembered.
 
 ### What it blocks, and what it does not
 
-| Command shape | Verdict | Routed to |
-|---|---|---|
-| `grep`/`rg`/`egrep`/`ack` leading a command | deny | `search_text` |
-| `cat`/`tac`/`head`/`tail` reading a file | deny | `read_lines` |
-| `find`/`fd`, `ls -R`, `dir /s`, `Get-ChildItem -Recurse` | deny | `find_files` |
-| `sed`/`awk` reading a file (leading position) | deny | `search_text` / `read_lines` |
-| `Select-String`, `Get-Content` | deny | `search_text` / `read_lines` |
-| `sed -i`, `perl -pi -e`, `Set-Content`/`Add-Content`/`Out-File` | deny | `replace_text` / `normalize_files` |
-| `git grep`/`log`/`diff`/`show`/`status`/`blame`/`ls-files`, `git branch` (list), `git reflog`, `git stash list`/`show` | deny | `git-ops` (`git_grep`, `git_log`, ...) |
-| `git commit`/`add`/`push`/`checkout`/`reset`/`merge`, `git branch -d`, `git stash pop`, `git tag <name>` | **allow** | shell git is fine for writes |
-| `dotnet test \| tail -20` (downstream of a pipe) | **allow** | output trimming, not probing |
-| `cat > file <<EOF` (redirect/heredoc), `find ... -delete`/`-exec` | **allow** | authoring / acting, not reading |
-| `ls -r` (reverse sort, not `-R`), plain `ls`/`dir`/`Get-ChildItem` | **allow** | not a recursive walk |
+| Command shape                                                                                                          | Verdict   | Routed to                              |
+|------------------------------------------------------------------------------------------------------------------------|-----------|----------------------------------------|
+| `grep`/`rg`/`egrep`/`ack` leading a command                                                                            | deny      | `search_text`                          |
+| `cat`/`tac`/`head`/`tail` reading a file                                                                               | deny      | `read_lines`                           |
+| `find`/`fd`, `ls -R`, `dir /s`, `Get-ChildItem -Recurse`                                                               | deny      | `find_files`                           |
+| `sed`/`awk` reading a file (leading position)                                                                          | deny      | `search_text` / `read_lines`           |
+| `Select-String`, `Get-Content`                                                                                         | deny      | `search_text` / `read_lines`           |
+| `sed -i`, `perl -pi -e`, `Set-Content`/`Add-Content`/`Out-File`                                                        | deny      | `replace_text` / `normalize_files`     |
+| `git grep`/`log`/`diff`/`show`/`status`/`blame`/`ls-files`, `git branch` (list), `git reflog`, `git stash list`/`show` | deny      | `git-ops` (`git_grep`, `git_log`, ...) |
+| `git commit`/`add`/`push`/`checkout`/`reset`/`merge`, `git branch -d`, `git stash pop`, `git tag <name>`               | **allow** | shell git is fine for writes           |
+| `dotnet test \| tail -20` (downstream of a pipe)                                                                       | **allow** | output trimming, not probing           |
+| `cat > file <<EOF` (redirect/heredoc), `find ... -delete`/`-exec`                                                      | **allow** | authoring / acting, not reading        |
+| `ls -r` (reverse sort, not `-R`), plain `ls`/`dir`/`Get-ChildItem`                                                     | **allow** | not a recursive walk                   |
 
 The one nuance worth understanding: only a command **leading** a pipeline stage is treated as reading
 files. A read filter downstream of a `|` is consuming another command's stdout (output trimming), which
