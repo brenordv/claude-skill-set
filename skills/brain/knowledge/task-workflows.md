@@ -48,11 +48,17 @@ completes or when a loop cap is hit with unresolved issues (see issue handling b
 
 2. **Independent review panel (run in parallel).** The following are independent lenses on the *same* plan;
    none is an input to another. Dispatch them concurrently (e.g. as parallel subagents) rather than chaining
-   them. Each reads the plan and returns findings:
+   them. Each reads the plan and returns findings (the `delivery-lead` lens also reads the original user
+   prompt, its ground truth):
    - `[skill: <appropriate programming language/framework skill>]`: technical review with in-depth
      knowledge of the relevant language(s).
    - `[skill: security]`: review as a security professional.
    - `[skill: observability-engineer]`: recommend a reasonable level of observability to add.
+   - `[skill: delivery-lead]`: scope-discipline review. Checks the plan against the *original user prompt*
+     for scope creep, gold-plating, speculative generality, and work solving problems the ask never raised.
+     This is the panel's one lens that argues for less; the others all pull toward adding. Give it the
+     user's original prompt verbatim, since that prompt, not the plan, is its ground truth. See
+     `brain/knowledge/scope-discipline.md`.
    - **Domain routing (principle, not a fixed list):** add any domain or framework skill whose area the
      plan actually touches, so it can weigh in before the stage completes. Examples: `postgres`,
      `azure-sql-server`, `azure-cosmos`, `azure-eventhub`, `nosql-database`, `angular`, `reactjs`, `nextjs`,
@@ -66,6 +72,14 @@ completes or when a loop cap is hit with unresolved issues (see issue handling b
    working link to official, version-current docs as a **blocking** finding: the plan cites its
    external-behavior claims and the citations resolve, or it does not pass. See
    `brain/knowledge/general-problem-solving.md` §"Back external assumptions with an official source".
+
+   **Scope-vs-hardening tiebreak.** When the `delivery-lead`'s scope-trimming collides with an additive
+   lens (security, observability, a language rule), correctness, security, and data-safety findings
+   outrank the trim: don't ship unsafe to stay lean. But the delivery-lead's legal counter is to challenge
+   the *feature that requires* the addition rather than the addition itself. If the feature a hardening
+   finding protects was never in the ask, cutting the feature resolves both at once and the hardening
+   leaves with it. Settle that scope question before spending a revision cycle hardening something that
+   shouldn't exist. See `brain/knowledge/scope-discipline.md` §"The tiebreak".
 
 **Issue handling (Stage 1):**
 - **Blocking findings** → hand control back to `[skill: system-architect]` to revise the plan. Then
