@@ -12,6 +12,14 @@ Windows `.ps1` and a POSIX `.sh` with identical behavior, each failing open:
   `text-search`, `text-edit`, and `git-ops` MCPs.
 - **block-secrets** hard-blocks shell commands that read or copy secret-looking files.
 
+> [!IMPORTANT]
+> It is crucial to know that those hooks are not a foolproof, be-all, end-all security solution. 
+> Pretty much nothing will be with generative AI. It will nudge the agents in the right direction,
+> but they could still decide to circumvent the blocks presented in the hooks. A more comprehensive
+> security solution would include a containerized solution that runs in a separate process and
+> enforces the blocks at a filesystem permission level.
+> So, is this useless? Not at all, just don't look at it as the final solution.
+
 ## route-to-text-tools
 
 A `PreToolUse` hook for the **Bash** and **PowerShell** tools, shipped as two interchangeable
