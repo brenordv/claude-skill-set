@@ -119,6 +119,7 @@ flowchart TD
             LANG["language or<br/>framework skill"]
             SEC["security"]
             OBS["observability-<br/>engineer"]
+            LEAD["delivery-lead<br/>(scope discipline)"]
             DOM["domain skills,<br/>as routed"]
         end
         PANEL --> TRIAGE{"blocking<br/>findings?"}
@@ -145,13 +146,17 @@ through its own lens:
 - the relevant language or framework skill, for technical depth
 - `security`, reviewing as a security professional
 - `observability-engineer`, recommending a sane level of monitoring and logging
+- `delivery-lead`, checking the plan against the original prompt for scope creep, gold-plating, and
+  speculative work; the one lens that argues for less while the rest pull toward adding
 - any domain skill the plan actually touches (`postgres`, `reactjs`, `godot`, and so on), routed by
   what the plan does rather than a fixed list
 
 Findings are consolidated, de-duplicated, and split into **blocking** (correctness, security, data, or
 design flaws) and **suggestions**. Blocking findings send the plan back to the architect for revision;
 only the lenses whose concerns the revision touched re-review, not the whole panel. Suggestions worth
-taking are folded in directly.
+taking are folded in directly. When the `delivery-lead`'s push to cut collides with a lens asking to add,
+correctness, security, and data-safety win; the delivery-lead's counter is to question whether the feature
+that needs the hardening belonged in the ask at all.
 
 **Stage 2: execute and verify.** The language skill implements the approved plan. Before any review
 happens, a mandatory verify gate runs: formatter, build or typecheck, the test suite, and an end-to-end
@@ -224,6 +229,7 @@ something a competent practitioner does by default), and they're consulted befor
 | `system-architect`       | Architecture planning: ADRs, C4 diagrams, roadmaps. Never writes implementation code                                                                                    |
 | `security`               | Security and pentest entry point: SAST, dependency scanning, compliance, threat modeling                                                                                |
 | `branch-review`          | Reviews the current branch against main across correctness, security, performance, maintainability, testing; also checks prose style and blocks on machine-detail leaks |
+| `delivery-lead`          | Scope-discipline lens on a drafted plan: flags scope creep, gold-plating, speculative work, and problems the ask never raised; the review panel's one voice for less        |
 | `pr-description`         | Generates a PR description in the house format from the diff; retrieves precedent and archives it                                                                       |
 | `ticket-description`     | Drafts a ticket title and description from a branch or via Q&A; retrieves precedent and archives it                                                                     |
 | `theme-factory`          | Styling toolkit for artifacts, with preset themes                                                                                                                       |
