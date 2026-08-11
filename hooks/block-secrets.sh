@@ -3,14 +3,16 @@
 # looks like a secret (.env, appsettings.json, secrets.*, credentials.*, *.key/*.pem, master.key,
 # .htpasswd, ...). POSIX port of block-secrets.ps1 (Windows uses the .ps1). JSON in/out is handled
 # by Perl with JSON::PP, a core module present on stock macOS and Ubuntu, so there is nothing to
-# install. Companion to route-to-text-tools; the two hooks are independent and both run on PreToolUse.
+# install. Companion to route-to-text-tools (shell probing) and guard-file-targets (native Glob/Grep/
+# Read); the three hooks are independent and all run on PreToolUse. This one is shell-only: it sees
+# Bash|PowerShell, not the native tools, and it blocks reading or copying a secret, not merely locating one.
 #
 # Fails OPEN: missing Perl/JSON::PP, a parse error, or any fault exits 0 so a legitimate command is
 # never broken. Self-test:  bash block-secrets.sh --command "cat .env"
 # See skills/brain/hooks/README.md for install and tuning.
 
 DENY_MSG="$(cat <<'MSG'
-Blocked: this command reads or copies a file matching a secret-file pattern (.env, appsettings.json, secrets.*, credentials.*, *.key, *.pem, *.pfx, *.p12, *.jks, *.keystore, master.key, private_key, .htpasswd), which would pull secret material into context. If the target is genuinely non-secret, read it another way or point at its .example/.template/.sample. For legitimate file reads prefer the text-search MCP, which withholds secret-shaped content on its own. See brain/knowledge/text-search-operations.md.
+Blocked: this command reads or copies a file matching a secret-file pattern (.env, appsettings.json, secrets.*, credentials.*, *.key, *.pem, *.pfx, *.p12, *.jks, *.keystore, master.key, private_key, .htpasswd), which would pull secret material into context. If the target is genuinely non-secret, read it another way or point at its .example/.template/.sample. For legitimate file reads prefer the text-search MCP, which withholds secret-shaped content on its own. Locating or enumerating secret files is equally off-limits, not only reading them; the ban is on seeking a secret, and the native Glob/Grep/Read tools are covered by the guard-file-targets hook. See brain/knowledge/text-search-operations.md.
 MSG
 )"
 

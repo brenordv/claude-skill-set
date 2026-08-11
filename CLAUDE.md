@@ -27,6 +27,12 @@ yet. They bind in every context, main conversation and subagents alike, and beat
    handoff summary or commit message. A comment that only makes sense to someone who saw the
    previous version or the conversation is narration: delete it. Full rule in
    `skills/brain/knowledge/coding-general.md` ⛔ Hard Rules.
+4. **Never seek out secret files.** A file that looks like a secret (`.env` and variants, `*.key`,
+   `*.pem`, `secrets.*`, `credentials.*`, `appsettings.json`, ...) is not yours to open, list, glob
+   for, or grep by name. The ban is on *seeking*, not only reading: "I won't read the contents, only
+   find the file" is the rationalization to reject; locating a secret is the same violation as reading
+   it. The only target you may hit is the non-secret sample (`.example`/`.template`/`.sample`). Full
+   rule in `skills/brain/knowledge/text-search-operations.md` ⛔ Hard Rules (item 8).
 
 Additional knowledge files live in `skills/brain/knowledge/`. When starting a
 non-trivial task, list that folder and read any file whose topic relates

@@ -38,10 +38,26 @@ from the read tools (`read_lines`, `search_text`, `inspect_files`) even when its
    (`dotnet test | tail -20`) is output trimming, not file probing, and stays fine. So does shell text
    tooling inside scripts authored as deliverables for the user; the rule governs what the agent
    executes, not what it writes for others to run.
+8. **Never make a secret file the target of a search, listing, or read.** A file that looks like a
+   secret (`.env` and its variants, `appsettings.json`, `secrets.*`, `credentials.*`, `*.key`, `*.pem`,
+   `*.pfx`, `*.p12`, `*.jks`, `*.keystore`, `master.key`, `private_key`, `.htpasswd`) is not yours to
+   open, list, glob for, or grep by name. The ban is on **seeking** a secret, not only reading one:
+   enumerating where secrets live, confirming one exists, or mapping their locations is the same
+   violation as reading the contents. "I won't read the contents, only find the file" is not a
+   loophole, it is the exact rationalization to reject. This binds across every tool: native
+   Read/Grep/Glob, `text-search`, and shell alike. The one carve-out is the non-secret sample form
+   (`.example`/`.template`/`.sample`), which you may target. When you need a value a secret would hold,
+   ask the user or let the consuming library load the file at runtime; never go hunting for it yourself.
+   **Precedence**: an earlier step that located a secret, or an existing script that greps one, is not
+   license to repeat it; flag it instead.
 
 **Self-check**: before any Bash/PowerShell call containing `grep`, `rg`, `find`, `cat`, `head`, `tail`,
 `sed`, `awk`, `Select-String`, `Get-Content`, or `Get-ChildItem`, ask "is this command reading files to
-locate or inspect content?" If it is, stop and use a native file tool or text-search.
+locate or inspect content?" If it is, stop and use a native file tool or text-search. And before any
+file search, listing, or read (native or MCP) whose target names or globs a secret file (`.env`,
+`*.key`, `secrets.*`, `credentials.*`, `*.pem`, ...), stop: seeking a secret is off-limits even when you
+only mean to locate it, and "just finding the file" is the rationalization to reject. The
+`guard-file-targets` hook enforces this on Read/Grep/Glob, but the rule binds first, in your reasoning.
 
 ### Capability-gap protocol
 

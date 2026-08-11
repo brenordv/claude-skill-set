@@ -6,11 +6,14 @@ strongest exactly where recall is weakest (fresh chat, long context, deep in a t
 depend on recall. It intercepts the tool call after the model emits it and before it runs, and its
 denial message lands in context at the one moment it steers the next attempt.
 
-This folder holds two independent `PreToolUse` hooks (matcher `Bash|PowerShell`), each shipped as a
-Windows `.ps1` and a POSIX `.sh` with identical behavior, each failing open:
+This folder holds three independent `PreToolUse` hooks, each shipped as a Windows `.ps1` and a POSIX
+`.sh` with identical behavior, each failing open. Two match the shell tools (`Bash|PowerShell`), one
+matches the native file tools (`Glob|Grep|Read`):
 - **route-to-text-tools** routes file-probing, in-place-edit, and read-only-git shell commands to the
   `text-search`, `text-edit`, and `git-ops` MCPs.
 - **block-secrets** hard-blocks shell commands that read or copy secret-looking files.
+- **guard-file-targets** hard-blocks native `Glob`/`Grep`/`Read` calls that target a secret-looking
+  file, so a secret cannot be located or read by stepping around the shell hooks.
 
 > [!IMPORTANT]
 > It is crucial to know that those hooks are not a foolproof, be-all, end-all security solution. 
@@ -186,7 +189,9 @@ A second `PreToolUse` hook: it denies a command that would **read or copy a file
 secret** (`.env`, `appsettings.json`, `secrets.*`, `credentials.*`, `*.key`, `*.pem`, `*.pfx`, `*.p12`,
 `*.jks`, `*.keystore`, `master.key`, `private_key`, `.htpasswd`). This is defense-in-depth next to
 `route-to-text-tools`: that hook routes reads to `text-search` (which withholds secret-shaped content),
-while this one hard-blocks the shell commands that would read or exfiltrate a secret file directly.
+while this one hard-blocks the shell commands that would read or exfiltrate a secret file directly. It is
+shell-only (matcher `Bash|PowerShell`) and blocks reading or copying, not merely locating; the native
+`Glob`/`Grep`/`Read` tools and pure enumeration are covered by `guard-file-targets` below.
 
 ### What it blocks, and what it does not
 
@@ -234,3 +239,76 @@ PowerShell: pipe a `{"tool_name":"Bash","tool_input":{"command":"cat .env"}}` pa
 Edit the `SECRET` / `SAFE` / `READEXFIL` regexes (`.sh`) or `$secret` / `$safe` / `$readExfil` (`.ps1`)
 to add file patterns or reader commands; keep both scripts in sync. The `.sh` uses BSD-grep-safe
 character classes (no `\b`/`\w`) so it runs on macOS; the `.ps1` uses .NET `\b`/`\w`.
+
+## guard-file-targets
+
+The third `PreToolUse` hook, and the only one that matches the **native** tools rather than the shell:
+its matcher is `Glob|Grep|Read`. It denies a call whose **target** is a secret-looking file (`.env`,
+`appsettings.json`, `secrets.*`, `credentials.*`, `*.key`, `*.pem`, `*.pfx`, `*.p12`, `*.jks`,
+`*.keystore`, `master.key`, `private_key`, `.htpasswd`) and lets everything else through.
+
+The motivating incident: on a fresh chat in a monorepo the model reached for `Glob("**/.env*")` to find
+where a shared `.env` lived, telling itself "I won't read the contents, only find the file." Both shell
+hooks missed it, they match `Bash|PowerShell` and the model never shelled out, and `block-secrets` would
+not have caught it even on the shell path: it blocks reading or copying a secret, not locating one. This
+hook closes both gaps. It watches the native tools the shell hooks cannot see, and because it keys on the
+**target** rather than on a read construct, it denies pure enumeration too. It also codifies the
+principle the model rationalized around: seeking a secret is off-limits, not only reading it.
+
+### What it blocks, and what it does not
+
+It inspects only the fields that name a **file target**, per tool, and denies when that target matches a
+secret-file pattern and is not the `.example`/`.template`/`.sample` form.
+
+| Tool   | Fields inspected  | Deliberately ignored                     |
+|--------|-------------------|------------------------------------------|
+| `Glob` | `pattern`, `path` | (none)                                   |
+| `Grep` | `glob`, `path`    | `pattern` (a content regex, not a path)  |
+| `Read` | `file_path`       | (none)                                   |
+
+| Call                                                                                     | Verdict   |
+|------------------------------------------------------------------------------------------|-----------|
+| `Glob("**/.env*")`, `Read(".env")`, `Read("config/secrets.yaml")`, `Grep(glob:"**/*.pem")` | deny (secret target) |
+| `Read(".env.example")`, `Glob("*.sample.json")`                                          | **allow** (sample/template) |
+| `Grep(pattern:"DATABASE_URL", path:"src")`                                               | **allow** (searching code for a string, no secret target) |
+| `Read("docs/environment.md")`, `Glob("**/*.ts")`                                         | **allow** (not a secret target) |
+
+The nuance worth understanding: `Grep`'s `pattern` is what you search *for*, a content regex, not a file
+you point *at*, so it is deliberately ignored. Grepping the codebase for the string `DATABASE_URL` is
+fine; globbing for `**/.env` is not. Only `Grep`'s `glob`/`path` name a target.
+
+### Install
+
+Same mechanics as the other two, but the matcher differs. Copy the script for your OS
+(`guard-file-targets.ps1` on Windows, `guard-file-targets.sh` on macOS/Linux) to `~/.claude/hooks/`, and
+add a **third** hook group under `hooks.PreToolUse` with matcher **`Glob|Grep|Read`** (not
+`Bash|PowerShell`) pointing at it (exec-form `powershell.exe` + `-File` on Windows;
+`bash "$HOME/.claude/hooks/guard-file-targets.sh"` on POSIX). Requirements are identical (Windows
+`powershell.exe`; macOS/Linux `bash` + `perl` with `JSON::PP` core, nothing to install), and it fails
+open.
+
+### Verify
+
+The `.sh` has a `--candidate` self-test that classifies a raw target string (`secret`/`allow`) with
+neither Perl nor Claude Code; the JSON stdin path needs Perl:
+
+```bash
+s=~/.claude/hooks/guard-file-targets.sh
+bash "$s" --candidate '**/.env*'      # -> secret
+bash "$s" --candidate '.env.example'  # -> allow
+bash "$s" --candidate 'src/main.py'   # -> allow
+echo '{"tool_name":"Read","tool_input":{"file_path":".env"}}' | bash "$s"  # -> deny JSON
+echo '{"tool_name":"Grep","tool_input":{"pattern":".env"}}'   | bash "$s"  # -> (no output = allow)
+```
+
+PowerShell: pipe a `{"tool_name":"Glob","tool_input":{"pattern":"**/.env*"}}` payload into
+`powershell.exe -File guard-file-targets.ps1`; a deny prints the JSON, allow prints nothing.
+
+### Tuning
+
+The `SECRET`/`SAFE` regexes (`.sh`) and `$secret`/`$safe` (`.ps1`) are the same shape as `block-secrets`;
+keep all four in sync when you add a file pattern. To cover another native tool, add its name to the
+matcher and a branch to the field selector (the `switch ($tool)` in `.ps1`, the `if`/`elsif` in the Perl
+extractor in `.sh`) naming that tool's target field. Do **not** add `Grep`'s `pattern` to the selector:
+it is a content regex, and inspecting it would deny legitimate code searches for strings like
+`SECRET_KEY`.
