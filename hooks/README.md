@@ -348,10 +348,56 @@ explicit request and still pass the permission prompt.
 ### Install
 
 Same mechanics as the other shell hooks: copy the script for your OS to `~/.claude/hooks/` and add
-another hook group under `hooks.PreToolUse` with matcher `Bash|PowerShell` pointing at it (exec-form
-`powershell.exe` + `-File` on Windows; `bash "$HOME/.claude/hooks/block-vcs-writes.sh"` on POSIX).
+another hook group under `hooks.PreToolUse` with matcher `Bash|PowerShell` pointing at it.
 Requirements are identical (Windows `powershell.exe`; macOS/Linux `bash` + `perl` with `JSON::PP`
-core), and it fails open.
+core), and it fails open. **Append** the group to the existing array; don't replace the other hooks.
+
+**Windows** (exec-form, absolute `-File` path):
+
+```jsonc
+{
+  "hooks": {
+    "PreToolUse": [
+      // ...existing hook groups stay as they are...
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\block-vcs-writes.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**macOS / Linux**:
+
+```jsonc
+{
+  "hooks": {
+    "PreToolUse": [
+      // ...existing hook groups stay as they are...
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/block-vcs-writes.sh\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Reload afterwards: open `/hooks` once or restart Claude Code (a mid-session settings edit is not
+picked up until then).
 
 ### Verify
 
@@ -384,3 +430,116 @@ not: the stores are tool-only (`../skills/brain/knowledge/vault-operations.md`, 
 shell command naming one has no legitimate use. Set the same regex in all four scripts. This is the
 portable enforcement; for a hard wall, put the store under filesystem permissions the agent's
 process cannot read.
+
+## Full install: all four hooks at once
+
+For a fresh machine, copy the four scripts for your OS into `~/.claude/hooks/`, then paste the
+whole `hooks` block below into `~/.claude/settings.json` (merge it if the file already has other
+keys). Each hook is its own group; every group runs on each matching tool call, and a deny from any
+one of them blocks the call. Reload with `/hooks` or a restart when done.
+
+**Windows**:
+
+```jsonc
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\route-to-text-tools.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\block-secrets.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\block-vcs-writes.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Glob|Grep|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\guard-file-targets.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**macOS / Linux**:
+
+```jsonc
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/route-to-text-tools.sh\"", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/block-secrets.sh\"", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/block-vcs-writes.sh\"", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Glob|Grep|Read",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/guard-file-targets.sh\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Skipping a hook is fine (each is independent); just drop its group. If you use `block-vcs-writes`
+but want the agent able to commit on some machine, leave that one group out there rather than
+tuning the script.
