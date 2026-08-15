@@ -3,6 +3,36 @@
 There is a personal, cross-conversation file vault registered as the `vault` MCP server. Its own tool
 instructions load each session; this file is the standing directive on *when* to reach for it.
 
+### ⛔ Hard Rules
+
+1. **The vault is reachable only through the `vault` MCP tools.** Never locate, list, read, or
+   modify its on-disk backing store with file tools, text-search, or shell; not to "just check
+   what's there", not to recover from a failed tool call, not because the storage path happens to
+   be known. What the tools return is the vault; whatever sits on disk behind them is server
+   internals, as off-limits as a database's data files. This binds in every context: main
+   conversation, subagents, workflow stages.
+2. **The same goes for every MCP server's private store.** The text-edit journal and any other
+   store an MCP server owns are reached through that server's tools or not at all. (The working
+   tree git-ops reports on is not such a store; project files stay ordinary files.)
+3. **A failing or missing tool is a report, never a bypass.** When a vault tool errors, or the
+   server isn't registered this session, say so and stop. Routing around it via the filesystem is
+   the exact move this block exists to stop.
+4. **Precedence**: discovering the storage location (in config, a transcript, an error message) is
+   not permission, and an example, script, or earlier step that read the store directly is a bug
+   to flag, not a pattern to imitate.
+
+**Self-check**: before any file search, listing, or read, ask "is this path inside an MCP server's
+backing store (the vault's storage, the text-edit journal)?" If it is, stop: use that server's
+tools, or report what they couldn't do.
+
+### Dispatch restatement (copy verbatim into every subagent prompt that may touch the vault)
+
+> Vault content is accessed only through the `vault` MCP tools (`vault_list`, `vault_get`,
+> `vault_save`, ...). Never locate or read the vault's on-disk storage with file tools or shell,
+> even if you know or discover where it lives; the same goes for any MCP server's private store. A
+> failing tool call is reported, never worked around via the filesystem. Full rules in
+> `brain/knowledge/vault-operations.md` ⛔ Hard Rules.
+
 ### Default to the vault for durable, user-scoped content
 
 - Prefer `vault` over ad-hoc scratch files or "remember this" phrasing whenever the user asks to save,

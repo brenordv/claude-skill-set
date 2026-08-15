@@ -15,8 +15,9 @@
 > `brain/knowledge/git-readonly-operations.md` §"Dispatch restatement", the text-search rule from
 > `brain/knowledge/text-search-operations.md` §"Dispatch restatement", the text-edit rule from
 > `brain/knowledge/text-edit-operations.md` §"Dispatch restatement" (for any subagent that may edit
-> files), and the machine-privacy rule from `brain/knowledge/machine-privacy.md` §"Dispatch
-> restatement". Subagents don't inherit knowledge-file discipline on their own; the dispatcher carries
+> files), the vault rule from `brain/knowledge/vault-operations.md` §"Dispatch restatement" (for any
+> subagent that may touch the vault), and the machine-privacy rule from
+> `brain/knowledge/machine-privacy.md` §"Dispatch restatement". Subagents don't inherit knowledge-file discipline on their own; the dispatcher carries
 > it to them. The token cost is accepted.
 
 ### Choosing a workflow

@@ -93,7 +93,7 @@ These rules reflect the `.editorconfig` and formatting conventions for C# projec
 - Avoid single-letter names except for tight, obvious loop counters.
 - Use `@`-prefixed identifiers only for interop with reserved keywords.
 - Respect naming conventions from `.editorconfig` and existing code.
-- Always prefer `var` over explicit types. The type is already visible from the right-hand side or IDE tooling.
+- Always prefer `var` over explicit types. The type is already visible from the right-hand side or IDE tooling. This is Hard Rule 13 and covers delegate-typed locals: `var act = () => sut.DoAsync(...)`, never `Func<Task> act = ...`, even in a repo that spells types out.
 
 ---
 
@@ -148,7 +148,9 @@ These rules reflect the `.editorconfig` and formatting conventions for C# projec
   new PredicateBuilder().Handle<Azure.RequestFailedException>(...)
   ```
 - Make methods `static` when they do not access instance state.
-- Prefer `var` over explicit types in all cases.
+- Prefer `var` over explicit types in all cases (Hard Rule 13), lambdas included: since C# 10 a
+  lambda has a natural delegate type, so `var act = () => ...` compiles and the explicit
+  `Func<Task>`/`Action` form is the violation.
 
 ---
 
@@ -160,3 +162,8 @@ If rules conflict, the order of precedence is:
 2. Local file patterns
 3. This style guide
 4. Skill-level guidance
+
+Tiers 1 through 4 rank defaults, not silent overrides. When a repository convention (tier 1)
+contradicts this guide or skill guidance on code being written, and no Hard Rule decides it, the
+conflict goes to the user: they choose between repo consistency and the modern pattern
+(`brain/knowledge/coding-general.md` §2, "When the repo and the guidelines disagree").

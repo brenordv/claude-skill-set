@@ -237,9 +237,10 @@ something a competent practitioner does by default), and they're consulted befor
 ## The knowledge layer
 
 `skills/brain/knowledge/` holds the shared, language-agnostic guidance every skill builds on. Beyond the
-eight always-on files listed above, it covers general coding conventions, testing, code review and its
-heuristics checklist, game-dev coding, databases, DevOps operations, security, and how to author skill
-rules that stick. These load on demand
+ten always-on files listed above, it covers general coding conventions, testing, code review and its
+heuristic checklist, GitHub PR stacks (detection, plus layer-by-layer review and PR-description
+rules), game-dev coding, databases, DevOps operations, security, and how to author skill rules that
+stick. These load on demand
 when a task touches their topic.
 
 `skills/brain/gotchas/` holds worked, one-file-per-incident write-ups of traps already hit, consulted

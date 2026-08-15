@@ -11,7 +11,9 @@ description: >-
 
 > **Shared Knowledge**: This skill builds on `brain/knowledge/writing-style.md` (apply it in full; a PR
 > description is exactly the kind of prose that must not read as AI-generated) and
-> `brain/knowledge/vault-operations.md` §"Artifact archives (pinned vault projects)".
+> `brain/knowledge/vault-operations.md` §"Artifact archives (pinned vault projects)". Stack detection
+> and layer rules come from `brain/knowledge/github-pr-stacks.md`: on a stacked branch, each PR gets
+> its own description scoped to its layer's diff.
 
 You are writing a pull-request description for a change just made (by the user or an agent on their behalf).
 Use the diff, commit messages, and any context provided. **Output only the description in the exact format
@@ -25,9 +27,19 @@ below. No preamble, no closing remarks.**
 
 ## Step 1: Gather Inputs
 
-1. `git_diff` with `fromRef` = base branch and `toRef` = `HEAD` (or `statOnly` first to see the shape).
-2. `git_log` with `ref: "<base>..HEAD"` for the commit narrative.
-3. Fold in any extra context the user gave you.
+1. **Stack check first.** Run `gh stack view --json` per `brain/knowledge/github-pr-stacks.md`. Exit 2,
+   or `gh`/the stack extension missing, means no stack; any other outcome follows the detection table
+   in that file. On exit 0 the branch is part of a PR stack and the inputs change: the description
+   covers one layer, so diff and log against the branch directly below that layer
+   (`fromRef: "<branch-below>...<layer-branch>"`, three-dot), never against main/master. Default to
+   the layer the current branch is on; write descriptions for other layers only when the user asks,
+   each from its own layer diff. Never describe changes that live in a lower layer, and never run any
+   `gh stack` command other than `view` (that file's ⛔ Hard Rules; submitting the stack is the
+   user's job).
+2. `git_diff` with `fromRef` = base branch and `toRef` = `HEAD` (or `statOnly` first to see the shape).
+   On a stacked branch, substitute the layer refs from step 1.
+3. `git_log` with `ref: "<base>..HEAD"` for the commit narrative (layer refs on a stacked branch).
+4. Fold in any extra context the user gave you.
 
 ## Step 2: Retrieve Similar Past PRs
 

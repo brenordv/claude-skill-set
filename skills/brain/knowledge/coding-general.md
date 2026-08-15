@@ -90,11 +90,32 @@ Re-read this list before writing code and walk it again at handoff (§10).
 Before writing any code:
 
 1. **Understand the requirements**: What problem are we solving? What are the constraints?
-2. **Review existing patterns**: Match the codebase's conventions. Do not introduce new patterns unless required.
+2. **Review existing patterns**: Match the codebase's conventions. Do not introduce new patterns unless required. When an existing convention contradicts this skill set's guidance, the conflict goes to the user (next subsection).
 3. **Identify dependencies**: What does this code interact with?
 4. **Consider edge cases**: But keep it grounded. Extreme edge cases are only worth handling if explicitly requested.
 5. **Plan your approach**: Break the problem into small, testable steps.
 6. **Remember Lessons learned**: Look into the `brain/gotchas` folder for any relevant problemas we already faced and learned how to fix.
+
+### When the repo and the guidelines disagree
+
+"Match the repo" and "use the modern pattern" collide whenever a codebase carries legacy
+conventions this skill set has since moved past. Who wins is not yours to decide:
+
+- **A Hard Rule ends the question.** Hard Rules (this file's ⛔ block and the routed language
+  skill's) beat repository conventions. No ask needed; the rule wins.
+- **Anything below a Hard Rule goes to the user.** When the repo's established pattern and a
+  skill or knowledge recommendation point opposite ways on code you are about to write, don't
+  silently side with either. Sometimes the user wants consistency with the repo; sometimes the
+  repo is legacy and they want the modern pattern on new code. The code can't tell you which, so
+  ask: name the pattern, show the repo's way and the guideline's way (one line each), and give
+  your recommendation. Batch every conflict you've spotted into a single question instead of
+  interrupting per finding.
+- **One answer per pattern per task.** The user's choice holds for the rest of the task; don't
+  re-ask per file. If the answer sounds durable ("in this repo, always the modern way"), suggest
+  recording it in the project's CLAUDE.md, or capture it per the lesson protocol when it
+  generalizes beyond the repo.
+- **When you can't ask** (an autonomous workflow stage, a subagent), follow the repo's pattern
+  for consistency and flag the conflict prominently in the handoff so the user can overturn it.
 
 ---
 

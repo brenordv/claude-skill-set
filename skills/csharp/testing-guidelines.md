@@ -41,6 +41,28 @@ public void CalculateTotal_WithDiscount_ReturnsReducedPrice()
 
 All three markers appear in every test, capitalized, with a space between the comment slashes and the word (`// Arrange`, `// Act`, `// Assert`). A test that omits them is not following this pattern, regardless of how clean the body looks.
 
+### Exception Assertions
+
+The deferred-action local is `var`, never an explicit delegate type (Hard Rule 13). The compiler
+infers the lambda's natural delegate type (C# 10+), so `Func<Task> act = ...` and `Action act = ...`
+spell out what `var` already carries, and repos full of explicit types don't change that for new code:
+
+```csharp
+[Fact]
+public async Task UpdateDocument_WithArchivedDocument_ThrowsDocumentArchivedException()
+{
+    // Arrange
+    var sut = BuildSut();
+    var document = MockDataGenerators.ArchivedDocument();
+
+    // Act
+    var act = () => sut.UpdateDocumentAsync(document, CancellationToken.None);
+
+    // Assert
+    await Assert.ThrowsAsync<DocumentArchivedException>(act);
+}
+```
+
 ### Test Naming Convention
 
 ```
@@ -101,6 +123,30 @@ public static class TheoryDataGenerator
 ```csharp
 private const string ValidCustomerEmail = "testcustomer@example.com";
 private const decimal StandardShippingRate = 5.99m;
+```
+
+### Dates & Times
+
+Test dates derive from the clock, relative to now (Hard Rule 14). A hard-coded calendar date
+changes scenario as real time passes: what was "issued last month" when the test was written is
+"issued years ago" later, and the test quietly stops covering what its name claims.
+
+```csharp
+// Good: stays "30 days old" no matter when the suite runs
+var issuedAt = DateTime.UtcNow.AddDays(-30);
+
+// Bad: rots; the scenario this exercises drifts further into the past every day
+var issuedAt = new DateTime(2024, 1, 15);
+```
+
+When the code under test reads the clock itself, inject the time (`TimeProvider` or the repo's
+clock abstraction) and fake it in the test; asserting against the real `DateTime.UtcNow` from both
+sides is a race. A fixed literal date is right only when that exact value is the behavior under
+test (a leap-day boundary, the precise input from a regression); extract it to a `static readonly`
+field whose name states the reason:
+
+```csharp
+private static readonly DateTime LeapDayBoundary = new(2024, 2, 29);
 ```
 
 ## Test Helpers

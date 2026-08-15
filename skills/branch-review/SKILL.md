@@ -9,7 +9,7 @@ description: >-
 
 # Branch Review
 
-> **Shared Knowledge**: This skill builds on `brain/knowledge/code-review.md`, `brain/knowledge/coding-general.md`, `brain/knowledge/writing-style.md`, and `brain/knowledge/machine-privacy.md`. Apply the first two when evaluating changes; writing-style applies both to prose in the diff (Step 4) and to the review write-up itself. All git inspection goes through the `git-ops` MCP per `brain/knowledge/git-readonly-operations.md`; never shell git.
+> **Shared Knowledge**: This skill builds on `brain/knowledge/code-review.md`, `brain/knowledge/coding-general.md`, `brain/knowledge/writing-style.md`, and `brain/knowledge/machine-privacy.md`. Apply the first two when evaluating changes; writing-style applies both to prose in the diff (Step 4) and to the review write-up itself. All git inspection goes through the `git-ops` MCP per `brain/knowledge/git-readonly-operations.md`; never shell git. Stack detection and layer rules come from `brain/knowledge/github-pr-stacks.md`: a branch that is part of a PR stack is reviewed layer by layer, never as one flat diff.
 
 ## Purpose
 
@@ -34,17 +34,31 @@ Review the work done in the current branch by comparing it against the base bran
 
 ### Step 1: Scope the Review
 
-1. Identify the base branch (`main` or `master`) via `git_branch_list`
-2. `git_log` with `ref: "<base>..HEAD"` to understand the commit narrative
-3. `git_diff` for the change set: pass `fromRef: "<oldest-sha-from-step-2>^"` (the fork point as a
+1. **Stack check first.** Run `gh stack view --json` per `brain/knowledge/github-pr-stacks.md`.
+   Exit 0 means the current branch is part of a PR stack: scope per layer as described below.
+   Exit 2, or `gh`/the stack extension missing, means no stack: continue with the single-branch
+   steps. Any other outcome follows the detection table in that file.
+2. Identify the base branch (`main` or `master`) via `git_branch_list`
+3. `git_log` with `ref: "<base>..HEAD"` to understand the commit narrative
+4. `git_diff` for the change set: pass `fromRef: "<oldest-sha-from-step-2>^"` (the fork point as a
    revision expression) and `toRef: "HEAD"`, with `statOnly: true` first to see all changed files. If
    the branch contains merges from the base (fork point ambiguous), use `fromRef: "<base>"` instead and
    disclose in the review that base drift may appear in the diff.
-4. Identify which languages/frameworks are present in the diff
-5. **Retrieve prior reviews.** `vault_list` with `project: "code-reviews"` (pass it explicitly) and scan
+5. Identify which languages/frameworks are present in the diff
+6. **Retrieve prior reviews.** `vault_list` with `project: "code-reviews"` (pass it explicitly) and scan
    for earlier reviews of this repo or these files; `vault_get` close matches so recurring issues and prior
    verdicts inform this pass. Treat them as dated precedent, not current truth; re-verify against the diff.
    See `brain/knowledge/vault-operations.md` §"Artifact archives (pinned vault projects)".
+
+**When the branch is part of a stack**, items 2-4 above are replaced by per-layer scoping: enumerate
+the layers from the `gh stack view --json` output, and for each unmerged layer take `git_diff` with
+`fromRef: "<branch-below>...<layer-branch>"` (three-dot; the bottom layer diffs against the trunk)
+and `git_log` with `ref: "<branch-below>..<layer-branch>"`. Step 2 (language detection) through
+Step 5 (feedback) then run once per layer, bottom-up, since upper layers depend on lower ones.
+Findings and the assessment verdict are per layer (each layer is its own PR and merges on its own);
+a finding about code a lower layer introduced belongs to that lower layer. Item 6 (prior reviews)
+still runs once for the whole stack. Never run any `gh stack` command other than `view`, and never
+create or restructure a stack (`github-pr-stacks.md` ⛔ Hard Rules).
 
 ### Step 2: Detect Language Context
 
@@ -154,6 +168,10 @@ full review as the body. Name, summary (carry the overall assessment), and tags 
 ## Notes
 [Any observations about dead code spotted, architectural concerns for future, etc.]
 ```
+
+For a stacked branch, open with a stack summary (the layers bottom-up, each with its branch, PR,
+and verdict), then produce one full review block per layer in that order, titled with the layer's
+branch and PR.
 
 ---
 

@@ -129,6 +129,16 @@ general principle. Distilled from real review findings.
 - **Sibling tests for the same scenario must assert consistently.** If two tests cover equivalent states,
   they should check the same things unless the difference is intentional and documented. Asymmetric
   assertions silently under-test one branch.
+- **A local spelling out a type the compiler could infer is a finding (C#: at minimum Important).**
+  The recurring case is the deferred-action local: `Func<Task> act = () => ...` where
+  `var act = () => ...` compiles (C# 10+ natural delegate types). csharp Hard Rule 13; the repo
+  already writing explicit types is precedent, not permission.
+- **A hard-coded calendar date in arrangement data is a finding.** `new DateTime(2024, 1, 15)` where
+  the scenario is really "recent" or "expired" rots as real time passes and silently changes what the
+  test covers. Expect clock-relative values (`DateTime.UtcNow.AddDays(-30)` or the language's
+  equivalent) or an injected fake clock; accept a fixed literal only when that exact value is the
+  behavior under test, and it's extracted to a field whose name says so (csharp Hard Rule 14; the
+  principle is language-agnostic).
 
 ## Architecture
 

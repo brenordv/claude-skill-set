@@ -72,6 +72,11 @@ Keep each section clearly separated. One logical assertion per test (multiple `a
 - No test should fail randomly (flaky tests erode trust).
 - Mock time, random values, and external services.
 - Avoid dependencies on system state (file system, network, environment).
+- **Hard-coded calendar dates rot.** Arrangement data that means "recent", "last month", or
+  "expired" derives from the current clock (offsets from now) or the test's fake clock, never a
+  literal like `2024-01-15`: the literal ages, and the test quietly stops covering the scenario its
+  name claims. Reserve a fixed date for when that exact value is the behavior under test (a
+  boundary, a regression's input), extracted to a named constant that states the reason.
 
 ### Readability
 

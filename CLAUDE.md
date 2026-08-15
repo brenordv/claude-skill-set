@@ -33,6 +33,11 @@ yet. They bind in every context, main conversation and subagents alike, and beat
    find the file" is the rationalization to reject; locating a secret is the same violation as reading
    it. The only target you may hit is the non-secret sample (`.example`/`.template`/`.sample`). Full
    rule in `skills/brain/knowledge/text-search-operations.md` ⛔ Hard Rules (item 8).
+5. **Never bypass an MCP server by touching its backing store.** Vault notes exist only through the
+   `vault` MCP tools: never locate or read the vault's on-disk files with file tools or shell, even
+   if you know or discover where they live. The same goes for any MCP server's private store (the
+   text-edit journal, for one). A failing tool call is reported, never worked around via the
+   filesystem. Full rule in `skills/brain/knowledge/vault-operations.md` ⛔ Hard Rules.
 
 Additional knowledge files live in `skills/brain/knowledge/`. When starting a
 non-trivial task, list that folder and read any file whose topic relates
