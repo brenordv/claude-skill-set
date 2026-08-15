@@ -23,7 +23,9 @@ instructions load each session; this file is the standing directive on *when* to
 
 **Self-check**: before any file search, listing, or read, ask "is this path inside an MCP server's
 backing store (the vault's storage, the text-edit journal)?" If it is, stop: use that server's
-tools, or report what they couldn't do.
+tools, or report what they couldn't do. The `guard-file-targets` and `block-secrets` hooks can
+enforce this for configured store paths (their `PROTECTED_STORES` tunable; see the hooks README),
+but the rule binds first, in your reasoning.
 
 ### Dispatch restatement (copy verbatim into every subagent prompt that may touch the vault)
 

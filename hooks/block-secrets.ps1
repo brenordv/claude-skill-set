@@ -7,7 +7,7 @@
 # native tools, and it blocks reading or copying a secret, not merely locating one.
 #
 # Fails OPEN: any parse error or unexpected fault exits 0 so a legitimate command is never broken.
-# See skills/brain/hooks/README.md for install and tuning.
+# See hooks/README.md for install and tuning.
 
 $ErrorActionPreference = 'Stop'
 
@@ -38,10 +38,24 @@ $secret = '\.env\b|appsettings\.json|appsettings\.\w+\.json|secrets\.(json|yaml|
 $safe = '\.(example|template|sample)\b'
 # The command reads file content, copies it, redirects it, or exfiltrates it.
 $readExfil = '(cat|head|tail|less|more|type|Get-Content|bat|sed|awk|source)\s|(^|\s)\.\s|cp\s|copy\s|>|curl.*-d.*@|xargs'
+# Backing stores owned by MCP servers (vault storage, text-edit journal): tool-only access. Any
+# shell command naming the store path is denied, no read construct required, because the store has
+# no legitimate shell use. MACHINE CONFIG: set to a regex matching THIS machine's store locations,
+# e.g. '\.file-vault([\\/]|$)|\.text-edit-journal([\\/]|$)'. Empty string = check disabled.
+# Keep in sync with the same setting in guard-file-targets.
+$protectedStores = ''
+
+$storeMsg = @'
+Blocked: this command targets the backing store of an MCP server (vault storage, text-edit journal, or similar). Those stores are tool-only: use the owning server's MCP tools (vault_list, vault_get, ...) instead of touching its files, and report a failing tool call rather than working around it through the filesystem. See brain/knowledge/vault-operations.md, Hard Rules.
+'@
 
 $msg = @'
 Blocked: this command reads or copies a file matching a secret-file pattern (.env, appsettings.json, secrets.*, credentials.*, *.key, *.pem, *.pfx, *.p12, *.jks, *.keystore, master.key, private_key, .htpasswd), which would pull secret material into context. If the target is genuinely non-secret, read it another way or point at its .example/.template/.sample. For legitimate file reads prefer the text-search MCP, which withholds secret-shaped content on its own. Locating or enumerating secret files is equally off-limits, not only reading them; the ban is on seeking a secret, and the native Glob/Grep/Read tools are covered by the guard-file-targets hook. See brain/knowledge/text-search-operations.md.
 '@
+
+if ($protectedStores -and ($command -imatch $protectedStores)) {
+    Deny $storeMsg
+}
 
 if (($command -imatch $secret) -and ($command -notmatch $safe) -and ($command -imatch $readExfil)) {
     Deny $msg

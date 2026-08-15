@@ -1,0 +1,25 @@
+name: repo-lint
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Both implementations run on purpose: the two scripts are kept in sync by hand, so a divergence
+# (an OS quirk, a regex dialect difference, a drifted edit) shows up as one job failing while the
+# other passes.
+jobs:
+  lint-bash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run repo lint (bash)
+        run: bash tools/lint-repo.sh
+
+  lint-powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run repo lint (Windows PowerShell 5.1)
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\lint-repo.ps1

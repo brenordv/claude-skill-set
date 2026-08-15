@@ -11,7 +11,7 @@
 #
 # Fails OPEN: missing Perl/JSON::PP, a parse error, or any fault exits 0 so a legitimate command is
 # never broken. Self-test without Perl or Claude Code:  bash route-to-text-tools.sh --command "grep -r foo ."
-# See skills/brain/hooks/README.md for install and tuning.
+# See hooks/README.md for install and tuning.
 
 SEARCH_MSG="$(cat <<'MSG'
 Blocked: this shell command reads or searches files on disk, which bypasses the .gitignore and secret guards (this is exactly what leaked a gitignored file before). Use the text-search MCP instead (blanket-approved, read-only, ignore- and secret-aware), scoped with cwd = the repo's absolute path:

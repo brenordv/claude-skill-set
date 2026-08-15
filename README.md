@@ -45,17 +45,19 @@ As a high level, here are some examples:
 
 ### For Python
 - Type hints everywhere, and docstrings (Google or NumPy style) on every public API.
-- Done means the toolchain passes: `black`, `isort`, `mypy`, `flake8`, `pylint`, `bandit`, and
-  `pytest` with coverage, all clean before work is called complete.
+- Done means the toolchain passes: `ruff check`, `ruff format`, `mypy`, and `pytest` with coverage,
+  all clean before work is called complete.
 - Tests use pytest with Arrange-Act-Assert and mirror the source package layout under `tests/`, never
   dumped flat at the root.
 - Pickle-based model weights (`torch.load`, `joblib`) are treated as untrusted code, not data: trusted
   sources only, prefer safetensors, and `weights_only=True` where the call supports it.
 
 ### For Rust
-- `anyhow` is the sole error-handling crate, with `.context(...)` attached at every level. No
-  `thiserror`, no `eyre`.
+- `anyhow` in binaries with `.context(...)` attached at every level; `thiserror` for library crates.
+  No `eyre`.
 - No `unwrap()` or `expect()` outside test code; errors propagate with `?`.
+- `tracing` is the logging crate, with structured fields on events, never `log`/`env_logger` or
+  `println!` diagnostics.
 - Borrow over clone: `&str` instead of `&String`, `&[T]` instead of `&Vec<T>`.
 - The type system does the guarding: enums and newtypes make illegal states unrepresentable, and raw
   input is parsed into typed structures at the boundary.
@@ -239,19 +241,20 @@ something a competent practitioner does by default), and they're consulted befor
 `skills/brain/knowledge/` holds the shared, language-agnostic guidance every skill builds on. Beyond the
 ten always-on files listed above, it covers general coding conventions, testing, code review and its
 heuristic checklist, GitHub PR stacks (detection, plus layer-by-layer review and PR-description
-rules), game-dev coding, databases, DevOps operations, security, and how to author skill rules that
+rules), the shared MCP operations protocol (capability-gap tickets, dispatch restatements),
+game-dev coding, databases, DevOps operations, security, and how to author skill rules that
 stick. These load on demand
 when a task touches their topic.
 
-`skills/brain/gotchas/` holds worked, one-file-per-incident write-ups of traps already hit, consulted
-during reviews so the same trap isn't hit twice.
+Traps already hit live as lessons in the vault MCP (the pinned `lessons` project described above),
+consulted before planning and during reviews so the same trap isn't hit twice.
 
 ## Enforcement hooks
 
-`skills/brain/hooks/` holds optional Claude Code `PreToolUse` hooks that enforce the shell rules the
-knowledge files describe, so they hold even when a reflex fires before the rule is salient (a fresh
+`hooks/` (at the repo root) holds optional Claude Code `PreToolUse` hooks that enforce the shell rules
+the knowledge files describe, so they hold even when a reflex fires before the rule is salient (a fresh
 chat, a long context, deep in a task). A knowledge rule is a nudge the model can forget mid-task; a
-hook intercepts the tool call and does not depend on recall. Two are included, each shipped as a Windows
+hook intercepts the tool call and does not depend on recall. Four are included, each shipped as a Windows
 `.ps1` and a POSIX `.sh` with identical behavior, each failing open so a fault never blocks a legitimate
 command:
 
@@ -260,15 +263,28 @@ command:
   `git-ops` MCPs instead.
 - **block-secrets** hard-blocks shell commands that read or copy secret-looking files (`.env`,
   `secrets.*`, `*.key`, and the like).
+- **guard-file-targets** hard-blocks native `Glob`/`Grep`/`Read` calls that target a secret-looking
+  file, so a secret can't be located or read by stepping around the shell hooks.
+- **block-vcs-writes** hard-blocks the git writes the user owns (`commit`, `add`, `stash`) and every
+  `gh stack` subcommand except `view`, enforcing the hands-off-git rule and the PR-stack Hard Rules.
 
 They are opt-in machine config, not auto-loaded like the knowledge files: copy the script for your OS
 into `~/.claude/hooks/` and register it under `hooks.PreToolUse` in your settings. They need only a
 stock interpreter (`powershell.exe` on Windows; `bash` plus `perl` on macOS/Linux), nothing to install.
-`skills/brain/hooks/README.md` has the per-OS install, the exact block and allow behavior, and tuning.
+`hooks/README.md` has the per-OS install, the exact block and allow behavior, and tuning.
 
 For setting up a hardened global config from scratch (an MCP allow list and secret deny list, the
 enforcement hooks, dangerous-command blocks, the non-functional keys to avoid, and an optional
 sandbox), see [`security-hardening.md`](security-hardening.md).
+
+## Repo lint
+
+The rulebase checks itself: `tools/lint-repo.sh` (and its `.ps1` twin) verifies that relative links
+and cross-file references resolve, and that the prose obeys its own em-dash and machine-privacy
+bans. CI runs both implementations on every push and PR (`.github/workflows/repo-lint.yml`), the
+`.sh` on Linux and the `.ps1` on Windows, so an OS quirk or a drift between the two hand-synced
+scripts fails one job while the other passes. Agents run the lint after editing markdown here.
+[`tools/README.md`](tools/README.md) has the what and the why.
 
 ## MCP dependencies
 
@@ -292,11 +308,11 @@ Three custom MCP servers back parts of this set:
 
 ```
 CLAUDE.md                     # bootstrap: what to read at the start of every conversation
+hooks/                        # optional PreToolUse hooks that enforce the shell rules (ps1 + sh)
+tools/                        # repo lint (ps1 + sh) run by CI and by agents after md edits
 skills/
 ├── brain/
-│   ├── knowledge/            # shared, always-on and on-demand guidance, incl. task-workflows.md
-│   ├── gotchas/              # worked write-ups of traps already hit
-│   └── hooks/                # optional PreToolUse hooks that enforce the shell rules (ps1 + sh)
+│   └── knowledge/            # shared, always-on and on-demand guidance, incl. task-workflows.md
 ├── <language/domain skills>/ # each has a SKILL.md, some add references/ or guideline files
 └── ...
 ```

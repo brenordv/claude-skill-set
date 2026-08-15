@@ -12,7 +12,7 @@ These guidelines apply to code review processes regardless of language or projec
 - **Educate**: Explain *why* something is an issue, not just *what*.
 - **Acknowledge good work**: Call out well-written code.
 - **Stay objective**: Focus on code quality, not personal preferences.
-- **Remember Lessons learned**: Look into the `brain/gotchas` folder for any relevant problemas we already faced and learned how to fix.
+- **Remember Lessons learned**: Query the lessons vault (`vault_list` with `project: "lessons"`, topic tags from the diff) for problems already faced and how they were fixed, per `general-remembering-lessons.md`.
 
 ---
 

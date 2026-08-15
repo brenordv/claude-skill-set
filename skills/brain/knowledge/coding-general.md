@@ -94,7 +94,7 @@ Before writing any code:
 3. **Identify dependencies**: What does this code interact with?
 4. **Consider edge cases**: But keep it grounded. Extreme edge cases are only worth handling if explicitly requested.
 5. **Plan your approach**: Break the problem into small, testable steps.
-6. **Remember Lessons learned**: Look into the `brain/gotchas` folder for any relevant problemas we already faced and learned how to fix.
+6. **Remember Lessons learned**: Query the lessons vault (`vault_list` with `project: "lessons"`, topic tags from the task) for problems already faced and how they were fixed, per `general-remembering-lessons.md`.
 
 ### When the repo and the guidelines disagree
 
@@ -207,7 +207,8 @@ conventions this skill set has since moved past. Who wins is not yours to decide
 - **Never commit secrets**: .env, credentials, API keys stay out of version control.
 - **Never run git write commands**: no `git commit`, and no staging either (`git add`, `git stash`),
   even to "snapshot a baseline". Leave the working tree exactly as your file edits made it; the user
-  manages git and commits when ready. To inspect state, use the read-only git-ops MCP tools.
+  manages git and commits when ready. To inspect state, use the read-only git-ops MCP tools. The
+  `block-vcs-writes` hook enforces this at the tool layer when installed; the rule binds regardless.
 - **Follow existing commit conventions**: Match the repo's style.
 
 ---

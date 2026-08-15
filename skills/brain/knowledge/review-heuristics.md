@@ -12,6 +12,14 @@ general principle. Distilled from real review findings.
   secret, key vault entry, connection string, or env var by name, confirm the exact name exists. Similar
   names (`PRODUCT-ENGINE-...` vs `PRODUCTS-ENGINE-...`) coexist silently and read the wrong value. Flag any
   read from an external store with no evidence the key name was verified, and remove stale alternatives.
+- **A tag-derived version pasted into a package manifest breaks on the `v` prefix.** Debian's
+  `Version:` field must start with a digit (RPM's too, and RPM also forbids `-`), while release tags
+  conventionally carry `v` (`v2.4.2`). Flag any workflow where all three hold: it builds a `.deb`/`.rpm`
+  (calls `dpkg-deb`, writes `DEBIAN/control`, or has a `Version:` line in a heredoc); the version comes
+  from `GITHUB_REF`, `github.ref_name`, or `git describe`; and nothing strips the prefix (`${TAG#v}` or
+  equivalent, a no-op when the prefix is absent). Such a workflow passes every dry run and fails the
+  first real release. Prefer sourcing the version from the package manifest over the tag; the manifest
+  is already digit-first.
 
 ## Security
 

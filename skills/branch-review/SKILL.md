@@ -74,11 +74,12 @@ Based on file extensions in the diff, apply the corresponding skill's standards:
 | `.cpp`, `.h` (with UE macros) | unreal-engine |
 | `.sql` | postgres / azure-sql-server |
 | `.sh`, `.bash` | linux-shell-scripting |
+| `.ps1`, `.psm1` | windows-powershell-scripting |
 | Mixed / other | coding-general.md only |
 
 ### Step 3: Review Each File
 
-For every changed file, evaluate it across the review dimensions defined in `brain/knowledge/code-review.md` §2 (Correctness, Security, Performance, Maintainability, Testing), applying the language-specific standards routed in Step 2. Run each file against the concrete checklist in `brain/knowledge/review-heuristics.md`, and check `brain/gotchas/` for any prior gotcha the change might reproduce.
+For every changed file, evaluate it across the review dimensions defined in `brain/knowledge/code-review.md` §2 (Correctness, Security, Performance, Maintainability, Testing), applying the language-specific standards routed in Step 2. Run each file against the concrete checklist in `brain/knowledge/review-heuristics.md`, and check the lessons vault (`vault_list` with `project: "lessons"`, topic tags from the diff) for any prior gotcha the change might reproduce.
 
 ### Step 4: Check Cross-Cutting Concerns
 
@@ -123,6 +124,11 @@ For every changed file, evaluate it across the review dimensions defined in `bra
   `brain/knowledge/review-heuristics.md` §Correctness.
 
 ### Step 5: Produce Feedback
+
+Consolidate the findings from Steps 3 and 4: de-duplicate overlapping ones, classify each per the
+Severity Classification section below, and verify every `file:line` anchor actually points at the code
+the finding quotes. Then emit the review using the Output Format below; the format block is the single
+source of truth for the shape, so don't restate structure here.
 
 ### Step 6: Archive the Review
 

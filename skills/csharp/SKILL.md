@@ -36,6 +36,7 @@ break these. Re-read this list before writing code, and walk it again at handoff
 12. **Hard Rules apply to YOUR code only; never expand the task's scope to enforce them.** If a class is full of `set` properties, the property you add uses `init` and the existing ones stay untouched. If the test project uses FluentAssertions or Moq, your new tests use native `Assert` and hand-rolled fakes while the existing tests stay as they are. Fixing pre-existing violations is a separate task: mention them in your handoff summary and move on.
 13. **`var` wherever it compiles, delegate lambdas included.** A local whose initializer lets the compiler infer the type is `var` (or `const` per rule 7), never an explicit type, even when the repo spells types out. The deferred-action local for exception asserts is where this regresses: `var act = () => sut.UpdateDocumentAsync(document, CancellationToken.None);`, never `Func<Task> act = ...`. An explicit type is allowed only where `var` genuinely cannot compile (no initializer, a bare `null`/`default`, a language version below C# 10 that can't infer the lambda's natural type).
 14. **No stale-prone hard-coded test data.** A date or time in a test derives from the clock (`DateTime.UtcNow` with offsets, e.g. `.AddDays(-30)`), or from the injected fake clock when the code under test reads time. A literal calendar date silently rots: "one year ago" becomes "five years ago" and the scenario changes without anyone touching the test. A fixed literal is allowed only when that exact value is the scenario (a boundary, a regression's input), and then it lives in a named `const` (or `static readonly` for types `const` can't hold, `DateTime` included) whose name says why. The same instinct applies to other data: generated realistic values (`Faker`/`MockDataGenerators`) over invented literals, and any literal used twice becomes a named const.
+15. **No AutoMapper. Ever.** Not the package, not a new `Profile`, not a single new `Map` call, even in a repo built on it. Mapping is explicit code: hand-written extension methods (`ToDto()`, `ToDomain()`) or constructors, testable and greppable, with no convention magic deciding what maps where. Existing AutoMapper usage in untouched code stays as it is (rule 12).
 
 ### 1. Prime Directives
 
@@ -67,6 +68,7 @@ Cut to summary; see `style-guidelines.md` for the full formatting, naming, and `
 
 - `dynamic` type. If that's the absolute only option, stop, explain to the user what is going on and your reasoning to think this is the only option, and ask the user for insights.
 - Reflection: it drastically reduces code readability and creates "magical" behavior in the code.
+- AutoMapper (Hard Rule 15): mapping is hand-written extension methods or constructors, never convention-driven reflection.
 - LINQ Query syntax: only LINQ Methods (`Where`, `Select`, `GroupBy`, etc.) are allowed.
 - `#region` / `#endregion`, except a `Test Helpers` region at the end of test files.
 - `ConfigureAwait`: async code should be awaited by using `await`.
@@ -131,7 +133,7 @@ When an Error Handling Middleware is present:
 
 ### 11. Dependency Injection Organization
 
-- Register services via extension methods grouped by concern (DI, AutoMapper, HTTP clients, etc.).
+- Register services via extension methods grouped by concern (DI, HTTP clients, options, etc.).
 - Keep `Program.cs` minimal by delegating setup to these extensions.
 - Choose explicit lifetimes (`Singleton`, `Scoped`, `Transient`) based on behavior.
 

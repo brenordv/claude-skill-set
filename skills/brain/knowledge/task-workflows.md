@@ -100,8 +100,11 @@ and the workflow proceeds directly to Stage 2 without pausing.
 1. `[skill: <appropriate programming language skill>]`: execute the approved plan.
 
 2. **Verify gate (mandatory before review).** Run the formatter/linter, the build/typecheck, and the test
-   suite, per `coding-general.md` "before delivering"; use the `verify` skill to exercise the change
-   end to end where it has a runtime surface. Fix every failure here, and a deprecation warning on a
+   suite, per `coding-general.md` "before delivering". Then, when the change has a runtime surface (an
+   endpoint, a CLI, a UI), exercise it end to end: use the runtime's `run` skill if one is listed (in
+   Claude Code it launches and drives the project's app); if no such skill exists in the runtime, run
+   the app or entry point directly and confirm the changed behavior with your own eyes. Fix every
+   failure here, and a deprecation warning on a
    line the change touched counts as a failure, not noise (⛔ Hard Rules in `coding-general.md`).
    **Do not proceed to review with a red build, failing tests, lint errors, or new deprecation
    warnings**: reviewing unrun code reviews a guess. **"Fix" never means revert:**

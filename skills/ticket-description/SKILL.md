@@ -11,7 +11,8 @@ description: >-
 
 > **Shared Knowledge**: This skill builds on `brain/knowledge/writing-style.md` (a ticket is prose a human
 > reads; apply it in full) and `brain/knowledge/vault-operations.md` §"Artifact archives (pinned vault
-> projects)".
+> projects)". Stack detection comes from `brain/knowledge/github-pr-stacks.md`; on a stacked branch,
+> Mode A scopes its inputs per that file (see Step 2).
 
 Produce a **title and a description** for a ticket/issue. A ticket describes the *need and the outcome*,
 not a changelog. Write it as a specification of the work, even in retroactive mode.
@@ -34,9 +35,17 @@ If it's ambiguous which applies, ask one question to settle it before proceeding
 ## Step 2: Gather
 
 **Mode A:**
-1. `git_diff` with `fromRef` = base branch, `toRef` = `HEAD`; `git_log` with `ref: "<base>..HEAD"`.
-2. Infer the *problem the change solves* and the *outcome it delivers*. Describe those, not the file-level
-   edits. If the intent behind the diff is genuinely unclear, ask rather than guess.
+1. **Stack check first.** Run `gh stack view --json` per `brain/knowledge/github-pr-stacks.md`. Exit 2,
+   or `gh`/the stack extension missing, means no stack; any other outcome follows that file's detection
+   table. Never run any `gh stack` command other than `view`.
+2. `git_diff` with `fromRef` = base branch, `toRef` = `HEAD`; `git_log` with `ref: "<base>..HEAD"`.
+   On a stacked branch, the ticket describes the feature the whole stack delivers, so diff and log from
+   the trunk to the top layer (`fromRef: "<trunk>...<top-layer-branch>"`) instead; produce a per-layer
+   ticket only when the user asks for one, scoped to that layer's diff.
+3. Infer the *problem the change solves* and the *outcome it delivers*. Describe those, not the file-level
+   edits and not the stack's layer structure (that's implementation detail; at most, one Notes line
+   saying the work lands as a PR stack). If the intent behind the diff is genuinely unclear, ask rather
+   than guess.
 
 **Mode B:**
 Run one focused round of questions (batch them, don't drip). Cover only what you actually need:

@@ -22,34 +22,18 @@ don't shell out to `git` for anything the tools below cover.
    what the agent executes, not what it writes for others to run.
 
 **Self-check**: before any Bash/PowerShell call whose command contains `git `, ask "is this a write
-operation?" If it isn't, stop and use the MCP tool.
+operation?" If it isn't, stop and use the MCP tool. The `block-vcs-writes` hook enforces the
+stage/commit/stash ban at the tool-call layer when installed, but the rule binds first, in your
+reasoning.
 
 ### Capability-gap protocol
 
-When git-ops lacks a capability you need:
-
-1. **Tell the user** exactly what git-ops can't do and what you needed it for.
-2. **File a ticket** (if the vault MCP is available) in the pinned vault project `git-ops-backlog`:
-   - `vault_list` with `project: "git-ops-backlog"` first. If a ticket for the same gap already
-     exists, add an entry under its `## Occurrences` heading with `vault_edit_section`; never bare
-     `vault_append`.
-   - Otherwise `vault_save` with `project: "git-ops-backlog"`, name
-     `gitops-gap--<slug>--<YYYY-MM-DD>`, `format: markdown`. Body: the operation needed, the shell
-     command it would map to (paths rewritten repo-relative or as `<repo-root>`), proposed
-     tool/params, the task that surfaced it, and a `## Occurrences` section. Under `## Occurrences`,
-     every entry records the **exact input used** (the git-ops tool and parameters you called, or
-     would call to hit the gap) and the **output received** (the returned `error.code` and message, or
-     a note that no call was possible because the capability is absent), so a later agent can
-     reproduce, analyze, and fix it. Capture input and output in scrubbed form, never raw: rewrite
-     paths repo-relative or as `<repo-root>` and strip machine-identifying details and secrets, so the
-     ticket passes the `machine-privacy.md` self-check like any other save.
-3. **Shell git for the missing capability only with the user's explicit approval**, and the approval
-   covers that one invocation, never a standing waiver. Inside an autonomous workflow, don't pause to
-   ask: work around the gap using only the available MCP tools (the no-shell-git rule holds even when
-   you can't ask), file the ticket, and note the limitation in the final report.
-
-The extra tokens this protocol costs are accepted: the backlog is what makes evolving the git-ops
-server easy.
+Follow the shared protocol in `mcp-operations-protocol.md` (backlog project `git-ops-backlog`, name
+prefix `gitops-gap`; ticket contents scrubbed repo-relative or as `<repo-root>`). git-ops specific:
+**shell git for the missing capability is allowed only with the user's explicit approval**, and the
+approval covers that one invocation, never a standing waiver. Inside an autonomous workflow there is
+no such approval: work around the gap using only the available MCP tools (the no-shell-git rule
+holds even when you can't ask), file the ticket, and note the limitation in the final report.
 
 ### Dispatch restatement (copy verbatim into every subagent prompt)
 

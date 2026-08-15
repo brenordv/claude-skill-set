@@ -105,7 +105,7 @@ Before handing off to the user:
 | Security-sensitive changes | `security` |
 | Database schema changes | Relevant database skill |
 | Game feature design | `game-developer` |
-| Code review after implementation | `python-code-review` (or equivalent) |
+| Code review after implementation | `branch-review` |
 
 ---
 

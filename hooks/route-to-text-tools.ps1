@@ -8,7 +8,7 @@
 # and is allowed. Only a command LEADING a pipeline stage is treated as reading files.
 #
 # Any unexpected error fails OPEN (exit 0): a hook must never break a legitimate command.
-# See skills/brain/hooks/README.md for install and tuning.
+# See hooks/README.md for install and tuning.
 
 $ErrorActionPreference = 'Stop'
 

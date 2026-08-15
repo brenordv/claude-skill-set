@@ -1,19 +1,21 @@
 # Hooks
 
-Enforcement hooks that back the always-on rules in `../knowledge/`. A rule in a knowledge file is
+Enforcement hooks that back the always-on rules in `../skills/brain/knowledge/`. A rule in a knowledge file is
 probabilistic: it only fires if the model recalls it at the moment a reflex fires, and the reflex is
 strongest exactly where recall is weakest (fresh chat, long context, deep in a task). A hook does not
 depend on recall. It intercepts the tool call after the model emits it and before it runs, and its
 denial message lands in context at the one moment it steers the next attempt.
 
-This folder holds three independent `PreToolUse` hooks, each shipped as a Windows `.ps1` and a POSIX
-`.sh` with identical behavior, each failing open. Two match the shell tools (`Bash|PowerShell`), one
-matches the native file tools (`Glob|Grep|Read`):
+This folder holds four independent `PreToolUse` hooks, each shipped as a Windows `.ps1` and a POSIX
+`.sh` with identical behavior, each failing open. Three match the shell tools (`Bash|PowerShell`),
+one matches the native file tools (`Glob|Grep|Read`):
 - **route-to-text-tools** routes file-probing, in-place-edit, and read-only-git shell commands to the
   `text-search`, `text-edit`, and `git-ops` MCPs.
 - **block-secrets** hard-blocks shell commands that read or copy secret-looking files.
 - **guard-file-targets** hard-blocks native `Glob`/`Grep`/`Read` calls that target a secret-looking
   file, so a secret cannot be located or read by stepping around the shell hooks.
+- **block-vcs-writes** hard-blocks the git writes the user owns (`commit`, `add`, `stash`) and every
+  `gh stack` subcommand except `view`.
 
 > [!IMPORTANT]
 > It is crucial to know that those hooks are not a foolproof, be-all, end-all security solution. 
@@ -32,9 +34,9 @@ whose purpose is to read, search, or list files (routing the agent to the `text-
 rewrite file content in place (routing to the `text-edit` MCP), or to inspect a repo read-only through
 shell `git` (routing to the `git-ops` MCP), and lets everything else through. It is the enforcement
 layer for
-[`../knowledge/text-search-operations.md`](../knowledge/text-search-operations.md),
-[`../knowledge/text-edit-operations.md`](../knowledge/text-edit-operations.md), and
-[`../knowledge/git-readonly-operations.md`](../knowledge/git-readonly-operations.md).
+[`../skills/brain/knowledge/text-search-operations.md`](../skills/brain/knowledge/text-search-operations.md),
+[`../skills/brain/knowledge/text-edit-operations.md`](../skills/brain/knowledge/text-edit-operations.md), and
+[`../skills/brain/knowledge/git-readonly-operations.md`](../skills/brain/knowledge/git-readonly-operations.md).
 
 The motivating incident: on a fresh chat in a new repo the reflex fired before any rule was salient,
 and `grep`/`cat` read files a `.gitignore` should have hidden. `text-search` would have withheld those
@@ -312,3 +314,73 @@ matcher and a branch to the field selector (the `switch ($tool)` in `.ps1`, the 
 extractor in `.sh`) naming that tool's target field. Do **not** add `Grep`'s `pattern` to the selector:
 it is a content regex, and inspecting it would deny legitimate code searches for strings like
 `SECRET_KEY`.
+
+## block-vcs-writes
+
+The fourth `PreToolUse` hook, shell-matched (`Bash|PowerShell`) like the first two:
+**`block-vcs-writes.ps1`** / **`block-vcs-writes.sh`**. It denies VCS state changes the agent must
+never make, in two families:
+
+- **git writes the user owns**: `commit`, `add`, and `stash` (except `stash list` / `stash show`).
+  Where `route-to-text-tools` is deliberately biased toward allowing git writes, this hook encodes a
+  policy: the user manages git, the agent never stages, commits, or stashes
+  (`../skills/brain/knowledge/coding-general.md`, Version Control Hygiene). Don't install it if you
+  want an agent that commits.
+- **`gh stack` mutations**: every subcommand except `view`. Stacks are created, restructured, and
+  submitted by the user; `view` is the one read the detection protocol needs
+  (`../skills/brain/knowledge/github-pr-stacks.md`).
+
+Statements are split on `&&`, `||`, `;`, `|`, and newlines, and a write anywhere in the command is
+denied, so `build && git add -A` is caught. git global flags are tolerated (`git -C path commit`,
+`git -c k=v commit`). Push, checkout, merge, and the other git writes stay allowed: those happen on
+explicit request and still pass the permission prompt.
+
+### What it blocks, and what it does not
+
+| Command                                                                      | Verdict   |
+|------------------------------------------------------------------------------|-----------|
+| `git commit -m x`, `git add .`, `git stash`, `git stash pop`, `git -C sub commit` | deny (git write the user owns) |
+| `gh stack submit`, `gh stack sync`, `gh stack modify`, `gh stack init`       | deny (stack mutation)          |
+| `git stash list`, `git stash show stash@{0}`                                 | **allow** (read-only stash forms) |
+| `git push`, `git checkout -b x`, `git merge`                                 | **allow** (user-requested writes; the permission prompt still applies) |
+| `gh stack view --json`, bare `gh stack`, `gh pr create`                      | **allow** |
+
+### Install
+
+Same mechanics as the other shell hooks: copy the script for your OS to `~/.claude/hooks/` and add
+another hook group under `hooks.PreToolUse` with matcher `Bash|PowerShell` pointing at it (exec-form
+`powershell.exe` + `-File` on Windows; `bash "$HOME/.claude/hooks/block-vcs-writes.sh"` on POSIX).
+Requirements are identical (Windows `powershell.exe`; macOS/Linux `bash` + `perl` with `JSON::PP`
+core), and it fails open.
+
+### Verify
+
+```bash
+s=~/.claude/hooks/block-vcs-writes.sh
+bash "$s" --command 'git commit -m x'       # -> git
+bash "$s" --command 'git stash list'        # -> allow
+bash "$s" --command 'gh stack submit'       # -> stack
+bash "$s" --command 'gh stack view --json'  # -> allow
+```
+
+PowerShell: pipe a `{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}` payload into
+`powershell.exe -File block-vcs-writes.ps1`; a deny prints the JSON, allow prints nothing.
+
+### Tuning
+
+The write lists live in the fragment loop: the `commit|add` pair, the `stash` branch (its
+`list`/`show` carve-out), and the `gh stack` allowlist of one (`view`). To permit stashing, drop the
+`stash` branch; to permit stack submission, you are better off uninstalling the hook. Keep both
+scripts in sync.
+
+## Protected MCP stores (guard-file-targets + block-secrets)
+
+`guard-file-targets` and `block-secrets` each carry a `PROTECTED_STORES` tunable (`$protectedStores`
+in the `.ps1`s): a regex matching the on-disk backing stores owned by MCP servers (the vault's
+storage, the text-edit journal). It is empty by default, a no-op until configured, because store
+locations are machine config. When set, `guard-file-targets` denies any native `Glob`/`Grep`/`Read`
+whose target matches, and `block-secrets` denies any shell command naming a match, read construct or
+not: the stores are tool-only (`../skills/brain/knowledge/vault-operations.md`, Hard Rules), so a
+shell command naming one has no legitimate use. Set the same regex in all four scripts. This is the
+portable enforcement; for a hard wall, put the store under filesystem permissions the agent's
+process cannot read.

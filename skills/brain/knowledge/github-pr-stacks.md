@@ -32,6 +32,9 @@ Official references:
    The exemption covers exactly this one read-only command; layer diffs, logs, and blame still go
    through git-ops as usual.
 
+The `block-vcs-writes` hook denies every `gh stack` subcommand except `view` when installed; the
+rules above bind regardless.
+
 ## Detection protocol
 
 ```shell

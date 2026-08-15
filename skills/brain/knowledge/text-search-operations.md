@@ -61,26 +61,11 @@ only mean to locate it, and "just finding the file" is the rationalization to re
 
 ### Capability-gap protocol
 
-When text-search (and the native tools) lack a capability you need:
-
-1. **Tell the user** exactly what couldn't be done and what you needed it for. A path outside the base
-   root and every package root is a configuration limit, not a server bug: ask the user to adjust the
-   configuration (or use a native tool if the runtime reaches the path) instead of filing a ticket.
-2. **File a ticket** (if the vault MCP is available) in the pinned vault project `text-search-backlog`:
-   - `vault_list` with `project: "text-search-backlog"` first. If a ticket for the same gap exists, add
-     an entry under its `## Occurrences` heading with `vault_edit_section`; never bare `vault_append`.
-   - Otherwise `vault_save` with `project: "text-search-backlog"`, name
-     `textsearch-gap--<slug>--<YYYY-MM-DD>`, `format: markdown`. Body: the operation needed, the shell
-     command it would map to (paths rewritten scope-relative or as `<scope>`), proposed tool/params, the
-     task that surfaced it, and a `## Occurrences` section. Under `## Occurrences`, every entry records
-     the **exact input used** (the text-search tool and parameters you called, or would call to hit the
-     gap) and the **output received** (the returned `error.code` and message, or a note that no call
-     was possible because the capability is absent), so a later agent can reproduce, analyze, and fix
-     it. Capture input and output in scrubbed form, never raw: rewrite paths scope-relative or as
-     `<scope>` and strip machine-identifying details and secrets; the ticket passes the
-     `machine-privacy.md` self-check like any other save.
-3. Inside an autonomous workflow, don't pause to ask: work around the gap with the available tools (the
-   no-shell rule holds even when you can't ask), file the ticket, and note the limitation in the report.
+Follow the shared protocol in `mcp-operations-protocol.md` (backlog project `text-search-backlog`,
+name prefix `textsearch-gap`; ticket contents scrubbed scope-relative or as `<scope>`). text-search
+specific: **a path outside the base root and every package root is a configuration limit, not a
+server gap.** Ask the user to adjust the configuration (or use a native tool if the runtime reaches
+the path) instead of filing a ticket.
 
 ### Dispatch restatement (copy verbatim into every subagent prompt)
 

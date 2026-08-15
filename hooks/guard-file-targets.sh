@@ -26,10 +26,23 @@ MSG
 SECRET='(\.env([^A-Za-z0-9_]|$)|appsettings\.json|appsettings\.[A-Za-z0-9_]+\.json|secrets\.(json|yaml|yml)|credentials\.(json|yaml)|\.key([^A-Za-z0-9_]|$)|\.pem([^A-Za-z0-9_]|$)|\.pfx([^A-Za-z0-9_]|$)|\.p12([^A-Za-z0-9_]|$)|\.jks([^A-Za-z0-9_]|$)|\.keystore([^A-Za-z0-9_]|$)|master\.key|private_key|\.htpasswd)'
 # A non-secret sample that matches a pattern above but is safe to target.
 SAFE='\.(example|template|sample)([^A-Za-z0-9_]|$)'
+# Backing stores owned by MCP servers (vault storage, text-edit journal): tool-only access, never
+# direct file targeting. MACHINE CONFIG: set to a regex matching THIS machine's store locations,
+# e.g. '\.file-vault([/\\]|$)|\.text-edit-journal([/\\]|$)'. Empty string = check disabled.
+# Keep in sync with the same setting in block-secrets.
+PROTECTED_STORES=''
+
+STORE_MSG="$(cat <<'MSG'
+Blocked: this Glob/Grep/Read targets the backing store of an MCP server (vault storage, text-edit journal, or similar). Those stores are tool-only: use the owning server's MCP tools (vault_list, vault_get, ...) instead of touching its files, and report a failing tool call rather than working around it through the filesystem. See brain/knowledge/vault-operations.md, Hard Rules.
+MSG
+)"
 
 classify() {
     local candidate="$1"
     [ -n "$candidate" ] || return
+    if [ -n "$PROTECTED_STORES" ] && printf '%s' "$candidate" | grep -qiE "$PROTECTED_STORES"; then
+        echo store; return
+    fi
     printf '%s' "$candidate" | grep -qiE "$SECRET" || return
     printf '%s' "$candidate" | grep -qiE "$SAFE" && return
     echo secret
@@ -60,5 +73,8 @@ candidate="$(perl -MJSON::PP -0777 -ne '
 ' 2>/dev/null)"
 [ -n "$candidate" ] || exit 0
 
-[ "$(classify "$candidate")" = secret ] && emit_deny "$DENY_MSG"
+case "$(classify "$candidate")" in
+    secret) emit_deny "$DENY_MSG" ;;
+    store)  emit_deny "$STORE_MSG" ;;
+esac
 exit 0

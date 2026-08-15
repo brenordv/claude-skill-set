@@ -119,9 +119,11 @@ Notes:
 
 ## 2. Install the enforcement hooks (covers the Bash path)
 
-`permissions` cannot stop `cat .env` in Bash; a hook can. `skills/brain/hooks/` ships two `PreToolUse`
-hooks (`skills/brain/hooks/README.md` documents the scripts and per-OS install). Copy the script for
-your OS into `~/.claude/hooks/`, then add both groups under `hooks.PreToolUse`:
+`permissions` cannot stop `cat .env` in Bash; a hook can. `hooks/` (at the repo root) ships four
+`PreToolUse` hooks (`hooks/README.md` documents the scripts and per-OS install, including
+`guard-file-targets` for the native file tools and `block-vcs-writes` for git/`gh stack` writes).
+Copy the script for your OS into `~/.claude/hooks/`, then add one group per hook under
+`hooks.PreToolUse`; the two shell groups below show the pattern:
 
 Windows (exec-form, absolute `-File` path):
 

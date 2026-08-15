@@ -44,4 +44,8 @@ non-trivial task, list that folder and read any file whose topic relates
 to the task. Skills are surfaced separately by the agent runtime; follow
 their instructions when they apply.
 
-Paths for those files are relative to this file's path. If either of the two foundational files is missing, tell the user before proceeding.
+Paths for those files are relative to this file's path. If any of the numbered files above is missing, tell the user before proceeding.
+
+This repo's markdown is linted. After editing any `.md` file here, run `tools/lint-repo.ps1`
+(Windows) or `tools/lint-repo.sh` and fix the findings before handing off; CI runs the same script
+on every push and pull request. What it checks and why is in `tools/README.md`.
