@@ -23,3 +23,10 @@ jobs:
       - name: Run repo lint (Windows PowerShell 5.1)
         shell: powershell
         run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\lint-repo.ps1
+
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run rust quality gate unit tests
+        run: python3 -m unittest discover -s skills/rust/scripts

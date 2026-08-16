@@ -115,6 +115,7 @@ In a library crate:
 - Use `assert!(matches!(...))` for enum variant checks
 - Test happy paths, error conditions, and meaningful boundary values
 - Add tests where it makes sense; don't add them purely for coverage numbers
+- New-code quality gate: `scripts/rust_quality_gate.py` checks diff coverage and mutation-tests the added lines before handoff; see `testing-guidelines.md` §"New-code quality gate"
 
 ### 7. Forbidden
 
