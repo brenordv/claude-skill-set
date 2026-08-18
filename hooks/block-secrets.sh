@@ -11,10 +11,10 @@
 # never broken. Self-test:  bash block-secrets.sh --command "cat .env"
 # See hooks/README.md for install and tuning.
 
-DENY_MSG="$(cat <<'MSG'
+IFS= read -r -d '' DENY_MSG <<'MSG'
 Blocked: this command reads or copies a file matching a secret-file pattern (.env, appsettings.json, secrets.*, credentials.*, *.key, *.pem, *.pfx, *.p12, *.jks, *.keystore, master.key, private_key, .htpasswd), which would pull secret material into context. If the target is genuinely non-secret, read it another way or point at its .example/.template/.sample. For legitimate file reads prefer the text-search MCP, which withholds secret-shaped content on its own. Locating or enumerating secret files is equally off-limits, not only reading them; the ban is on seeking a secret, and the native Glob/Grep/Read tools are covered by the guard-file-targets hook. See brain/knowledge/text-search-operations.md.
 MSG
-)"
+DENY_MSG=${DENY_MSG%$'\n'}
 
 # A file that looks like a secret. BSD-grep-safe (no \b/\w): word end is (non-word-char | end-of-line).
 SECRET='(\.env([^A-Za-z0-9_]|$)|appsettings\.json|appsettings\.[A-Za-z0-9_]+\.json|secrets\.(json|yaml|yml)|credentials\.(json|yaml)|\.key([^A-Za-z0-9_]|$)|\.pem([^A-Za-z0-9_]|$)|\.pfx([^A-Za-z0-9_]|$)|\.p12([^A-Za-z0-9_]|$)|\.jks([^A-Za-z0-9_]|$)|\.keystore([^A-Za-z0-9_]|$)|master\.key|private_key|\.htpasswd)'
@@ -29,10 +29,10 @@ READEXFIL='((cat|head|tail|less|more|type|Get-Content|bat|sed|awk|source)[[:spac
 # Keep in sync with the same setting in guard-file-targets.
 PROTECTED_STORES=''
 
-STORE_MSG="$(cat <<'MSG'
+IFS= read -r -d '' STORE_MSG <<'MSG'
 Blocked: this command targets the backing store of an MCP server (vault storage, text-edit journal, or similar). Those stores are tool-only: use the owning server's MCP tools (vault_list, vault_get, ...) instead of touching its files, and report a failing tool call rather than working around it through the filesystem. See brain/knowledge/vault-operations.md, Hard Rules.
 MSG
-)"
+STORE_MSG=${STORE_MSG%$'\n'}
 
 classify() {
     local command="$1"

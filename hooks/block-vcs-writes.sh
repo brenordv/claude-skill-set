@@ -17,15 +17,15 @@
 
 set -f  # no glob expansion while tokenizing untrusted command text
 
-GIT_MSG="$(cat <<'MSG'
+IFS= read -r -d '' GIT_MSG <<'MSG'
 Blocked: this command runs a git write the user owns (commit, add, or stash). Standing rule of this skill set: never stage, never commit, never stash; leave the working tree exactly as your file edits made it and let the user drive git. Read-only inspection goes through the git-ops MCP. See brain/knowledge/coding-general.md, Version Control Hygiene.
 MSG
-)"
+GIT_MSG=${GIT_MSG%$'\n'}
 
-STACK_MSG="$(cat <<'MSG'
+IFS= read -r -d '' STACK_MSG <<'MSG'
 Blocked: every gh stack subcommand except 'view' creates, restructures, or submits PR stacks, and stack management is the user's responsibility. The only permitted call is 'gh stack view' (stack detection). See brain/knowledge/github-pr-stacks.md, Hard Rules.
 MSG
-)"
+STACK_MSG=${STACK_MSG%$'\n'}
 
 lower() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
 

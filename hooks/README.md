@@ -136,6 +136,11 @@ so `grep` and `Get-Content` reflexes are both caught. Both scripts carry identic
 
 ### Verify
 
+All four hooks run together from the repo root with `bash tools/test-hooks.sh`: it parses every
+script, guards against the command-substitution heredoc that broke them on macOS bash 3.2, and checks
+every verdict in the tables above (see `../tools/README.md`). The hand checks below exercise just this
+hook.
+
 **PowerShell** (pipe a synthesized payload straight into the script, no Claude Code needed):
 
 ```powershell
@@ -226,6 +231,9 @@ open.
 
 ### Verify
 
+The full harness for all four hooks runs from the repo root with `bash tools/test-hooks.sh`; the hand
+checks below exercise just this one.
+
 ```bash
 s=~/.claude/hooks/block-secrets.sh
 bash "$s" --command 'cat .env'          # -> secret
@@ -290,6 +298,9 @@ add a **third** hook group under `hooks.PreToolUse` with matcher **`Glob|Grep|Re
 open.
 
 ### Verify
+
+The full harness for all four hooks runs from the repo root with `bash tools/test-hooks.sh`; the hand
+checks below exercise just this one.
 
 The `.sh` has a `--candidate` self-test that classifies a raw target string (`secret`/`allow`) with
 neither Perl nor Claude Code; the JSON stdin path needs Perl:
@@ -400,6 +411,9 @@ Reload afterwards: open `/hooks` once or restart Claude Code (a mid-session sett
 picked up until then).
 
 ### Verify
+
+The full harness for all four hooks runs from the repo root with `bash tools/test-hooks.sh`; the hand
+checks below exercise just this one.
 
 ```bash
 s=~/.claude/hooks/block-vcs-writes.sh
@@ -539,6 +553,10 @@ one of them blocks the call. Reload with `/hooks` or a restart when done.
   }
 }
 ```
+
+After copying (and again after an OS or bash upgrade that changes `/bin/bash`), point the test harness
+at the installed copies to confirm they still parse and behave, using the directory you copied them
+into: `bash tools/test-hooks.sh --hooks-dir ~/.claude/hooks`.
 
 Skipping a hook is fine (each is independent); just drop its group. If you use `block-vcs-writes`
 but want the agent able to commit on some machine, leave that one group out there rather than

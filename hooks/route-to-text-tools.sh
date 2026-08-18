@@ -13,7 +13,7 @@
 # never broken. Self-test without Perl or Claude Code:  bash route-to-text-tools.sh --command "grep -r foo ."
 # See hooks/README.md for install and tuning.
 
-SEARCH_MSG="$(cat <<'MSG'
+IFS= read -r -d '' SEARCH_MSG <<'MSG'
 Blocked: this shell command reads or searches files on disk, which bypasses the .gitignore and secret guards (this is exactly what leaked a gitignored file before). Use the text-search MCP instead (blanket-approved, read-only, ignore- and secret-aware), scoped with cwd = the repo's absolute path:
   grep / rg            -> search_text
   cat / head / tail    -> read_lines
@@ -22,14 +22,14 @@ Blocked: this shell command reads or searches files on disk, which bypasses the 
 For paths the native Read / Grep / Glob tools reach, those are fine too. See brain/knowledge/text-search-operations.md.
 Exempt (NOT blocked): piping a command's OWN output through grep/head/tail, e.g. `dotnet test | tail -20`. If that was the intent, re-run it in that shape.
 MSG
-)"
+SEARCH_MSG=${SEARCH_MSG%$'\n'}
 
-EDIT_MSG="$(cat <<'MSG'
+IFS= read -r -d '' EDIT_MSG <<'MSG'
 Blocked: this rewrites file content through the shell, which is banned. For a pattern edit across files use the text-edit MCP: replace_text (dry_run: true first, then the real run gated with expected_match_count) or normalize_files, scoped with cwd = the repo's absolute path. For one hand-shaped edit use the native Edit tool; for a brand-new file use the native Write tool. See brain/knowledge/text-edit-operations.md.
 MSG
-)"
+EDIT_MSG=${EDIT_MSG%$'\n'}
 
-GIT_MSG="$(cat <<'MSG'
+IFS= read -r -d '' GIT_MSG <<'MSG'
 Blocked: read-only git inspection goes through the git-ops MCP, not the shell (a shell `git log` / `git grep` is exactly the case the rule targets). Use these with cwd = the repo's absolute path:
   git grep -> git_grep (fixedString:false for regex)    git log -> git_log
   git diff -> git_diff    git show -> git_show    git status -> git_status    git blame -> git_blame
@@ -37,7 +37,7 @@ Blocked: read-only git inspection goes through the git-ops MCP, not the shell (a
   git stash list/show -> git_stash_list / git_stash_show
 Shell git stays fine for WRITES (commit, add, push, checkout, reset, merge, rebase, tag, fetch, pull). See brain/knowledge/git-readonly-operations.md.
 MSG
-)"
+GIT_MSG=${GIT_MSG%$'\n'}
 
 # The bare command word leading one pipeline stage.
 lead_word() {

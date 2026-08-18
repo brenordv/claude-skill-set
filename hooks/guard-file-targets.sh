@@ -17,10 +17,10 @@
 # broken. Self-test:  bash guard-file-targets.sh --candidate "**/.env"
 # See hooks/README.md for install and tuning.
 
-DENY_MSG="$(cat <<'MSG'
+IFS= read -r -d '' DENY_MSG <<'MSG'
 Blocked: this Glob/Grep/Read targets a secret-looking file (.env, appsettings.json, secrets.*, credentials.*, *.key, *.pem, *.pfx, *.p12, *.jks, *.keystore, master.key, private_key, .htpasswd). Seeking a secret file is off-limits, not only reading one: its existence and location are not yours to map, and opening it pulls secret material into context. If you need a non-secret sample, target its .example/.template/.sample instead. Legitimate reads of non-secret files are unaffected. See brain/knowledge/text-search-operations.md.
 MSG
-)"
+DENY_MSG=${DENY_MSG%$'\n'}
 
 # A file that looks like a secret. BSD-grep-safe (no \b/\w): word end is (non-word-char | end-of-line).
 SECRET='(\.env([^A-Za-z0-9_]|$)|appsettings\.json|appsettings\.[A-Za-z0-9_]+\.json|secrets\.(json|yaml|yml)|credentials\.(json|yaml)|\.key([^A-Za-z0-9_]|$)|\.pem([^A-Za-z0-9_]|$)|\.pfx([^A-Za-z0-9_]|$)|\.p12([^A-Za-z0-9_]|$)|\.jks([^A-Za-z0-9_]|$)|\.keystore([^A-Za-z0-9_]|$)|master\.key|private_key|\.htpasswd)'
@@ -32,10 +32,10 @@ SAFE='\.(example|template|sample)([^A-Za-z0-9_]|$)'
 # Keep in sync with the same setting in block-secrets.
 PROTECTED_STORES=''
 
-STORE_MSG="$(cat <<'MSG'
+IFS= read -r -d '' STORE_MSG <<'MSG'
 Blocked: this Glob/Grep/Read targets the backing store of an MCP server (vault storage, text-edit journal, or similar). Those stores are tool-only: use the owning server's MCP tools (vault_list, vault_get, ...) instead of touching its files, and report a failing tool call rather than working around it through the filesystem. See brain/knowledge/vault-operations.md, Hard Rules.
 MSG
-)"
+STORE_MSG=${STORE_MSG%$'\n'}
 
 classify() {
     local candidate="$1"
