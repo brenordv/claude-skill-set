@@ -108,7 +108,7 @@ git_readonly() {
 
 # Classify a command: echoes search|edit|git, or nothing for allow.
 classify() {
-    local command="$1" sentinel stmt stage0 lw tk
+    local command="$1" frags stmt stage0 lw tk
     # In-place / content-write (any position) -> edit.
     printf '%s' "$command" | grep -qiE '(^|[^A-Za-z0-9_])sed([^|;&]*)[[:space:]]-i'          && { echo edit; return; }
     printf '%s' "$command" | grep -qE  '(^|[^A-Za-z0-9_])perl[[:space:]]+-[a-z]*i'            && { echo edit; return; }
@@ -121,14 +121,10 @@ classify() {
 
     # Split into statements on && || ; and newlines, keeping only each statement's first pipeline
     # stage (the producer); a read filter downstream of a pipe is output trimming, allowed.
-    sentinel=$'\x01'
-    local tmp="$command"
-    tmp="${tmp//&&/$sentinel}"
-    tmp="${tmp//||/$sentinel}"
-    tmp="${tmp//;/$sentinel}"
-    tmp="${tmp//$'\n'/$sentinel}"
-    local STMTS; IFS="$sentinel" read -ra STMTS <<< "$tmp"
-    for stmt in "${STMTS[@]}"; do
+    frags="${command//&&/$'\n'}"
+    frags="${frags//||/$'\n'}"
+    frags="${frags//;/$'\n'}"
+    while IFS= read -r stmt; do
         stage0="${stmt%%|*}"
         lw="$(lead_word "$stage0")"
         [ -n "$lw" ] || continue
@@ -140,7 +136,9 @@ classify() {
             *)
                 if [ "$lw" = git ] && git_readonly "$stage0"; then echo git; return; fi ;;
         esac
-    done
+    done <<EOF
+$frags
+EOF
 }
 
 emit_deny() {
