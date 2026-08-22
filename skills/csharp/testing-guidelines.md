@@ -230,7 +230,8 @@ newer, whatever the target app targets.
 
 ### Running the gate
 
-Run it from anywhere inside the target repo:
+Run it from anywhere inside the target repo; `<skill-set>` is the folder this skill set lives in,
+the one holding `skills/`:
 
 ```bash
 python <skill-set>/skills/csharp/scripts/csharp_quality_gate.py

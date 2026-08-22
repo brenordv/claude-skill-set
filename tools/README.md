@@ -46,7 +46,7 @@ bash tools/lint-repo.sh
 ```
 
 Exit 0 means clean; exit 1 prints one `file:line: [tag] message` per finding. Agents editing
-markdown in this repo run it before handing off (wired in `CLAUDE.md`); CI is the backstop for
+markdown in this repo run it before handing off (wired in `.claude/rules/markdown-lint.md`); CI is the backstop for
 hand edits.
 
 ### Tuning

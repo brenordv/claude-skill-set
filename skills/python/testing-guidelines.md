@@ -136,7 +136,8 @@ run it under WSL or verify locally first.
 ### Running the gate
 
 Run it from anywhere inside the target repo, with the project's own interpreter (the venv's), so
-the coverage run and the mutants' test runs see the project's dependencies:
+the coverage run and the mutants' test runs see the project's dependencies. `<skill-set>` is the
+folder this skill set lives in, the one holding `skills/`:
 
 ```bash
 python <skill-set>/skills/python/scripts/python_quality_gate.py

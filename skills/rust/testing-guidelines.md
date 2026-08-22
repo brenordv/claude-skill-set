@@ -167,7 +167,8 @@ fetches the current release. Add `--version X.Y.Z` where reproducibility matters
 
 ### Running the gate
 
-Run it from anywhere inside the target repo:
+Run it from anywhere inside the target repo; `<skill-set>` is the folder this skill set lives in,
+the one holding `skills/`:
 
 ```bash
 python <skill-set>/skills/rust/scripts/rust_quality_gate.py
