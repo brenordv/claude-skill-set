@@ -147,6 +147,12 @@ The threshold is a detection signal, and this file's standing rule holds: do not
 to move the number. A failing gate means "look at what is untested and decide", never "pad until
 green".
 
+The two halves run at different times. While iterating and at handoff, run only the coverage half
+(`--skip-mutants`). The mutation half is opt-in, and a commit is the user's action alone: never
+commit, stage, or stash to satisfy the gate. Once the coverage half passes, ask the user whether
+they want the mutation phase and, if so, to commit the changes themselves; only then run the gate
+without `--skip-mutants`.
+
 ### Install
 
 The script is Python 3, standard library only. The two cargo tools install once per machine:
@@ -191,14 +197,15 @@ consumer should keep those two remediation paths separate.
 ### Runtime and caveats
 
 - Mutation testing runs a build plus a test run per mutant: minutes, not seconds, even scoped to
-  the diff. Iterate with `--skip-mutants`; run the full gate before handoff.
+  the diff. Iterate with `--skip-mutants`; the full gate waits for the user's opt-in and commit.
 - cargo-mutants enforces a per-mutant timeout. The coverage phase has no equivalent, so a
   deadlocked test suite hangs the coverage run.
 - A diff touching only test code produces zero mutants; the script reports that as informational.
 - Doctests do not count as coverage: cargo-llvm-cov's `--doctests` flag is nightly-only and the
   gate does not pass it. Code exercised only by doc examples reads as uncovered.
 - Untracked files are invisible to `git diff` and so to both gates. The preflight warning names
-  them; commit them or `git add -N <file>` first.
+  them; making them visible takes a git write (a commit, or `git add -N <file>`), which is the
+  user's to run, so ask them first.
 - In a workspace where a lib crate is tested through another member's integration tests, set
   `test_workspace = true` in the target repo's `.cargo/mutants.toml`. By default each mutant runs
   only the tests of the package being mutated

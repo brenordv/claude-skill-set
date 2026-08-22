@@ -190,3 +190,118 @@ Fakes stay minimal: implement only what the tests exercise, expose captured stat
 - Target **90%+** code coverage (but consider ROI -- don't test trivial getters/setters)
 - Always run `dotnet test` before handoff to verify all tests pass
 - Every new feature or bug fix must include corresponding tests
+
+## New-code quality gate
+
+`scripts/csharp_quality_gate.py` in this skill folder gates the lines a branch adds, diffing the
+merge base against the working tree so uncommitted work is checked too. It wraps two tools, one
+per question:
+
+- `dotnet test` with the coverlet collector (`--collect:"XPlat Code Coverage;Format=lcov"`)
+  answers quantity: which added lines execute under tests. The script intersects the lcov output
+  with the added lines and enforces a threshold, default 90% of new coverable lines.
+- Stryker.NET (`dotnet stryker --since:<merge-base>`) answers quality: it mutates only the changed
+  code and fails when the scoped mutation score drops below 100, meaning the code could be broken
+  without any test noticing.
+
+The threshold is a detection signal, and this file's standing rule holds: do not add tests purely
+to move the number. A failing gate means "look at what is untested and decide", never "pad until
+green".
+
+The two halves run at different times. While iterating and at handoff, run only the coverage half
+(`--skip-mutants`). The mutation half is opt-in and wants committed work, and a commit is the
+user's action alone: never commit, stage, or stash to satisfy the gate. Once the coverage half
+passes, ask the user whether they want the mutation phase and, if so, to commit the changes
+themselves; only then run the gate without `--skip-mutants`.
+
+### Install
+
+The script is Python 3, standard library only. The coverlet collector is already on every test
+project per SKILL.md section 15 (`coverlet.collector` plus `Microsoft.NET.Test.Sdk`), so only
+Stryker installs once per machine:
+
+```bash
+dotnet tool install -g dotnet-stryker
+```
+
+A repo-local install (`dotnet new tool-manifest` then `dotnet tool install dotnet-stryker`) works
+too; the gate runs it as `dotnet stryker` either way. Stryker itself needs the .NET 10 runtime or
+newer, whatever the target app targets.
+
+### Running the gate
+
+Run it from anywhere inside the target repo:
+
+```bash
+python <skill-set>/skills/csharp/scripts/csharp_quality_gate.py
+```
+
+The base ref defaults to `origin/HEAD`, then `main`, then `master`; `--base <ref>` overrides it.
+`--skip-mutants` runs only the coverage gate, for quick iteration. `--cov-threshold <pct>` and the
+repeatable `--exclude <glob>` adjust the coverage policy (test/tests/`*.Tests` path segments and
+`*Tests.cs` / `*.Designer.cs` basenames are excluded by default, case-insensitively).
+`--test-target <path>` is handed to `dotnet test` and defaults to `.`, which requires a project or
+solution file at the repo root; point it at your solution or test project otherwise.
+`--lcov-file <path>` consumes a pre-generated lcov file instead of running `dotnet test`.
+`--stryker-dir <path>` is the directory the gate runs `dotnet stryker` from; Stryker requires the
+test project directory. `--stryker-solution <path>` switches to full-solution mutation scope
+instead: the gate runs Stryker from the solution file's directory with `--solution`, and the flag
+cannot be combined with `--stryker-dir`.
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | both gates pass |
+| 2 | coverage gate failed (when both gates fail, both are reported and 2 wins) |
+| 3 | mutation gate failed |
+| 64 | usage error |
+| 70 | an underlying tool ran and failed: broken build, failing test run, no completed report |
+| 78 | environment not ready: tool missing, not a git repo, base ref unresolvable |
+
+Codes 2 and 3 mean the new code is undertested; 70 means the build or suite is broken. A CI
+consumer should keep those two remediation paths separate.
+
+### Runtime and caveats
+
+- Mutation testing runs a build plus a test run per mutant: minutes, not seconds, even scoped with
+  `--since`. Iterate with `--skip-mutants`; the full gate waits for the user's opt-in and commit.
+- The gate assumes the VSTest runner, the current `dotnet test` default; the coverlet collector is
+  a VSTest data collector, so a repo switched to Microsoft.Testing.Platform via `global.json`
+  needs the `--lcov-file` escape hatch.
+- The collector writes `coverage.info` into a per-run subfolder of the results directory with
+  absolute source paths; the gate finds it by lcov grammar, not by name, and normalizes the paths.
+- A changed `.cs` file with no coverage record at all counts as fully uncovered rather than being
+  dropped from the ratio: in .NET that shape usually means no test project references the file's
+  project, so the collector never saw it. The one carve-out is files whose type declarations are
+  all interfaces, enums, or delegates; they compile to no method bodies, emit no coverage record,
+  and are reported as non-coverable instead. The carve-out keys on type declarations, not member
+  bodies, so an interface file carrying C# 8 default or static member implementations inside an
+  unreferenced project is still classified non-coverable; when such a file matters, reference its
+  project from a test project so the collector instruments it.
+- Stryker's `--since` documentation promises scoping to "code changes" without stating the
+  granularity; treat it as at least file-level. Whether uncommitted working-tree changes are
+  covered by `--since` is unverified, so the gate warns up front on a dirty tree: the mutation
+  verdict is only trustworthy once the user has committed the work.
+- A single Stryker run from one test project directory mutates only the production projects that
+  test project references. On a branch that changes more than one project the gate warns and
+  points at `--stryker-solution`, which analyzes the whole solution.
+- The gate pins Stryker's thresholds on the command line (`--break-at 100` and friends); CLI
+  values override a repo-local `stryker-config.json`.
+- Mutation verdicts come from Stryker's exit code plus the presence of its JSON report under the
+  gate's output directory (`reports/mutation-report.json` in current Stryker); the report is an
+  existence signal, never parsed. Survivors are read from the cleartext output streamed above.
+- Untracked files are invisible to `git diff` and so to both gates. The preflight warning names
+  them; making them visible takes a git write (a commit, or `git add -N <file>`), which is the
+  user's to run, so ask them first.
+- Child-process output streams to stderr raw and unsanitized, by design; only the script's own
+  report on stdout strips control sequences from echoed source lines.
+- On failure the temp directory (test results, Stryker output) is retained and its path printed.
+  Delete it freely once inspected; CI runners should clean these up between runs.
+
+### Trust boundary
+
+Running the gate builds and runs the target repo's code: MSBuild tasks, analyzers, and tests all
+execute on your machine, and the repo under test produces the very data the gate judges it by.
+The gate's checks defend against careless code, not hostile code. Point it only at a repo you
+would run `dotnet test` in; for untrusted code, use an isolated environment.

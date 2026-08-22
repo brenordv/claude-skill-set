@@ -90,6 +90,7 @@ RT="route-to-text-tools.sh"
 RT_SEARCH="command's OWN output"
 RT_EDIT="the repo's absolute path. For one hand-shaped edit"
 RT_GIT="Use these with cwd = the repo's absolute path"
+RT_JSON="-> read_json"
 add_case "$RT" Bash '{"command":"grep -r foo ."}'        deny  "$RT_SEARCH"
 add_case "$RT" Bash '{"command":"dotnet test | tail -20"}' allow ''
 add_case "$RT" Bash '{"command":"sed -i s/a/b/ f"}'      deny  "$RT_EDIT"
@@ -100,6 +101,15 @@ add_case "$RT" Bash '{"command":"ls -r"}'                allow ''
 add_case "$RT" Bash '{"command":"build && grep TODO src"}' deny "$RT_SEARCH"
 add_case "$RT" Bash '{"command":"git branch"}'           deny  "$RT_GIT"
 add_case "$RT" Bash '{"command":"git branch -d x"}'      allow ''
+add_case "$RT" Bash '{"command":"jq .version package.json"}' deny "$RT_JSON"
+add_case "$RT" Bash '{"command":"jq . < data.json"}'     deny  "$RT_JSON"
+add_case "$RT" Bash '{"command":"jq -n --slurpfile d data.json ."}' deny "$RT_JSON"
+add_case "$RT" Bash '{"command":"jq -rn ."}'             allow ''
+add_case "$RT" Bash '{"command":"curl -s https://api.example.com/items | jq .items"}' allow ''
+add_case "$RT" Bash '{"command":"python3 -c \"import json; print(json.load(open(\\\"cfg.json\\\")))\""}' deny "$RT_JSON"
+add_case "$RT" Bash '{"command":"python3 -c \"print(1+2)\""}' allow ''
+add_case "$RT" Bash '{"command":"node -e \"fs.readFileSync(\\\"cfg.json\\\")\""}' deny "$RT_JSON"
+add_case "$RT" Bash '{"command":"pytest -c ci.ini test_read_text.py"}' allow ''
 
 BS="block-secrets.sh"
 BS_SIG="reads or copies a file matching a secret-file pattern"

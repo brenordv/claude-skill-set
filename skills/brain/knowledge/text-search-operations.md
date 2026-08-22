@@ -1,23 +1,25 @@
 ## Text search and inspection
 
 There is a read-only, root-confined text-search MCP server registered as `text-search`. Its tools list,
-grep, read, and inspect text files under one configured **base root** (the directory that holds the
-projects), plus optional named **package roots** exposing locally cached dependency sources (currently
-NuGet and Cargo; `describe_scope` lists the live names). A per-call `cwd` argument picks the scope: pass
-the absolute path of one project inside the base to work in that project, omit it to search every project
-at once (the heavy path), or pass `@name[/subpath]` to target a package root. Every path in and out is
-scope-relative, and no argument, `cwd` included, can widen a call past its root. Two independent layers
-keep secrets out: a non-overridable filename **denylist** the server never reads, and, on by default,
-**content-based secret detection** that withholds a file whose *content* matches a known secret shape
-from the read tools (`read_lines`, `search_text`, `inspect_files`) even when its name looks innocuous.
+grep, read, and inspect text files, and pluck values out of JSON documents, under one configured **base
+root** (the directory that holds the projects), plus optional named **package roots** exposing locally
+cached dependency sources (currently NuGet, Cargo, and npm; `describe_scope` lists the live names). A
+per-call `cwd` argument picks the scope: pass the absolute path of one project inside the base to work in
+that project, omit it to search every project at once (the heavy path), or pass `@name[/subpath]` to
+target a package root. Every path in and out is scope-relative, and no argument, `cwd` included, can
+widen a call past its root. Two independent layers keep secrets out: a non-overridable filename
+**denylist** the server never reads, and, on by default, **content-based secret detection** that
+withholds a file whose *content* matches a known secret shape from the read tools (`read_lines`,
+`read_json`, `search_text`, `inspect_files`) even when its name looks innocuous.
 
 ### ⛔ Hard Rules
 
 1. **Never shell out for read-only text probing.** `grep`/`rg`, `find`, `cat`, `head`, `tail`, `ls -R`,
-   `sed -n`, read-only `awk`, and their PowerShell equivalents (`Select-String`, `Get-Content`,
-   `Get-ChildItem -Recurse`) are banned when the point of the command is to locate, list, read, or
-   inspect file content. This binds in every context: main conversation, subagents, review panels,
-   workflow stages. One-liners included.
+   `sed -n`, read-only `awk`, `jq` over a file, interpreter one-liners that open one (`python -c`,
+   `node -e`), and the PowerShell equivalents (`Select-String`, `Get-Content`, `Get-ChildItem -Recurse`)
+   are banned when the point of the command is to locate, list, read, or inspect file content. This
+   binds in every context: main conversation, subagents, review panels, workflow stages. One-liners
+   included.
 2. **Dispatch order.** The agent runtime's native structured file tools (Read/Grep/Glob in Claude Code)
    stay first choice where they reach. `text-search` is mandatory the moment the need leaves that reach:
    a search across projects (the whole base root), dependency sources, encoding or text-shape questions,
@@ -52,8 +54,9 @@ from the read tools (`read_lines`, `search_text`, `inspect_files`) even when its
    license to repeat it; flag it instead.
 
 **Self-check**: before any Bash/PowerShell call containing `grep`, `rg`, `find`, `cat`, `head`, `tail`,
-`sed`, `awk`, `Select-String`, `Get-Content`, or `Get-ChildItem`, ask "is this command reading files to
-locate or inspect content?" If it is, stop and use a native file tool or text-search. And before any
+`sed`, `awk`, `jq`, `python -c`, `node -e`, `Select-String`, `Get-Content`, or `Get-ChildItem`, ask "is
+this command reading files to locate or inspect content?" If it is, stop and use a native file tool or
+text-search. And before any
 file search, listing, or read (native or MCP) whose target names or globs a secret file (`.env`,
 `*.key`, `secrets.*`, `credentials.*`, `*.pem`, ...), stop: seeking a secret is off-limits even when you
 only mean to locate it, and "just finding the file" is the rationalization to reject. The
@@ -70,9 +73,10 @@ the path) instead of filing a ticket.
 ### Dispatch restatement (copy verbatim into every subagent prompt)
 
 > Use the runtime's native file tools or the `text-search` MCP tools for every read-only file search,
-> listing, read, or encoding inspection; never shell out to grep/rg/find/cat/head/tail/ls -R or their
-> PowerShell equivalents, even one-liners. Scope text-search calls with `cwd` (the project's absolute
-> path); dependency-source reads go through package roots (`cwd: "@<name>"`, ideally
+> listing, read, or encoding inspection; never shell out to grep/rg/find/cat/head/tail/ls -R/jq or their
+> PowerShell equivalents, even one-liners. Pluck a value out of a JSON file with `read_json` and a
+> `json_path`, never with a python/jq one-liner. Scope text-search calls with `cwd` (the project's
+> absolute path); dependency-source reads go through package roots (`cwd: "@<name>"`, ideally
 > `@<name>/<package>/<version>`). If neither covers what you need, report the gap and file a ticket in
 > the `text-search-backlog` vault project (recording the exact input used and the output received,
 > scrubbed) per `brain/knowledge/text-search-operations.md`.
@@ -84,6 +88,7 @@ the path) instead of filing a ticket.
 | `find`, `ls -R`, `Get-ChildItem -Recurse`               | `find_files` (glob/regex/paths selector, size + mtime out) |
 | `grep -rn`, `rg`, `Select-String`                       | `search_text` (literal by default, `is_regex: true` for regex) |
 | `cat`, `head`, `tail`, `sed -n 'a,bp'`, `Get-Content`   | `read_lines` (numbered, span-capped slice of one file)     |
+| `jq '.key' file`, `python -c "json.load(...)"` plucking | `read_json` (whole JSON document, or the value at a `json_path`) |
 | `file`, encoding/line-ending guesswork                  | `inspect_files` (encoding + confidence, BOM, endings, counts) |
 | orienting in an unknown scope                           | `describe_scope` (base root, package roots, ignore tiers, denylist, content-scan status, caps; call it first) |
 
@@ -102,6 +107,14 @@ the path) instead of filing a ticket.
   Prefer a package subpath, or at least a narrowing selector; a whole-cache sweep is heavy.
 - `read_lines` targets one file: `path` is relative to `cwd`, or to the base root when `cwd` is
   omitted. `end_line: 0` reads a capped span from `start_line`.
+- `read_json` parses one JSON file resolved the same way and returns the whole document, or only the
+  value at `json_path`: dot/bracket syntax (`a.b.c`, `items[0]`), Python-style negative indexes
+  (`items[-1]` is the last element), and quoted keys for names the dot form can't spell
+  (`deps["lodash.merge"]`); a leading `$` is ignored and property matching is case-sensitive. Comments
+  and trailing commas are tolerated (JSONC); a duplicate object key is rejected as `JsonInvalid`. The
+  read passes the same gates as `read_lines` (confinement, denylist, ignore tiers, size cap, content
+  scan), and a value that serializes past the JSON value cap (default 1 MiB) fails as `ValueTooLarge`
+  with a navigation hint instead of truncating: narrow the `json_path` and retry.
 - `search_text` matches **per line**; a pattern spanning a newline never matches. `column`,
   `match_start`, and `match_end` are 1-based UTF-16 code units. `files_only: true` lists matching files
   instead of matches. `case_sensitive: true` applies to both file selection and content matching
@@ -126,12 +139,12 @@ the path) instead of filing a ticket.
   a whole-base walk. The denylist and content scan are unaffected either way.
 - **Content-based secret detection withholds by content, not name.** On by default, it withholds a file
   whose *content* matches a known secret shape (private keys, cloud-provider keys, common service tokens,
-  URL-embedded credentials; `describe_scope` lists the active detectors) from `read_lines`, `search_text`,
-  and `inspect_files`, whatever its name. `find_files` still lists it, so a file can appear in a listing
-  yet be withheld from a read: `read_lines` returns `WithheldSecret`, and `search_text`/`inspect_files`
-  silently skip it. It is a strong default, not a structural guarantee (an operator can disable or widen
-  it), and it never withholds a secret of no recognizable shape, an arbitrary `const TOKEN = "..."`, which
-  `search_text` returns like any source line.
+  URL-embedded credentials; `describe_scope` lists the active detectors) from `read_lines`, `read_json`,
+  `search_text`, and `inspect_files`, whatever its name. `find_files` still lists it, so a file can appear
+  in a listing yet be withheld from a read: `read_lines` and `read_json` return `WithheldSecret`, and
+  `search_text`/`inspect_files` silently skip it. It is a strong default, not a structural guarantee (an
+  operator can disable or widen it), and it never withholds a secret of no recognizable shape, an
+  arbitrary `const TOKEN = "..."`, which `search_text` returns like any source line.
 - **Denylisted files are silently omitted** from walks, and a direct read of one reports `NotFound`
   rather than confirming the file exists. Don't read `NotFound` as proof of absence.
 - Every result carries a scope-relative path, and the `filters_applied.cwd` echo is base-relative (`.`
@@ -144,10 +157,16 @@ the path) instead of filing a ticket.
 Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filters_applied, error }`.
 
 - Check `error` first; branch on `error.code` (stable values: `SelectorInvalid`, `PatternInvalid`,
-  `NotFound`, `IsBinary`, `TooLarge`, `OperationBudgetExceeded`, `InvalidArgument`,
-  `WithheldSecret`, `InternalError`), not on message text. `WithheldSecret` is a `read_lines` of a file
-  whose content matched a secret detector (see the content-scan note above). `PatternInvalid` covers a
-  regex, or an `include_ignored` glob, that is too long, over the repetition cap, or invalid.
+  `NotFound`, `IsBinary`, `TooLarge`, `JsonInvalid`, `JsonPathNotFound`, `ValueTooLarge`,
+  `OperationBudgetExceeded`, `InvalidArgument`, `WithheldSecret`, `InternalError`), not on message
+  text. `WithheldSecret` is a `read_lines`/`read_json` of a file whose content matched a secret
+  detector (see the content-scan note above). The three `read_json` codes carry their diagnosis in
+  `detail`: `JsonInvalid` is a syntax error, a duplicate object key, or a document deeper than 64
+  levels (with the 1-based `line` when the parser reports one); `JsonPathNotFound` carries the deepest
+  resolved prefix plus the property names (capped) or array length at that point; `ValueTooLarge`
+  carries `value_bytes`, `limit`, and the same navigation hint, so narrow the `json_path` and retry.
+  `PatternInvalid` covers a regex, or an `include_ignored` glob, that is too long, over the repetition
+  cap, or invalid.
   `InvalidArgument` also covers a malformed cursor and every bad `cwd`: one that escapes its root, is not
   a directory, is denylisted, names an unknown package root, or carries a subpath escaping its cache.
 - `truncated: true` with a `cursor` means more pages: pass the cursor back, keeping `cwd` and
@@ -163,6 +182,9 @@ Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filte
 - "Show matches with context": `search_text` with `context_lines`.
 - "Read lines 120-180 of that file": `read_lines` with `start_line: 120`, `end_line: 180` (and the
   same `cwd` the file was found under).
+- "What version does this package.json pin for X?": `read_json` with `path: "package.json"` and
+  `json_path: "dependencies[\"X\"]"`, never a python/jq shell-out. Works on any JSON/JSONC file in
+  scope; `items[-1]` addresses the last element of an array.
 - "Which of my projects use X?": `search_text` with no `cwd`, accepting the heavy whole-base walk.
 - "What does this dependency's source actually do?": `find_files`/`search_text` with
   `cwd: "@nuget/<Package>/<version>"` (or another cache name from `describe_scope`).

@@ -127,7 +127,7 @@ def expensive_computation(param: str) -> dict:
 
 ### 4. Testing
 
-Use **pytest** with the Arrange-Act-Assert structure. Test happy paths, error conditions, and boundary values; aim for >80% coverage on critical modules. Test files mirror the source package layout under a top-level `tests/` directory and are never dumped flat at the `tests/` root, even in a suite you created yourself. See `testing-guidelines.md` in this skill folder for the test layout, fixtures, parametrization, mocking, and coverage detail.
+Use **pytest** with the Arrange-Act-Assert structure. Test happy paths, error conditions, and boundary values; aim for >80% coverage on critical modules. Test files mirror the source package layout under a top-level `tests/` directory and are never dumped flat at the `tests/` root, even in a suite you created yourself. See `testing-guidelines.md` in this skill folder for the test layout, fixtures, parametrization, mocking, and coverage detail. The new-code quality gate at `scripts/python_quality_gate.py` checks diff coverage before handoff (run it with `--skip-mutants`); its mutation half is opt-in and runs only after the user has committed the work themselves and asked for it. See `testing-guidelines.md` §"New-code quality gate".
 
 ### 5. Quality Validation & Completion Checklist
 
@@ -138,6 +138,7 @@ Run these checks before marking work complete:
 - [ ] Formatting clean: `ruff format --check .` (run `ruff format .` to fix)
 - [ ] Type checking clean: `mypy src/`
 - [ ] Tests pass with coverage (>=80% for critical paths): `pytest --cov=src --cov-report=term-missing`
+- [ ] Coverage half of the new-code quality gate run where the toolchain is available (`scripts/python_quality_gate.py --skip-mutants` in this skill folder). The mutation half is optional: never commit anything yourself; ask the user whether they want it and to commit the changes themselves first (see `testing-guidelines.md` §"New-code quality gate")
 - [ ] Test files mirror the source package layout under `tests/`, not dumped flat at the root (Hard Rule 4)
 - [ ] Documentation complete (docstrings on every public API; Hard Rule 3)
 - [ ] Performance profiled if applicable

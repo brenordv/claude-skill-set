@@ -19,6 +19,7 @@ Blocked: this shell command reads or searches files on disk, which bypasses the 
   cat / head / tail    -> read_lines
   find / ls -R / dir /s -> find_files
   file / encoding      -> inspect_files
+  jq / JSON plucking   -> read_json
 For paths the native Read / Grep / Glob tools reach, those are fine too. See brain/knowledge/text-search-operations.md.
 Exempt (NOT blocked): piping a command's OWN output through grep/head/tail, e.g. `dotnet test | tail -20`. If that was the intent, re-run it in that shape.
 MSG
@@ -113,6 +114,10 @@ classify() {
     printf '%s' "$command" | grep -qiE '(^|[^A-Za-z0-9_])sed([^|;&]*)[[:space:]]-i'          && { echo edit; return; }
     printf '%s' "$command" | grep -qE  '(^|[^A-Za-z0-9_])perl[[:space:]]+-[a-z]*i'            && { echo edit; return; }
     printf '%s' "$command" | grep -qiE '(^|[^A-Za-z0-9_])(Set-Content|Add-Content|Out-File)([^A-Za-z0-9_]|$)' && { echo edit; return; }
+    # Interpreter one-liners that open a file -> search. Matched against the whole command: the
+    # statement split below is quote-blind, so an embedded ';' would cut a -c/-e payload in two.
+    if printf '%s' "$command" | grep -qE '(^|[^A-Za-z0-9_.])(python[0-9.]*|py|node)[[:space:]]+([^|;&]*[[:space:]])?(-[A-Za-z]*[ce]|--eval)([^A-Za-z0-9]|$)' \
+       && printf '%s' "$command" | grep -qiE 'open[(]|read_text|readfile'; then echo search; return; fi
     # Recursive directory listings -> search.
     printf '%s' "$command" | grep -qE  '(^|[^A-Za-z0-9_])ls([^|;&]*)[[:space:]]-[A-Za-z]*R'   && { echo search; return; }   # ls -R (not ls -r)
     printf '%s' "$command" | grep -qiE '(^|[^A-Za-z0-9_])dir([^|;&]*)[[:space:]]/s([^A-Za-z0-9_]|$)' && { echo search; return; }
@@ -128,10 +133,14 @@ classify() {
         stage0="${stmt%%|*}"
         lw="$(lead_word "$stage0")"
         [ -n "$lw" ] || continue
-        case " grep egrep fgrep rg ripgrep ag ack cat tac head tail find fd sed awk gawk select-string sls get-content gc " in
+        case " grep egrep fgrep rg ripgrep ag ack cat tac head tail find fd sed awk gawk jq select-string sls get-content gc " in
             *" $lw "*)
                 if { [ "$lw" = cat ] || [ "$lw" = tac ]; } && printf '%s' "$stage0" | grep -qE '(>|>>|<<)'; then continue; fi
                 if [ "$lw" = find ] && printf '%s' "$stage0" | grep -qE '[[:space:]]-(exec|execdir|delete|ok)([^A-Za-z]|$)'; then continue; fi
+                if [ "$lw" = jq ] \
+                   && printf '%s' "$stage0" | grep -qE -- '(^|[[:space:]])-[A-Za-z]*n[A-Za-z]*([^A-Za-z0-9]|$)|--null-input' \
+                   && ! printf '%s' "$stage0" | grep -q '<' \
+                   && ! printf '%s' "$stage0" | grep -qE -- '--(slurpfile|rawfile|from-file|argfile)|(^|[[:space:]])-[A-Za-z]*[fL]([^A-Za-z0-9]|$)|(^|[^A-Za-z0-9_-])(inputs?|import|include)([^A-Za-z0-9_-]|$)'; then continue; fi
                 echo search; return ;;
             *)
                 if [ "$lw" = git ] && git_readonly "$stage0"; then echo git; return; fi ;;

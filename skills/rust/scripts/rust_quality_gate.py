@@ -827,7 +827,10 @@ def _run_gate(args: argparse.Namespace, tmpdir: str) -> int:
         _log("warning: untracked .rs files are invisible to git diff and to both gates:")
         for name in untracked:
             _log(f"  {name}")
-        _log("  commit them or run `git add -N <file>` first.")
+        _log(
+            "  a git write makes them visible (a commit, or `git add -N <file>`); "
+            "git writes are the user's, so ask them first."
+        )
 
     added_raw = parse_added_lines(zero_diff)
     added_by_file: dict[str, set[int]] = {}

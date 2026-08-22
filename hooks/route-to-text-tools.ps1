@@ -86,6 +86,7 @@ Blocked: this shell command reads or searches files on disk, which bypasses the 
   cat / head / tail    -> read_lines
   find / ls -R / dir /s -> find_files
   file / encoding      -> inspect_files
+  jq / JSON plucking   -> read_json
 For paths the native Read / Grep / Glob tools reach, those are fine too. See brain/knowledge/text-search-operations.md.
 Exempt (NOT blocked): piping a command's OWN output through grep/head/tail, e.g. `dotnet test | tail -20`. If that was the intent, re-run it in that shape.
 '@
@@ -108,6 +109,13 @@ if ($command -match '\bsed\b[^|;&]*\s-i') { Deny $editMsg }
 if ($command -cmatch '\bperl\s+-[a-z]*i') { Deny $editMsg }
 if ($command -match '\b(Set-Content|Add-Content|Out-File)\b') { Deny $editMsg }
 
+# --- Interpreter one-liners that open a file -> search ---
+# Matched against the whole command: the statement split below is quote-blind, so an embedded ';'
+# would cut a -c/-e payload in two. -cmatch keeps the flag letters case-sensitive (python -E and
+# node -C are not eval flags); the interpreter names alone are case-insensitive via (?i:...).
+if ($command -cmatch '(^|[^A-Za-z0-9_.])(?i:python[0-9.]*|py|node)\s+([^|;&\r\n]*\s)?(-[A-Za-z]*[ce]|--eval)([^A-Za-z0-9]|$)' -and
+    $command -match 'open[(]|read_text|readfile') { Deny $searchMsg }
+
 # --- Recursive directory listings -> find_files ---
 if ($command -cmatch '\bls\b[^|;&]*\s-[A-Za-z]*R') { Deny $searchMsg }          # ls -R (not ls -r)
 if ($command -match '\bdir\b[^|;&]*\s/s\b') { Deny $searchMsg }                 # dir /s
@@ -120,7 +128,7 @@ if ($command -match '\bls\b[^|;&]*\s-recurse\b') { Deny $searchMsg }            
 $probeLeading = @(
     'grep','egrep','fgrep','rg','ripgrep','ag','ack',
     'cat','tac','head','tail',
-    'find','fd',
+    'find','fd','jq',
     'sed','awk','gawk',
     'select-string','sls','get-content','gc'
 )
@@ -138,6 +146,12 @@ foreach ($stmt in $statements) {
             if (($lead -eq 'cat' -or $lead -eq 'tac') -and $stages[$i] -match '(>|>>|<<)') { continue }
             # find used to act on matches (-exec/-delete/-ok) is not a read.
             if ($lead -eq 'find' -and $stages[$i] -match '\s-(exec|execdir|delete|ok)\b') { continue }
+            # jq under a null-input flag constructs JSON without reading files; any '<' redirect,
+            # file-reading flag, or input-family filter word voids the carve-out.
+            if ($lead -eq 'jq' -and
+                $stages[$i] -cmatch '(^|\s)-[A-Za-z]*n[A-Za-z]*([^A-Za-z0-9]|$)|--null-input' -and
+                $stages[$i] -notmatch '<' -and
+                $stages[$i] -cnotmatch '--(slurpfile|rawfile|from-file|argfile)|(^|\s)-[A-Za-z]*[fL]([^A-Za-z0-9]|$)|(^|[^A-Za-z0-9_-])(inputs?|import|include)([^A-Za-z0-9_-]|$)') { continue }
             Deny $searchMsg
         }
         elseif ($lead -eq 'git') {

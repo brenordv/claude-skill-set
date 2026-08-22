@@ -52,10 +52,13 @@ rail. The hook removes the dependency on the rule being remembered.
 | `find`/`fd`, `ls -R`, `dir /s`, `Get-ChildItem -Recurse`                                                               | deny      | `find_files`                           |
 | `sed`/`awk` reading a file (leading position)                                                                          | deny      | `search_text` / `read_lines`           |
 | `Select-String`, `Get-Content`                                                                                         | deny      | `search_text` / `read_lines`           |
+| `jq '.key' file` leading a stage, `jq . < file`, `jq -n` with `--slurpfile`/`--argfile`/`-f`/`inputs`                  | deny      | `read_json`                            |
+| `python -c`/`node -e` one-liners that open a file (`open(`, `read_text`, `readFile*`)                                  | deny      | `read_json` / `read_lines`             |
 | `sed -i`, `perl -pi -e`, `Set-Content`/`Add-Content`/`Out-File`                                                        | deny      | `replace_text` / `normalize_files`     |
 | `git grep`/`log`/`diff`/`show`/`status`/`blame`/`ls-files`, `git branch` (list), `git reflog`, `git stash list`/`show` | deny      | `git-ops` (`git_grep`, `git_log`, ...) |
 | `git commit`/`add`/`push`/`checkout`/`reset`/`merge`, `git branch -d`, `git stash pop`, `git tag <name>`               | **allow** | shell git is fine for writes           |
-| `dotnet test \| tail -20` (downstream of a pipe)                                                                       | **allow** | output trimming, not probing           |
+| `dotnet test \| tail -20`, `curl ... \| jq '.x'` (downstream of a pipe)                                                | **allow** | output trimming, not probing           |
+| `jq -n '{...}'` (null input, no file flags), `python3 -c "print(1+2)"` (no file-open token)                            | **allow** | constructs JSON / computes, no read    |
 | `cat > file <<EOF` (redirect/heredoc), `find ... -delete`/`-exec`                                                      | **allow** | authoring / acting, not reading        |
 | `ls -r` (reverse sort, not `-R`), plain `ls`/`dir`/`Get-ChildItem`                                                     | **allow** | not a recursive walk                   |
 
@@ -63,6 +66,19 @@ The one nuance worth understanding: only a command **leading** a pipeline stage 
 files. A read filter downstream of a `|` is consuming another command's stdout (output trimming), which
 the knowledge files explicitly exempt. Statements are split on `&&`, `||`, `;`, and newlines first, so
 `build && grep TODO src` still denies the `grep` even though it is not the first word overall.
+
+Interpreter one-liners are the one probe matched against the whole command instead of a pipeline
+stage: quotes hide `;` from that statement splitter, so `python3 -c "import json; ..."` would
+otherwise be cut mid-payload. Two signals must both hit before a deny: an eval flag (`-c`, `-e`,
+`--eval`) after a `python`/`py`/`node` word, and a file-open token (`open(`, `read_text`,
+`readFile*`) anywhere in the command. That keeps compute one-liners and `json.load(sys.stdin)`
+pipe filters out of it.
+
+Accepted residue, on purpose: ruby/php/perl one-liners, python heredoc scripts (`python <<EOF`),
+`node -e "require('./cfg.json')"`, and `jq '.' file --args -n` flag-lookalikes still pass; on the
+false-positive side, `python -c "open('f','w')..."` authoring and a `-n` jq filter containing `<`
+deny. The hook is a nudge, not a wall (see the note at the top of this file); `block-secrets`,
+`guard-file-targets`, and text-search's own denylist and content scan hold independently.
 
 On a deny the model receives a `permissionDecision: "deny"` with a message naming the exact replacement
 tool and a concrete call; see the `$searchMsg`/`$editMsg`/`$gitMsg` strings (`SEARCH_MSG`/`EDIT_MSG`/
@@ -131,8 +147,8 @@ somewhere stable, and register it in your **user** settings so it applies to eve
 `bash` and `perl` with `JSON::PP` (a core module), both present on stock macOS and Ubuntu, so nothing
 to install. `JSON::PP` handles the JSON in and out; if Perl or the module is somehow absent the `.sh`
 fails open (exits 0 and enforces nothing). The matcher covers both the `Bash` and `PowerShell` tools,
-so `grep` and `Get-Content` reflexes are both caught. Both scripts carry identical logic and the same
-52-case behavior; keep them in sync when you tune one.
+so `grep` and `Get-Content` reflexes are both caught. Both scripts carry identical logic and
+behavior; keep them in sync when you tune one.
 
 ### Verify
 
@@ -158,6 +174,8 @@ $s = "$HOME\.claude\hooks\route-to-text-tools.ps1"
 s=~/.claude/hooks/route-to-text-tools.sh
 bash "$s" --command 'grep -r foo .'          # -> search
 bash "$s" --command 'dotnet test | tail -20' # -> allow
+bash "$s" --command 'jq .version package.json' # -> search
+bash "$s" --command 'jq -n {}'               # -> allow
 bash "$s" --command 'git log --oneline'      # -> git
 bash "$s" --command 'git commit -m x'        # -> allow
 ```
@@ -173,6 +191,11 @@ The PowerShell identifiers below mirror the bash ones: `$probeLeading` is the pr
 are `SEARCH_MSG`/`EDIT_MSG`/`GIT_MSG`.
 
 - **Add/remove a probed command:** edit the `$probeLeading` array (PS) / the probe `case` list (bash).
+- **Interpreter one-liners:** the python/node branch sits with the whole-command pre-checks
+  (next to `sed -i`/`perl -i`), not in the stage loop, because quotes hide `;` from the statement
+  splitter. Tune the interpreter names, eval flags, or file-open tokens there, in both scripts.
+  The jq null-input carve-out and its file-flag kill list live in the stage loop beside the
+  `cat`/`find` carve-outs.
 - **Narrow the git redirect:** the `elseif ($lead -eq 'git')` block maps read-only subcommands to
   git-ops. To cover only `git grep`/`git log`, cut the always-redirect list to `@('grep','log')` and
   drop the `reflog`/`stash`/`branch` branches. It is deliberately biased toward **allow**: a git write

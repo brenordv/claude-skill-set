@@ -55,9 +55,13 @@ but the rule binds first, in your reasoning.
 - **Edit surgically, not wholesale.** To change one markdown section, `vault_edit_section` by heading; to
   set one value in JSON/YAML, `vault_edit_key` with a dotted key path; to add to the end, `vault_append`.
   A full `vault_save` resend is for when the whole body actually changed.
-- `vault_edit_section` matches the heading text exactly (a leading `#` run is tolerated) and replaces the
-  body up to the next heading of the same or higher level, subsections included. Duplicate heading text
-  fails as `ambiguous_heading`, so keep headings unique within a note.
+- `vault_edit_section` matches a heading by its rendered plain text (inline markdown stripped) and, on
+  server v3.1.0+, also by its verbatim source text with the delimiters kept, so a heading containing a
+  code span, emphasis, or a link can be targeted with the text copied straight from the note. A leading
+  `#` run is tolerated either way; the rendered form is the one older builds accept. It replaces the
+  body up to the next heading of the same or higher level, subsections included. Duplicate or colliding
+  heading text fails as `ambiguous_heading`, never a wrong-section edit, so keep headings unique within
+  a note.
 - `vault_append` concatenates with **no separator**; start appended content with its own newline(s).
 - To change only a note's summary, tags, or parent, use `vault_set_meta`: no new version, no content resend.
 - **Restate `format` and `summary` on every `vault_save`**, not just the first. Save always replaces the
