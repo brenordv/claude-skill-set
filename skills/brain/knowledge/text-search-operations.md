@@ -169,6 +169,12 @@ Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filte
   cap, or invalid.
   `InvalidArgument` also covers a malformed cursor and every bad `cwd`: one that escapes its root, is not
   a directory, is denylisted, names an unknown package root, or carries a subpath escaping its cache.
+- Argument-shape mistakes are rejected before the tool runs (server v1.4.0+), as `InvalidArgument`: an
+  unknown argument name now fails the call instead of being silently ignored and run on defaults, with
+  `detail.unknown_arguments` naming each one (plus a `did_you_mean` when a schema name is close, e.g.
+  `isRegex` for `is_regex`), `missing_required`, and the full `expected_arguments`. A known argument of
+  the wrong JSON type reports the same code. Correct the call from the detail and retry; this is a
+  caller error, never a capability gap, so no `textsearch-gap` ticket in those cases.
 - `truncated: true` with a `cursor` means more pages: pass the cursor back, keeping `cwd` and
   `files_only` stable across pages. `truncated: true` with a null cursor means a ceiling was hit:
   narrow the selector instead of guessing what got cut.
