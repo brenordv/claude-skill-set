@@ -12,6 +12,13 @@ answers two questions about that new code:
 The threshold is a detection signal, not a target to pad. A failing gate means "look at what is
 untested and decide", never "add tests until the number moves".
 
+Each gate also runs a file-size phase before the tool-backed halves: new and cap-crossing production
+files are graded against the per-language tiers in `skills/brain/knowledge/coding-general.md` §3
+(warn at 800 lines for Python, 700 for C# and Rust; fail at the 1,500 cap). It needs only git and
+the filesystem, so it reports even where the language toolchain is absent. Test files are warn-only,
+and an already-oversized file warns with a message to route new code into a new module rather than
+mass-refactor the old one.
+
 | Gate | Coverage producer | Mutation tool | Default threshold |
 |------|-------------------|---------------|-------------------|
 | C# | `dotnet test` + coverlet collector (lcov) | Stryker.NET, scoped with `--since` | 90% |
@@ -30,8 +37,9 @@ python <skill-set>/skills/rust/scripts/rust_quality_gate.py
 ```
 
 Shared flags: `--base <ref>` overrides the base (default chain: `origin/HEAD`, `main`, `master`),
-`--cov-threshold <pct>` and the repeatable `--exclude <glob>` adjust the coverage policy,
-`--skip-mutants` runs only the coverage half for quick iteration, and `--lcov-file <path>`
+`--cov-threshold <pct>` and the repeatable `--exclude <glob>` adjust the coverage policy (`--exclude`
+also drops a file from the file-size gate), `--skip-mutants` runs only the coverage half for quick
+iteration (the file-size phase always runs), and `--lcov-file <path>`
 consumes a pre-generated lcov file when a repo's coverage needs a different producer invocation.
 Language-specific flags, caveats, and each gate's trust boundary are documented in the skill's
 testing guidelines (linked below).
@@ -40,15 +48,18 @@ All three gates share one exit-code contract:
 
 | Code | Meaning |
 |------|---------|
-| 0 | both gates pass |
-| 2 | coverage gate failed (when both fail, both are reported and 2 wins) |
+| 0 | all gates pass |
+| 2 | coverage gate failed |
 | 3 | mutation gate failed |
+| 4 | file-size gate failed (a new or cap-crossing production file hit the 1,500-line cap) |
 | 64 | usage error |
 | 70 | an underlying tool ran and failed: broken build, red test run, missing output |
 | 78 | environment not ready: tool missing, not a git repo, base ref unresolvable |
 
-Codes 2 and 3 mean the new code is undertested; 70 means the build or suite is broken. A CI
-consumer should keep those remediation paths separate.
+All phases run and report before the process exits; when several fail the precedence is 2
+(coverage) > 3 (mutation) > 4 (file size). Codes 2, 3, and 4 mean the new code is undertested or
+oversized; 70 means the build or suite is broken. A CI consumer should keep those remediation
+paths separate.
 
 ## What to install
 
@@ -106,4 +117,4 @@ the skill's testing guidelines carry the full documentation:
 
 Each script keeps its unit tests beside it (`test_*_quality_gate.py` in the same `scripts/`
 folder), and CI runs all three suites on every push and pull request
-(`.github/workflows/repo-lint.yml`, the `python-tests` job).
+(`.github/workflows/repo-lint.yml`, the `gate-tests` job).

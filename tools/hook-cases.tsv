@@ -1,0 +1,77 @@
+# Behavior case table shared by tools/test-hooks.sh (runs hooks/*.sh) and tools/test-hooks.ps1
+# (runs hooks/*.ps1). One row per case, five TAB-separated fields:
+#   hook<TAB>tool_name<TAB>tool_input JSON<TAB>verdict<TAB>signature
+# hook is the script base name, [a-z0-9-] only; each harness appends its own extension.
+# verdict is one of deny|allow|warn|silent. signature is the substring the deny reason (deny rows)
+# or stderr (warn rows) must contain, matched as a literal string; '-' means no signature and is
+# required on allow/silent rows, forbidden on deny/warn rows.
+# ASCII only, LF endings (pinned in .gitattributes), no TAB inside a field.
+# Placeholders each harness substitutes before dispatch, in forward-slash form: @WF_FIXDIR@ (that
+# run's warn-file-size fixture directory) and @REPO_ROOT@ (the checkout root).
+# Both harnesses verify the declared count below against the rows they parse; update it when
+# adding or removing rows.
+# cases: 51
+#
+# route-to-text-tools: file-probing, in-place-edit, and read-only-git shell commands
+route-to-text-tools	Bash	{"command":"grep -r foo ."}	deny	command's OWN output
+route-to-text-tools	Bash	{"command":"dotnet test | tail -20"}	allow	-
+route-to-text-tools	Bash	{"command":"sed -i s/a/b/ f"}	deny	the repo's absolute path. For one hand-shaped edit
+route-to-text-tools	Bash	{"command":"git log --oneline"}	deny	Use these with cwd = the repo's absolute path
+route-to-text-tools	Bash	{"command":"git commit -m x"}	allow	-
+route-to-text-tools	Bash	{"command":"ls -R"}	deny	command's OWN output
+route-to-text-tools	Bash	{"command":"ls -r"}	allow	-
+route-to-text-tools	Bash	{"command":"build && grep TODO src"}	deny	command's OWN output
+route-to-text-tools	Bash	{"command":"git branch"}	deny	Use these with cwd = the repo's absolute path
+route-to-text-tools	Bash	{"command":"git branch -d x"}	allow	-
+route-to-text-tools	Bash	{"command":"jq .version package.json"}	deny	-> read_json
+route-to-text-tools	Bash	{"command":"jq . < data.json"}	deny	-> read_json
+route-to-text-tools	Bash	{"command":"jq -n --slurpfile d data.json ."}	deny	-> read_json
+route-to-text-tools	Bash	{"command":"jq -rn ."}	allow	-
+route-to-text-tools	Bash	{"command":"curl -s https://api.example.com/items | jq .items"}	allow	-
+route-to-text-tools	Bash	{"command":"python3 -c \"import json; print(json.load(open(\\\"cfg.json\\\")))\""}	deny	-> read_json
+route-to-text-tools	Bash	{"command":"python3 -c \"print(1+2)\""}	allow	-
+route-to-text-tools	Bash	{"command":"node -e \"fs.readFileSync(\\\"cfg.json\\\")\""}	deny	-> read_json
+route-to-text-tools	Bash	{"command":"pytest -c ci.ini test_read_text.py"}	allow	-
+#
+# block-secrets: shell commands that read or copy secret-looking files
+block-secrets	Bash	{"command":"cat .env"}	deny	reads or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"cat .env.example"}	allow	-
+block-secrets	Bash	{"command":"grep FOO .env"}	allow	-
+block-secrets	Bash	{"command":"cp secrets.json out"}	deny	reads or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"head master.key"}	deny	reads or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"cat appsettings.Production.json"}	deny	reads or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"cat .env > out"}	deny	reads or copies a file matching a secret-file pattern
+#
+# guard-file-targets: native file tools aimed at secret-looking files
+guard-file-targets	Glob	{"pattern":"**/.env*"}	deny	targets a secret-looking file
+guard-file-targets	Read	{"file_path":".env"}	deny	targets a secret-looking file
+guard-file-targets	Read	{"file_path":".env.example"}	allow	-
+guard-file-targets	Grep	{"pattern":".env"}	allow	-
+guard-file-targets	Read	{"file_path":"docs/environment.md"}	allow	-
+guard-file-targets	Grep	{"glob":"**/*.pem"}	deny	targets a secret-looking file
+guard-file-targets	Read	{"file_path":"config/secrets.yaml"}	deny	targets a secret-looking file
+#
+# block-vcs-writes: the git writes the user owns, and gh stack subcommands other than view
+block-vcs-writes	Bash	{"command":"git commit -m x"}	deny	never stage, never commit, never stash
+block-vcs-writes	Bash	{"command":"git add ."}	deny	never stage, never commit, never stash
+block-vcs-writes	Bash	{"command":"git stash pop"}	deny	never stage, never commit, never stash
+block-vcs-writes	Bash	{"command":"git stash"}	deny	never stage, never commit, never stash
+block-vcs-writes	Bash	{"command":"git stash list"}	allow	-
+block-vcs-writes	Bash	{"command":"git -C sub commit -m x"}	deny	never stage, never commit, never stash
+block-vcs-writes	Bash	{"command":"echo hi && git add -A"}	deny	never stage, never commit, never stash
+block-vcs-writes	Bash	{"command":"gh stack submit"}	deny	stack management is the user's responsibility
+block-vcs-writes	Bash	{"command":"gh stack view --json"}	allow	-
+block-vcs-writes	Bash	{"command":"git push"}	allow	-
+#
+# warn-file-size (PostToolUse): oversized untracked source files warn; everything else is silent.
+# The last two rows pin the secret-skip anchoring both implementations regressed on or must never
+# regress on: a secret basename under a sample-named parent directory stays skipped (silent even
+# though oversized), while the in-basename sample form is exempt from the skip and counted (warn).
+warn-file-size	Write	{"file_path":"@WF_FIXDIR@/big.py"}	warn	[warn-file-size]
+warn-file-size	Write	{"file_path":"@WF_FIXDIR@/big.rs"}	warn	[warn-file-size]
+warn-file-size	Edit	{"file_path":"@WF_FIXDIR@/small.py"}	silent	-
+warn-file-size	Write	{"file_path":"@WF_FIXDIR@/notes.md"}	silent	-
+warn-file-size	Write	{"file_path":"@WF_FIXDIR@/nope.py"}	silent	-
+warn-file-size	Write	{"file_path":"@REPO_ROOT@/skills/python/scripts/python_quality_gate.py"}	silent	-
+warn-file-size	Write	{"file_path":"@WF_FIXDIR@/cfg.sample/secrets.py"}	silent	-
+warn-file-size	Write	{"file_path":"@WF_FIXDIR@/secrets.example.py"}	warn	[warn-file-size]

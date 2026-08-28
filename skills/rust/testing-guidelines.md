@@ -134,9 +134,17 @@ cargo test --workspace
 ## New-code quality gate
 
 `scripts/rust_quality_gate.py` in this skill folder gates the lines a branch adds, diffing the
-merge base against the working tree so uncommitted work is checked too. It wraps two tools, one
-per question:
+merge base against the working tree so uncommitted work is checked too. It runs a file-size check
+and two tool-backed gates:
 
+- A **file-size phase** grades new and cap-crossing production files against the per-language tiers
+  in `brain/knowledge/coding-general.md` §3 (Rust: warn at 700 lines, fail at the 1,500 cap). It
+  subtracts the trailing `#[cfg(test)]` module so co-located unit tests never inflate the count,
+  keeps test files warn-only, folds in untracked `.rs` files as new, and needs only git and the
+  filesystem, so it runs first and reports even where cargo is absent. New files and pre-existing
+  files a change pushes to the cap fail; an already-oversized file only warns, with a message to
+  route new code into a new module. See `brain/knowledge/coding-general.md` §3 for the tiers and
+  the split-don't-refactor policy.
 - `cargo llvm-cov` answers quantity: which added lines execute under tests. The script intersects
   its lcov output with the added lines and enforces a threshold, default 80% of new coverable
   lines.
@@ -175,9 +183,11 @@ python <skill-set>/skills/rust/scripts/rust_quality_gate.py
 ```
 
 The base ref defaults to `origin/HEAD`, then `main`, then `master`; `--base <ref>` overrides it.
-`--skip-mutants` runs only the coverage gate, for quick iteration. `--cov-threshold <pct>` and the
-repeatable `--exclude <glob>` adjust the coverage policy (test files and `tests/` paths are
-excluded by default). `--lcov-file <path>` consumes a pre-generated lcov file instead of running
+`--skip-mutants` runs only the coverage gate (the file-size phase always runs), for quick
+iteration. `--cov-threshold <pct>` and the repeatable `--exclude <glob>` adjust the coverage policy
+(test files and `tests/` paths are excluded by default); `--exclude` also drops a file from the
+file-size gate, the escape hatch for a legitimately long generated file. `--lcov-file <path>`
+consumes a pre-generated lcov file instead of running
 `cargo llvm-cov` itself; that is the escape hatch for projects whose coverage needs a different
 producer invocation (feature flags, nextest, and the like).
 
@@ -185,15 +195,18 @@ producer invocation (feature flags, nextest, and the like).
 
 | Code | Meaning |
 |------|---------|
-| 0 | both gates pass |
-| 2 | coverage gate failed (when both gates fail, both are reported and 2 wins) |
+| 0 | all gates pass |
+| 2 | coverage gate failed |
 | 3 | mutation gate failed |
+| 4 | file-size gate failed (a new or cap-crossing production file hit the 1,500-line cap) |
 | 64 | usage error |
 | 70 | an underlying tool ran and failed: broken build, red baseline suite, diff mismatch |
 | 78 | environment not ready: tool missing, not a git repo, base ref unresolvable |
 
-Codes 2 and 3 mean the new code is undertested; 70 means the build or suite is broken. A CI
-consumer should keep those two remediation paths separate.
+All phases run and report before the process exits; when several fail the precedence is 2
+(coverage) > 3 (mutation) > 4 (file size). Codes 2, 3, and 4 mean the new code is undertested or
+oversized; 70 means the build or suite is broken. A CI consumer should keep those remediation
+paths separate.
 
 ### Runtime and caveats
 

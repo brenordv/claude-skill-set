@@ -29,12 +29,16 @@ from python_quality_gate import (
     files_outside_module_path,
     intersect,
     is_excluded,
+    is_size_skipped,
+    is_size_test_file,
     mutation_scope_empty,
     normalize_sf_path,
     parse_added_lines,
     parse_args,
+    parse_diff_file_status,
     parse_lcov,
     parse_survival_rate,
+    size_verdict,
     strip_control,
     toml_basic_string,
 )
@@ -520,6 +524,161 @@ class ParseArgsTest(unittest.TestCase):
                 ):
                     parse_args(["--timeout", bad])
                 self.assertEqual(ctx.exception.code, 64)
+
+
+class ParseDiffFileStatusTest(unittest.TestCase):
+    """New / pre-existing / rename classification from diff headers."""
+
+    def test_new_file(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/app/new.py b/src/app/new.py
+            new file mode 100644
+            index 0000000..1111111
+            --- /dev/null
+            +++ b/src/app/new.py
+            @@ -0,0 +1,2 @@
+            +def a(): ...
+            +def b(): ...
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {"src/app/new.py": (True, "src/app/new.py")})
+
+    def test_modified_file(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/app/mod.py b/src/app/mod.py
+            index 1111111..2222222 100644
+            --- a/src/app/mod.py
+            +++ b/src/app/mod.py
+            @@ -3 +3 @@
+            -old
+            +new
+            """
+        )
+        self.assertEqual(
+            parse_diff_file_status(diff), {"src/app/mod.py": (False, "src/app/mod.py")}
+        )
+
+    def test_rename_with_edits_keeps_old_path(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/old.py b/src/new.py
+            similarity index 90%
+            rename from src/old.py
+            rename to src/new.py
+            index 1111111..2222222 100644
+            --- a/src/old.py
+            +++ b/src/new.py
+            @@ -10,0 +11 @@
+            +def added(): ...
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {"src/new.py": (False, "src/old.py")})
+
+    def test_pure_rename_no_hunk(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/old.py b/src/new.py
+            similarity index 100%
+            rename from src/old.py
+            rename to src/new.py
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {"src/new.py": (False, "src/old.py")})
+
+    def test_deletion_contributes_nothing(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/gone.py b/src/gone.py
+            deleted file mode 100644
+            index 1111111..0000000
+            --- a/src/gone.py
+            +++ /dev/null
+            @@ -1,2 +0,0 @@
+            -a
+            -b
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {})
+
+
+class IsSizeTestFileTest(unittest.TestCase):
+    """Test-file classification for the size gate (warn-only set)."""
+
+    def test_tests_segment_and_basenames(self) -> None:
+        for path in (
+            "tests/test_orders.py",
+            "pkg/tests/helpers.py",
+            "src/app/test_orders.py",
+            "src/app/orders_test.py",
+            "src/app/conftest.py",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(is_size_test_file(path))
+
+    def test_production_files_not_test(self) -> None:
+        for path in ("src/app/orders.py", "src/app/latest_config.py", "src/app/attests.py"):
+            with self.subTest(path=path):
+                self.assertFalse(is_size_test_file(path))
+
+
+class IsSizeSkippedTest(unittest.TestCase):
+    """The gate scripts skip by default; user --exclude globs skip more."""
+
+    def test_ordinary_files_not_skipped(self) -> None:
+        self.assertFalse(is_size_skipped("src/app/orders.py", []))
+        self.assertFalse(is_size_skipped("tests/test_orders.py", []))
+
+    def test_gate_scripts_skipped_by_default(self) -> None:
+        self.assertTrue(is_size_skipped("skills/python/scripts/python_quality_gate.py", []))
+        self.assertTrue(is_size_skipped("skills/rust/scripts/rust_quality_gate.py", []))
+        self.assertTrue(is_size_skipped("skills/csharp/scripts/csharp_quality_gate.py", []))
+
+    def test_user_glob_against_path_and_basename(self) -> None:
+        self.assertTrue(is_size_skipped("src/generated/schema.py", ["src/generated/*"]))
+        self.assertTrue(is_size_skipped("src/deep/nested/schema.py", ["schema.py"]))
+        self.assertFalse(is_size_skipped("src/app/orders.py", ["src/generated/*"]))
+
+
+class SizeVerdictTest(unittest.TestCase):
+    """The size policy decision, warn 800 / cap 1500 / allowance 50."""
+
+    def verdict(self, counted, is_new, base, is_test=False):
+        return size_verdict(counted, is_new, base, is_test, 800, 1500, 50)
+
+    def test_new_below_warn_is_ok(self) -> None:
+        self.assertEqual(self.verdict(799, True, None), "OK")
+
+    def test_new_at_warn_is_warn(self) -> None:
+        self.assertEqual(self.verdict(800, True, None), "WARN")
+
+    def test_new_at_cap_is_fail(self) -> None:
+        self.assertEqual(self.verdict(1500, True, None), "FAIL")
+
+    def test_new_test_file_at_cap_downgrades_to_warn(self) -> None:
+        self.assertEqual(self.verdict(1600, True, None, is_test=True), "WARN")
+
+    def test_preexisting_under_cap_crossing_fails(self) -> None:
+        self.assertEqual(self.verdict(1500, False, 1400), "FAIL")
+
+    def test_preexisting_grew_past_allowance_into_warn(self) -> None:
+        self.assertEqual(self.verdict(900, False, 800), "WARN")
+
+    def test_preexisting_small_growth_is_ok(self) -> None:
+        self.assertEqual(self.verdict(840, False, 800), "OK")
+
+    def test_preexisting_grew_but_below_warn_is_ok(self) -> None:
+        self.assertEqual(self.verdict(700, False, 600), "OK")
+
+    def test_preexisting_already_over_cap_grew_warns(self) -> None:
+        self.assertEqual(self.verdict(1700, False, 1600), "WARN")
+
+    def test_preexisting_already_over_cap_tiny_growth_is_ok(self) -> None:
+        self.assertEqual(self.verdict(1610, False, 1600), "OK")
+
+    def test_preexisting_already_over_cap_never_fails(self) -> None:
+        self.assertNotEqual(self.verdict(3000, False, 1600), "FAIL")
 
 
 class CoveragePassesTest(unittest.TestCase):

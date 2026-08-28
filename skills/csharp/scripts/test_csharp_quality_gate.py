@@ -25,13 +25,17 @@ from csharp_quality_gate import (
     intersect,
     is_bodyless_cs,
     is_excluded,
+    is_size_skipped,
+    is_size_test_file,
     looks_like_lcov,
     map_changed_projects,
     mutation_scope_empty,
     normalize_sf_path,
     parse_added_lines,
     parse_args,
+    parse_diff_file_status,
     parse_lcov,
+    size_verdict,
     strip_control,
 )
 
@@ -568,6 +572,144 @@ class ParseArgsTest(unittest.TestCase):
         ):
             parse_args(["--stryker-solution", "App.sln", "--stryker-dir", "tests"])
         self.assertEqual(ctx.exception.code, 64)
+
+
+class ParseDiffFileStatusTest(unittest.TestCase):
+    """New / pre-existing / rename classification from diff headers."""
+
+    def test_new_file(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/App/New.cs b/src/App/New.cs
+            new file mode 100644
+            index 0000000..1111111
+            --- /dev/null
+            +++ b/src/App/New.cs
+            @@ -0,0 +1,2 @@
+            +public class New { }
+            +// trailing
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {"src/App/New.cs": (True, "src/App/New.cs")})
+
+    def test_modified_file(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/App/Mod.cs b/src/App/Mod.cs
+            index 1111111..2222222 100644
+            --- a/src/App/Mod.cs
+            +++ b/src/App/Mod.cs
+            @@ -3 +3 @@
+            -old
+            +new
+            """
+        )
+        self.assertEqual(
+            parse_diff_file_status(diff), {"src/App/Mod.cs": (False, "src/App/Mod.cs")}
+        )
+
+    def test_rename_with_edits_keeps_old_path(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/OldName.cs b/src/NewName.cs
+            similarity index 90%
+            rename from src/OldName.cs
+            rename to src/NewName.cs
+            index 1111111..2222222 100644
+            --- a/src/OldName.cs
+            +++ b/src/NewName.cs
+            @@ -10,0 +11 @@
+            +public int Added() => 1;
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {"src/NewName.cs": (False, "src/OldName.cs")})
+
+    def test_deletion_contributes_nothing(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/Gone.cs b/src/Gone.cs
+            deleted file mode 100644
+            index 1111111..0000000
+            --- a/src/Gone.cs
+            +++ /dev/null
+            @@ -1,2 +0,0 @@
+            -a
+            -b
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {})
+
+
+class IsSizeTestFileTest(unittest.TestCase):
+    """Test-file classification for the size gate (warn-only set)."""
+
+    def test_test_segments_and_basenames(self) -> None:
+        for path in (
+            "tests/App.Tests/OrderServiceTests.cs",
+            "src/Test/Helper.cs",
+            "src/MyApp.Tests/Fixture.cs",
+            "src/App/orderservicetests.cs",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(is_size_test_file(path))
+
+    def test_designer_is_not_a_test_file(self) -> None:
+        self.assertFalse(is_size_test_file("src/App/Form1.Designer.cs"))
+
+    def test_production_files_not_test(self) -> None:
+        for path in ("src/App/OrderService.cs", "src/Testing/Attestation.cs"):
+            with self.subTest(path=path):
+                self.assertFalse(is_size_test_file(path))
+
+
+class IsSizeSkippedTest(unittest.TestCase):
+    """Designer files and user --exclude globs skip the size gate."""
+
+    def test_designer_always_skipped(self) -> None:
+        self.assertTrue(is_size_skipped("src/App/Form1.Designer.cs", []))
+        self.assertTrue(is_size_skipped("src/App/form1.designer.cs", []))
+
+    def test_no_globs_skips_non_designer(self) -> None:
+        self.assertFalse(is_size_skipped("src/App/Order.cs", []))
+        self.assertFalse(is_size_skipped("tests/App.Tests/T.cs", []))
+
+    def test_user_glob_against_path_and_basename(self) -> None:
+        self.assertTrue(is_size_skipped("src/Generated/Schema.cs", ["src/Generated/*"]))
+        self.assertTrue(is_size_skipped("src/Deep/Nested/Schema.cs", ["Schema.cs"]))
+
+
+class SizeVerdictTest(unittest.TestCase):
+    """The size policy decision, warn 700 / cap 1500 / allowance 50."""
+
+    def verdict(self, counted, is_new, base, is_test=False):
+        return size_verdict(counted, is_new, base, is_test, 700, 1500, 50)
+
+    def test_new_below_warn_is_ok(self) -> None:
+        self.assertEqual(self.verdict(699, True, None), "OK")
+
+    def test_new_at_warn_is_warn(self) -> None:
+        self.assertEqual(self.verdict(700, True, None), "WARN")
+
+    def test_new_at_cap_is_fail(self) -> None:
+        self.assertEqual(self.verdict(1500, True, None), "FAIL")
+
+    def test_new_test_file_at_cap_downgrades_to_warn(self) -> None:
+        self.assertEqual(self.verdict(1600, True, None, is_test=True), "WARN")
+
+    def test_preexisting_under_cap_crossing_fails(self) -> None:
+        self.assertEqual(self.verdict(1500, False, 1400), "FAIL")
+
+    def test_preexisting_grew_past_allowance_into_warn(self) -> None:
+        self.assertEqual(self.verdict(800, False, 700), "WARN")
+
+    def test_preexisting_small_growth_is_ok(self) -> None:
+        self.assertEqual(self.verdict(740, False, 700), "OK")
+
+    def test_preexisting_already_over_cap_grew_warns(self) -> None:
+        self.assertEqual(self.verdict(1700, False, 1600), "WARN")
+
+    def test_preexisting_already_over_cap_never_fails(self) -> None:
+        self.assertNotEqual(self.verdict(3000, False, 1600), "FAIL")
 
 
 class CoveragePassesTest(unittest.TestCase):

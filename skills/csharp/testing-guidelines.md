@@ -194,9 +194,16 @@ Fakes stay minimal: implement only what the tests exercise, expose captured stat
 ## New-code quality gate
 
 `scripts/csharp_quality_gate.py` in this skill folder gates the lines a branch adds, diffing the
-merge base against the working tree so uncommitted work is checked too. It wraps two tools, one
-per question:
+merge base against the working tree so uncommitted work is checked too. It runs a file-size check
+and two tool-backed gates:
 
+- A **file-size phase** grades new and cap-crossing production files against the per-language tiers
+  in `brain/knowledge/coding-general.md` §3 (C#: warn at 700 lines, fail at the 1,500 cap). It
+  keeps test files warn-only, skips generated `.Designer.cs` files outright, folds in untracked
+  `.cs` files as new, and needs only git and the filesystem, so it runs first and reports even
+  where dotnet is absent. New files and pre-existing files a change pushes to the cap fail; an
+  already-oversized file only warns, with a message to route new code into a new file. See
+  `brain/knowledge/coding-general.md` §3 for the tiers and the split-don't-refactor policy.
 - `dotnet test` with the coverlet collector (`--collect:"XPlat Code Coverage;Format=lcov"`)
   answers quantity: which added lines execute under tests. The script intersects the lcov output
   with the added lines and enforces a threshold, default 90% of new coverable lines.
@@ -238,9 +245,12 @@ python <skill-set>/skills/csharp/scripts/csharp_quality_gate.py
 ```
 
 The base ref defaults to `origin/HEAD`, then `main`, then `master`; `--base <ref>` overrides it.
-`--skip-mutants` runs only the coverage gate, for quick iteration. `--cov-threshold <pct>` and the
-repeatable `--exclude <glob>` adjust the coverage policy (test/tests/`*.Tests` path segments and
-`*Tests.cs` / `*.Designer.cs` basenames are excluded by default, case-insensitively).
+`--skip-mutants` runs only the coverage gate (the file-size phase always runs), for quick
+iteration. `--cov-threshold <pct>` and the repeatable `--exclude <glob>` adjust the coverage policy
+(test/tests/`*.Tests` path segments and `*Tests.cs` / `*.Designer.cs` basenames are excluded by
+default, case-insensitively). `--exclude` also drops a file from the file-size gate; the size gate
+already skips `*.Designer.cs`, so point `--exclude` at other generated trees, for example
+`--exclude Migrations/*` for EF Core migrations.
 `--test-target <path>` is handed to `dotnet test` and defaults to `.`, which requires a project or
 solution file at the repo root; point it at your solution or test project otherwise.
 `--lcov-file <path>` consumes a pre-generated lcov file instead of running `dotnet test`.
@@ -253,15 +263,18 @@ cannot be combined with `--stryker-dir`.
 
 | Code | Meaning |
 |------|---------|
-| 0 | both gates pass |
-| 2 | coverage gate failed (when both gates fail, both are reported and 2 wins) |
+| 0 | all gates pass |
+| 2 | coverage gate failed |
 | 3 | mutation gate failed |
+| 4 | file-size gate failed (a new or cap-crossing production file hit the 1,500-line cap) |
 | 64 | usage error |
 | 70 | an underlying tool ran and failed: broken build, failing test run, no completed report |
 | 78 | environment not ready: tool missing, not a git repo, base ref unresolvable |
 
-Codes 2 and 3 mean the new code is undertested; 70 means the build or suite is broken. A CI
-consumer should keep those two remediation paths separate.
+All phases run and report before the process exits; when several fail the precedence is 2
+(coverage) > 3 (mutation) > 4 (file size). Codes 2, 3, and 4 mean the new code is undertested or
+oversized; 70 means the build or suite is broken. A CI consumer should keep those remediation
+paths separate.
 
 ### Runtime and caveats
 

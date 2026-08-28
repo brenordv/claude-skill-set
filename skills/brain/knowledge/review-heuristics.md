@@ -89,6 +89,13 @@ general principle. Distilled from real review findings.
 - **Keep comments and docs in sync with the code.** A doc that says `body[surveyId]` while the parser
   splits on `:` creates an invisible rule that breaks silently. Flag any divergence between a documented
   contract and actual logic.
+- **A new file over the size cap, or new code growing an already-oversized file, is at minimum
+  Important.** The per-language tiers live in `coding-general.md` §3 (File size). A file created past
+  its language's hard cap, or a change that piles more onto a file already over the cap, should have
+  been split into a new cohesive module rather than grown (⛔ Hard Rule 4). Test code is exempt from
+  the cap. The new-code quality gate flags this mechanically; in review, judge whether the proposed
+  split lands on a real boundary and whether an existing oversized file was grown when it should have
+  been left alone.
 
 ## Correctness
 

@@ -6,9 +6,10 @@ strongest exactly where recall is weakest (fresh chat, long context, deep in a t
 depend on recall. It intercepts the tool call after the model emits it and before it runs, and its
 denial message lands in context at the one moment it steers the next attempt.
 
-This folder holds four independent `PreToolUse` hooks, each shipped as a Windows `.ps1` and a POSIX
-`.sh` with identical behavior, each failing open. Three match the shell tools (`Bash|PowerShell`),
-one matches the native file tools (`Glob|Grep|Read`):
+This folder holds five independent hooks, each shipped as a Windows `.ps1` and a POSIX `.sh` with
+identical behavior, each failing open. Four are `PreToolUse`: three match the shell tools
+(`Bash|PowerShell`), one matches the native file tools (`Glob|Grep|Read`). The fifth is
+`PostToolUse`, matching the write tools (`Write|Edit`):
 - **route-to-text-tools** routes file-probing, in-place-edit, and read-only-git shell commands to the
   `text-search`, `text-edit`, and `git-ops` MCPs.
 - **block-secrets** hard-blocks shell commands that read or copy secret-looking files.
@@ -16,6 +17,9 @@ one matches the native file tools (`Glob|Grep|Read`):
   file, so a secret cannot be located or read by stepping around the shell hooks.
 - **block-vcs-writes** hard-blocks the git writes the user owns (`commit`, `add`, `stash`) and every
   `gh stack` subcommand except `view`.
+- **warn-file-size** (PostToolUse) warns when a newly created `.py`/`.cs`/`.rs` file is written past
+  its language's "worth reviewing" line tier. It never blocks and stays silent for files already
+  tracked in git.
 
 > [!IMPORTANT]
 > It is crucial to know that those hooks are not a foolproof, be-all, end-all security solution. 
@@ -152,10 +156,11 @@ behavior; keep them in sync when you tune one.
 
 ### Verify
 
-All four hooks run together from the repo root with `bash tools/test-hooks.sh`: it parses every
-script, guards against the command-substitution heredoc that broke them on macOS bash 3.2, and checks
-every verdict in the tables above (see `../tools/README.md`). The hand checks below exercise just this
-hook.
+All five hooks run together from the repo root with `bash tools/test-hooks.sh`: it parses every
+script, guards against the command-substitution heredoc that broke them on macOS bash 3.2, checks the
+file-size thresholds stay in sync across hooks and gates, and checks every verdict in the tables
+above. On Windows, `tools\test-hooks.ps1` runs the `.ps1` hooks against the same case table (see
+`../tools/README.md`). The hand checks below exercise just this hook.
 
 **PowerShell** (pipe a synthesized payload straight into the script, no Claude Code needed):
 
@@ -254,8 +259,9 @@ open.
 
 ### Verify
 
-The full harness for all four hooks runs from the repo root with `bash tools/test-hooks.sh`; the hand
-checks below exercise just this one.
+The full harness for all five hooks runs from the repo root with `bash tools/test-hooks.sh` (on
+Windows, `tools\test-hooks.ps1` runs the `.ps1` side against the same case table); the hand checks
+below exercise just this one.
 
 ```bash
 s=~/.claude/hooks/block-secrets.sh
@@ -322,8 +328,9 @@ open.
 
 ### Verify
 
-The full harness for all four hooks runs from the repo root with `bash tools/test-hooks.sh`; the hand
-checks below exercise just this one.
+The full harness for all five hooks runs from the repo root with `bash tools/test-hooks.sh` (on
+Windows, `tools\test-hooks.ps1` runs the `.ps1` side against the same case table); the hand checks
+below exercise just this one.
 
 The `.sh` has a `--candidate` self-test that classifies a raw target string (`secret`/`allow`) with
 neither Perl nor Claude Code; the JSON stdin path needs Perl:
@@ -435,8 +442,9 @@ picked up until then).
 
 ### Verify
 
-The full harness for all four hooks runs from the repo root with `bash tools/test-hooks.sh`; the hand
-checks below exercise just this one.
+The full harness for all five hooks runs from the repo root with `bash tools/test-hooks.sh` (on
+Windows, `tools\test-hooks.ps1` runs the `.ps1` side against the same case table); the hand checks
+below exercise just this one.
 
 ```bash
 s=~/.claude/hooks/block-vcs-writes.sh
@@ -456,6 +464,130 @@ The write lists live in the fragment loop: the `commit|add` pair, the `stash` br
 `stash` branch; to permit stack submission, you are better off uninstalling the hook. Keep both
 scripts in sync.
 
+## warn-file-size
+
+The fifth hook, and the only `PostToolUse` one: its matcher is `Write|Edit`. The write has already
+landed (a `PostToolUse` hook cannot block), so this one warns rather than denies: when a **newly
+created** `.py`/`.cs`/`.rs` file exceeds its language's "worth reviewing" line tier (Python 800, C#
+700, Rust 700; the tiers live in `coding-general.md` section 3), it prints a two-to-three line message
+prefixed `[warn-file-size]` to stderr and exits 2, which Claude Code surfaces to the model. It is the
+write-time nudge for `coding-general.md` Hard Rule 4, ahead of the diff-scoped size check each
+language skill's `scripts` quality gate runs before handoff.
+
+It is the only hook that reads file content: to count lines it opens the written file, under a byte
+cap, and echoes back the count only, never any content. It stays silent for any file tracked at HEAD
+(checked with `git ls-files`), so it warns on freshly created files and never nags edits to
+pre-existing ones.
+
+### What it warns on, and what it does not
+
+A write is flagged only when all of these hold: the target has a `.py`/`.cs`/`.rs` extension, it is a
+regular file (not a symlink or directory), its basename is not secret-looking (`secrets.*`,
+`credentials.*`, `.env*`, `private_key*`, `master.key`), it is not tracked in git, and its line count
+is at or over the language's tier.
+
+| Write                                                                       | Verdict   |
+|-----------------------------------------------------------------------------|-----------|
+| a new 900-line `service.py`, 800-line `Parser.cs`, or 750-line `engine.rs`  | warn (exit 2, `[warn-file-size]` on stderr) |
+| a new 200-line `service.py`; any `.md` / `.txt` / `.json` write             | **silent** (under tier, or not a gated extension) |
+| an edit to a tracked 2,000-line file                                        | **silent** (tracked at HEAD, never newly created) |
+| a new `secrets.py`, a `.env` write, or a missing/unreadable path            | **silent** (secret-skip, or fail-open) |
+
+The `.rs` message adds a note that the diff-scoped gate subtracts the trailing `#[cfg(test)]` module,
+so the raw count the hook reports can overstate the effective production size.
+
+### Install
+
+Same mechanics as the other hooks, but it registers under `hooks.PostToolUse` (not `PreToolUse`) with
+matcher **`Write|Edit`**. Copy the script for your OS (`warn-file-size.ps1` on Windows,
+`warn-file-size.sh` on macOS/Linux) to `~/.claude/hooks/` and add a hook group under
+`hooks.PostToolUse`:
+
+**Windows**:
+
+```jsonc
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\warn-file-size.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**macOS / Linux**:
+
+```jsonc
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/warn-file-size.sh\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Requirements match the other hooks (Windows `powershell.exe`; macOS/Linux `bash` + `perl` with
+`JSON::PP`), plus `git` on PATH; without git the hook fails open and warns nothing. The `.sh` also
+uses `awk`, `head`, and `dirname`, all POSIX.
+
+### Threshold sync
+
+The three warn thresholds are named constants at the top of the scripts (`WARN_PY` / `WARN_CS` /
+`WARN_RS` in the `.sh`, `$warn` in the `.ps1`). They mirror `SIZE_WARN_THRESHOLD` in each language
+skill's `scripts` quality gate and the tiers in `coding-general.md` section 3. Retuning a tier means
+changing it in all three places, so the write-time nudge and the diff-scoped gate agree. The sync is
+also enforced: `tools/test-hooks.sh` extracts these constants from both hook scripts and the three
+gates and cross-compares them, so a missed spot fails the harness instead of drifting silently.
+
+### Verify
+
+`bash tools/test-hooks.sh` covers this hook alongside the four `PreToolUse` ones, and on Windows
+`tools\test-hooks.ps1` runs the `.ps1` against the same case table. The cases build real oversized
+and small fixture files, since the hook grades the file it reads, and two of them pin the
+secret-skip anchoring: a secret basename under a sample-named parent directory stays skipped, while
+the in-basename sample form is counted. The `.sh` has a `--check`
+self-test that classifies a path without JSON stdin or Claude Code:
+
+```bash
+s=~/.claude/hooks/warn-file-size.sh
+bash "$s" --check new_big_module.py   # -> warn (untracked, gated extension, over tier)
+bash "$s" --check small.py            # -> silent
+```
+
+Piping a `{"tool_name":"Write","tool_input":{"file_path":"..."}}` payload into the script warns with
+exit 2 and a `[warn-file-size]` line on stderr, or exits 0 silently.
+
+### Tuning
+
+- **Thresholds:** `WARN_PY` / `WARN_CS` / `WARN_RS` (`.sh`) or `$warn` (`.ps1`); keep them in sync
+  with the gates (see Threshold sync).
+- **Gated extensions:** the `threshold_for` `case` (`.sh`) or the `$warn` keys (`.ps1`).
+- **Byte cap:** `BYTE_CAP` / `$byteCap`, the most bytes read before counting stops.
+- **Secret skip:** the `SECRET` / `SAFE` regexes (`.sh`) or `$secret` / `$safe` (`.ps1`); keep both
+  scripts in sync.
+
+The hook fails **open**: a missing `git`/`perl`, an unreadable file, a parse error, or any fault exits
+0 and warns nothing, so it never interferes with a write.
+
 ## Protected MCP stores (guard-file-targets + block-secrets)
 
 `guard-file-targets` and `block-secrets` each carry a `PROTECTED_STORES` tunable (`$protectedStores`
@@ -468,12 +600,13 @@ shell command naming one has no legitimate use. Set the same regex in all four s
 portable enforcement; for a hard wall, put the store under filesystem permissions the agent's
 process cannot read.
 
-## Full install: all four hooks at once
+## Full install: all five hooks at once
 
-For a fresh machine, copy the four scripts for your OS into `~/.claude/hooks/`, then paste the
+For a fresh machine, copy the five scripts for your OS into `~/.claude/hooks/`, then paste the
 whole `hooks` block below into `~/.claude/settings.json` (merge it if the file already has other
-keys). Each hook is its own group; every group runs on each matching tool call, and a deny from any
-one of them blocks the call. Reload with `/hooks` or a restart when done.
+keys). Each hook is its own group; every group runs on each matching tool call, a deny from any
+`PreToolUse` group blocks the call, and the `PostToolUse` `warn-file-size` group only warns after the
+write. Reload with `/hooks` or a restart when done.
 
 **Windows**:
 
@@ -537,6 +670,22 @@ one of them blocks the call. Reload with `/hooks` or a restart when done.
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\warn-file-size.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
@@ -570,6 +719,14 @@ one of them blocks the call. Reload with `/hooks` or a restart when done.
         "matcher": "Glob|Grep|Read",
         "hooks": [
           { "type": "command", "command": "bash \"$HOME/.claude/hooks/guard-file-targets.sh\"", "timeout": 10 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/warn-file-size.sh\"", "timeout": 10 }
         ]
       }
     ]

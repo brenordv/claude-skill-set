@@ -40,6 +40,15 @@ list before writing code, and walk it again at handoff (§8).
    `cargo clippy --all-targets --all-features -- -D warnings`, `cargo build`, `cargo test`. Never
    silence a lint to get there: an `#[allow(...)]` without a stated, site-specific reason is a
    violation, not a fix.
+5. **File size: split new code into a new module; never mass-refactor an existing file for size.** A
+   `.rs` file you create, or a pre-existing one your change grows across 1,500 lines (the hard cap;
+   the warn tier starts at 700), goes into a new cohesive module instead of sailing past the cap. The
+   per-language tier table is in `brain/knowledge/coding-general.md` §3 (File size). This binds your
+   code only: a file already over the cap stays untouched for size; route your addition into a new
+   module and name the oversized file in the handoff. The count is production lines: the trailing
+   `#[cfg(test)] mod tests` block is subtracted, so co-located unit tests never push a file over a
+   tier, and test-only files (`tests/`, `*_tests.rs`) are warn-only. The new-code quality gate (§8)
+   enforces the cap.
 
 ### 1. Design Principles
 
@@ -56,6 +65,7 @@ list before writing code, and walk it again at handoff (§8).
 - Enums for discrete modes/states; `Option<T>` for optional fields
 - New crates: use `edition = "2021"` (the standing default for these projects for now); set `authors` and `repository` to match the project's conventions; add the crate to the root `Cargo.toml` workspace `members` list (if using workspaces)
 - Pin the lint policy in the repo with a `[workspace.lints]` (or per-crate `[lints]`) table in `Cargo.toml` and `lints.workspace = true` in member crates, so the clippy bar travels with the project instead of living in anyone's head
+- When you are the one creating that lint-policy table (not when a crate merely joins an existing workspace), add `[workspace.lints.clippy] too_many_lines = "warn"`. The lint is allow-by-default (pedantic), and under Hard Rule 4's `-D warnings` a `"warn"` entry becomes a hard error, so a function past clippy's `too-many-lines-threshold` (kept at the default 100, consistent with the ~50-line function guidance in §4) stops the gate. A function that is legitimately long escapes with `#[allow(clippy::too_many_lines)]` plus a one-line site-specific reason, the same sanctioned-exception shape as Hard Rule 4. If the same table also enables a lint group (for example `pedantic = "warn"`), give the group `priority = -1` so the individual `too_many_lines` level still wins. This is a per-function guard; whole-file size is enforced by Hard Rule 5 and the new-code gate, since no file-level clippy lint exists.
 
 ### 2. Error Handling (anyhow for binaries, thiserror for libraries)
 
@@ -89,7 +99,7 @@ In a library crate:
 
 ### 4. Code Style
 
-- Use the repo's `rustfmt` and `clippy` defaults; never change them; fix all warnings
+- Use the repo's `rustfmt` and `clippy` defaults; never change an existing project's settings; fix all warnings. Setting the lint policy on a new crate or workspace you are creating is the one sanctioned exception (§1), including the `too_many_lines` pin
 - `snake_case` for functions/variables/modules/files; `PascalCase` for types; `UPPER_SNAKE_CASE` for constants
 - Group imports: `crate::`, external crates, `std::`; no glob imports in production code
 - Doc comments (`///`) on all public items with `# Errors` / `# Panics` sections where applicable
@@ -109,6 +119,7 @@ In a library crate:
 ### 6. Testing
 
 - Unit tests: `#[cfg(test)] mod tests` at the bottom of each file; `use super::*`
+- When a co-located `#[cfg(test)] mod tests` grows large, move it into a sibling `tests.rs` submodule file (`#[cfg(test)] mod tests;` in the source file, the tests in the adjacent `tests.rs`) rather than letting it inflate the source. Private items still reach it through the module boundary. The size gate already subtracts the trailing test module from the production count, so co-located tests never fail the gate; this split is about keeping the source file readable, and it is distinct from the integration-test `tests/` dir
 - Integration tests: separate crates in a top-level `tests/` dir, exercising the public API; shared helpers go in `tests/common/mod.rs`. Do not mirror `src/`'s folder layout into a separate test tree (that is a C#/pytest convention, not Rust's). See `testing-guidelines.md`.
 - File-based tests: `tempfile::tempdir()` for temporary directories
 - Follow Arrange-Act-Assert; use helper functions to build test fixtures
@@ -123,7 +134,7 @@ In a library crate:
 - `unwrap()` / `expect()` in non-test code (Hard Rule 2)
 - Error libraries other than `anyhow` in binaries and `thiserror` in libraries; no `eyre` and friends (Hard Rule 1)
 - `log`, `env_logger`, or `println!`/`eprintln!` diagnostics where `tracing` belongs (Hard Rule 3; the entrypoint's final error print is the exception)
-- Changing `edition`, `rustfmt`, or `clippy` settings
+- Changing `edition`, `rustfmt`, or `clippy` settings in an existing project (setting the lint policy when you create a new crate or workspace is the one sanctioned exception, §1)
 
 ### 8. Quality Validation
 
@@ -141,6 +152,13 @@ cargo test
 ```
 In a large workspace, scope with `-p <crate>` while iterating, but the full unscoped run happens at
 least once before handoff.
+
+3. Run the coverage half of the new-code quality gate where the toolchain is available
+   (`scripts/rust_quality_gate.py --skip-mutants`; see §6 and `testing-guidelines.md`). Its file-size
+   check (Hard Rule 5) exits 4 when a new or cap-crossing production file hits the 1,500-line cap; the
+   fix is to split the new code into a new module, never to mass-refactor an existing oversized one.
+   The size phase runs on git and the filesystem alone, so it reports even where cargo is absent, and
+   it subtracts the trailing `#[cfg(test)]` block from the count.
 
 ## When to Use This Skill
 

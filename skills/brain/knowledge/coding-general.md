@@ -33,6 +33,15 @@ Re-read this list before writing code and walk it again at handoff (§10).
    reader who knows the previous version, the task, or the conversation is narration; delete it
    and put that story in the handoff summary or commit message. This bites hardest when fixing
    code: the urge to annotate the fix at the fix site is exactly the pattern banned here.
+4. **New code respects the file-size tiers; never mass-refactor to hit them.** The per-language tier
+   table in §3 (File Organization) sets a warn threshold and a hard cap per language (Python warn 800,
+   C#/Rust warn 700; cap 1,500 for all three, comparisons inclusive). A file you create, or a
+   pre-existing file your change grows across the cap, must not sail past it: split the new code into a
+   new cohesive module on a real boundary. New code that pushes a file past "worth reviewing" is the
+   signal to split, not to keep piling on. This binds your code only, per the scope boundary above: an
+   already-oversized file you had to touch is never yours to refactor for size. Route your addition
+   into a new module and name the oversized file in the handoff. Test code is exempt from the hard cap.
+   The new-code quality gate enforces this on new and cap-crossing production files.
 
 ---
 
@@ -140,6 +149,30 @@ conventions this skill set has since moved past. Who wins is not yours to decide
 - One primary public type per file (exceptions: tightly coupled small types).
 - Group related functionality together.
 - Match the project's existing structure before inventing a new one.
+
+### File size
+
+Files grow until they stop being readable. These per-language tiers mark where size stops being
+normal and starts being worth a second look. They apply to files you create or grow, and are the
+detail behind ⛔ Hard Rule 4; they are not a mandate to refactor existing files.
+
+| Language | Very common | Still normal | Worth reviewing | Often too large |
+| -------- | ----------: | -----------: | --------------: | --------------: |
+| Python   |     200-500 |      500-800 |       800-1,200 |          1,500+ |
+| C#       |     150-400 |      400-700 |       700-1,000 |          1,500+ |
+| Rust     |     150-400 |      400-700 |       700-1,000 |          1,500+ |
+
+- The warn threshold is the start of "worth reviewing" (Python 800, C# and Rust 700); the hard cap
+  is 1,500 for all three. Comparisons are inclusive: a 1,500-line file is at the cap.
+- New code that would push a file past "worth reviewing" goes into a new cohesive module, split on a
+  real domain boundary rather than an arbitrary line count.
+- An existing file already over a tier is not yours to mass-refactor for size (⛔ Hard Rule 4, and
+  the blast-radius rule in §1). Route your new code into a new module and name the oversized file in
+  the handoff so the owner can decide.
+- The numbers cover the three languages named. For others (TypeScript, GDScript, C++, ...), the same
+  instinct applies; there is no hard cap, so use judgment.
+- The new-code quality gate in each language skill (`scripts/*_quality_gate.py`) enforces the cap on
+  new and cap-crossing production files, warns earlier, and leaves test files warn-only.
 
 ---
 

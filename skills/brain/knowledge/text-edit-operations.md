@@ -124,6 +124,12 @@ never an absolute path. Check `error` first and branch on `error.code`: `Selecto
 `PatternInvalid`, `PathOutsideRoot`, `NotFound`, `ExpectedMatchCountMismatch`, `BatchNotFound`,
 `OperationBudgetExceeded`, `InvalidArgument`, `InternalError`. `InvalidArgument` also covers every bad
 `cwd` (escapes the base, not a directory, denylisted) and an unknown `source_encoding`.
+Argument-shape mistakes are rejected before the tool runs (server v1.3.0+), as `InvalidArgument`: an
+unknown argument name now fails the call instead of being silently ignored and run on defaults, with
+`detail.unknown_arguments` naming each one (plus a `did_you_mean` when a schema name is close),
+`missing_required`, and the full `expected_arguments`; a known argument of the wrong JSON type reports
+the same code with the SDK's fixed generic text in `detail.sdk_error`. Correct the call from the detail
+and retry; this is a caller error, never a capability gap, so no `textedit-gap` ticket in those cases.
 `OperationBudgetExceeded` means narrow the selector or pattern and rerun.
 
 ### Common patterns

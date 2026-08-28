@@ -25,6 +25,10 @@ As a high level, here are some examples:
   agent never reverts the change or relaxes a validation just to go green.
 - Minimal diffs with a contained blast radius: solve what was asked, tighten only the thing being
   tightened, leave the rest alone.
+- File size follows per-language tiers. New code that would push a file past the "worth reviewing"
+  line (Python 800, C#/Rust 700) goes into a new cohesive module; a diff-scoped gate fails a new or
+  cap-crossing file at 1,500 lines, and an already-oversized file is grown into, never mass-refactored
+  to satisfy the gate. A PostToolUse hook echoes the same warning the moment an oversized new file lands.
 - Git stays human. The agent inspects freely (through a read-only MCP) but never stages or commits.
 - Pushes the agents to follow Clean Code, best practices, SOLID, etc.
 
@@ -254,10 +258,10 @@ consulted before planning and during reviews so the same trap isn't hit twice.
 
 ## Enforcement hooks
 
-`hooks/` (at the repo root) holds optional Claude Code `PreToolUse` hooks that enforce the shell rules
+`hooks/` (at the repo root) holds optional Claude Code hooks that enforce the always-on rules
 the knowledge files describe, so they hold even when a reflex fires before the rule is salient (a fresh
 chat, a long context, deep in a task). A knowledge rule is a nudge the model can forget mid-task; a
-hook intercepts the tool call and does not depend on recall. Four are included, each shipped as a Windows
+hook intercepts the tool call and does not depend on recall. Five are included, each shipped as a Windows
 `.ps1` and a POSIX `.sh` with identical behavior, each failing open so a fault never blocks a legitimate
 command:
 
@@ -270,11 +274,16 @@ command:
   file, so a secret can't be located or read by stepping around the shell hooks.
 - **block-vcs-writes** hard-blocks the git writes the user owns (`commit`, `add`, `stash`) and every
   `gh stack` subcommand except `view`, enforcing the hands-off-git rule and the PR-stack Hard Rules.
+- **warn-file-size** is the one `PostToolUse` hook: after a `Write`/`Edit` lands a newly created
+  `.py`/`.cs`/`.rs` file at or over its language's "worth reviewing" line tier, it tells the model to
+  split new code into a new module, the same policy the quality gates enforce at handoff. It never
+  blocks and stays silent for files already tracked in git.
 
 They are opt-in machine config, not auto-loaded like the knowledge files: copy the script for your OS
-into `~/.claude/hooks/` and register it under `hooks.PreToolUse` in your settings. They need only a
-stock interpreter (`powershell.exe` on Windows; `bash` plus `perl` on macOS/Linux), nothing to install.
-`hooks/README.md` has the per-OS install, the exact block and allow behavior, and tuning.
+into `~/.claude/hooks/` and register it in your settings, the first four under `hooks.PreToolUse` and
+`warn-file-size` under `hooks.PostToolUse`. They need only a stock interpreter (`powershell.exe` on
+Windows; `bash` plus `perl` on macOS/Linux), plus `git` on PATH for `warn-file-size`, nothing to
+install. `hooks/README.md` has the per-OS install, the exact block and allow behavior, and tuning.
 
 For setting up a hardened global config from scratch (an MCP allow list and secret deny list, the
 enforcement hooks, dangerous-command blocks, the non-functional keys to avoid, and an optional
@@ -286,7 +295,10 @@ The rulebase checks itself: `tools/lint-repo.sh` (and its `.ps1` twin) verifies 
 and cross-file references resolve, and that the prose obeys its own em-dash and machine-privacy
 bans. CI runs both implementations on every push and PR (`.github/workflows/repo-lint.yml`), the
 `.sh` on Linux and the `.ps1` on Windows, so an OS quirk or a drift between the two hand-synced
-scripts fails one job while the other passes. Agents run the lint after editing markdown here.
+scripts fails one job while the other passes. The same workflow also exercises the hooks
+(`tools/test-hooks.sh` under Ubuntu's bash 5.2 and macOS's bash 3.2, `tools/test-hooks.ps1` under
+Windows PowerShell 5.1, both against the shared `tools/hook-cases.tsv` case table) and runs the
+three quality-gate unit suites. Agents run the lint after editing markdown here.
 [`tools/README.md`](tools/README.md) has the what and the why.
 
 ## MCP dependencies
@@ -311,8 +323,8 @@ Five custom MCP servers back parts of this set:
 
 ```
 CLAUDE.md                     # bootstrap: what to read at the start of every conversation
-hooks/                        # optional PreToolUse hooks that enforce the shell rules (ps1 + sh)
-tools/                        # repo lint (ps1 + sh) run by CI and by agents after md edits
+hooks/                        # optional enforcement hooks, PreToolUse + PostToolUse (ps1 + sh)
+tools/                        # repo lint + hook test harness (ps1 + sh), both run by CI
 skills/
 ├── brain/
 │   └── knowledge/            # shared, always-on and on-demand guidance, incl. task-workflows.md

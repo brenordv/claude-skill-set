@@ -40,6 +40,14 @@ list before writing code, and walk it again at handoff (§5).
 5. **Pickle-format model and data files are untrusted code, not data.** `torch.load`,
    `joblib.load`, and fairseq-style checkpoints execute arbitrary code at load time: load only from
    trusted sources, prefer safetensors, and pass `weights_only=True` where the call supports it.
+6. **File size: split new code into a new module; never mass-refactor an existing file for size.** A
+   `.py` file you create, or a pre-existing one your change grows across 1,500 lines (the hard cap;
+   the warn tier starts at 800), goes into a new cohesive module instead of sailing past the cap. The
+   per-language tier table is in `brain/knowledge/coding-general.md` §3 (File size). This binds your
+   code only: a file already over the cap stays untouched for size; route your addition into a new
+   module and name the oversized file in the handoff. Test files (`tests/` trees, `test_*.py`,
+   `*_test.py`, `conftest.py`) are warn-only, never a hard failure. The new-code quality gate (§5)
+   enforces the cap.
 
 ### 1. Code Style & Standards
 
@@ -139,6 +147,7 @@ Run these checks before marking work complete:
 - [ ] Type checking clean: `mypy src/`
 - [ ] Tests pass with coverage (>=80% for critical paths): `pytest --cov=src --cov-report=term-missing`
 - [ ] Coverage half of the new-code quality gate run where the toolchain is available (`scripts/python_quality_gate.py --skip-mutants` in this skill folder). The mutation half is optional: never commit anything yourself; ask the user whether they want it and to commit the changes themselves first (see `testing-guidelines.md` §"New-code quality gate")
+- [ ] File-size gate clean: no new or cap-crossing production file hits the 1,500-line cap (warn at 800), and new code goes into a new module rather than growing a file past the cap (Hard Rule 6). The gate reports exit code 4 on a cap crossing and runs on git and the filesystem alone, so it works even where pytest is absent. Ruff has no file- or module-length rule; a greenfield project wanting a related lint signal can enable the function-level PLR0915 (too-many-statements) and C901 (complexity), but neither caps a file.
 - [ ] Test files mirror the source package layout under `tests/`, not dumped flat at the root (Hard Rule 4)
 - [ ] Documentation complete (docstrings on every public API; Hard Rule 3)
 - [ ] Performance profiled if applicable

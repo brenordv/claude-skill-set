@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 """New-code quality gate for C# projects.
 
-Answers two questions about the lines a branch adds, over the merge-base to
-working-tree diff:
+Grades the lines a branch adds, over the merge-base to working-tree diff:
 
-* Are they tested?  ``dotnet test`` with the coverlet collector produces lcov
-  output; this script intersects it with the added lines and enforces a
-  new-line coverage threshold.
-* Do the tests mean anything?  Stryker.NET (``dotnet stryker --since``)
-  mutates only the changed code and fails when any scoped mutant survives the
-  suite.
+* Coverage: ``dotnet test`` with the coverlet collector produces lcov,
+  intersected with the added lines against a new-line threshold.
+* Mutation: Stryker.NET (``dotnet stryker --since``) mutates only the changed
+  code and fails when any scoped mutant survives the suite.
+* File size: new and cap-crossing files graded against per-language line tiers,
+  on git and the filesystem alone, so it runs first and reports even where the
+  toolchain is absent.
 
-Standard library only, so it runs anywhere a Python 3 interpreter, the .NET
-SDK, and dotnet-stryker are present. The parsing and intersection logic is
-factored into pure functions that the co-located test file imports directly;
-the phases that shell out to git and dotnet live in the orchestration half.
-The language-agnostic core (diff parsing, lcov parsing, path normalization,
-threshold check) is deliberately duplicated in the sibling gates
-``skills/rust/scripts/rust_quality_gate.py`` and
-``skills/python/scripts/python_quality_gate.py`` because each skill folder is
-a self-contained distribution unit; a bug fix in that core belongs in all
+Standard library only. The pure functions (diff/lcov parsing, path
+normalization, threshold check) are the language-agnostic core, deliberately
+duplicated in the sibling ``rust`` and ``python`` gates because each skill
+folder is a self-contained distribution unit; a fix to that core belongs in all
 three. See ``skills/csharp/testing-guidelines.md`` for the two-gate model,
 install commands, and the trust boundary.
 """
@@ -43,11 +38,17 @@ from typing import NoReturn
 EXIT_OK = 0
 EXIT_COVERAGE_FAILED = 2
 EXIT_MUTATION_FAILED = 3
+EXIT_SIZE_FAILED = 4
 EXIT_USAGE = 64
 EXIT_TOOL_FAILED = 70
 EXIT_ENV_NOT_READY = 78
 
 DEFAULT_COV_THRESHOLD = 90
+
+SIZE_WARN_THRESHOLD = 700
+SIZE_FAIL_CAP = 1500
+SIZE_GROWTH_ALLOWANCE = 50
+SIZE_READ_BYTE_CAP = 2_000_000
 
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
@@ -59,27 +60,17 @@ _BODYLESS_KEYWORDS = frozenset({"interface", "enum", "delegate"})
 
 
 # --------------------------------------------------------------------------
-# Pure functions: diff parsing, lcov parsing, path normalization, gating.
-# These take strings and return data; the test file drives them directly.
+# Pure functions: diff/lcov parsing, path normalization, gating.
+# Strings in, data out; the co-located test file drives them directly.
 # --------------------------------------------------------------------------
 
 
 def parse_added_lines(diff_text: str) -> dict[str, set[int]]:
-    """Extract added line numbers per file from a unified diff.
+    """Map each file's repo-relative POSIX path to the 1-based line numbers the
+    diff adds in its new version (deletions contribute nothing).
 
-    Reads the destination path from each ``+++`` header and the new-file line
-    numbers from each hunk, counting hunk-body lines against the declared
-    counts so an added source line that itself begins with ``+++`` or ``@@`` is
-    never mistaken for a header.
-
-    Args:
-        diff_text: Output of ``git diff`` (any ``-U`` context; ``-U0`` is what
-            the gate feeds it).
-
-    Returns:
-        Map of repo-relative POSIX path to the set of 1-based line numbers the
-        diff adds in the new version of that file. Deletions (``+++
-        /dev/null``) contribute nothing.
+    Counts hunk-body lines against the declared counts, so an added source line
+    that itself begins with ``+++`` or ``@@`` is never mistaken for a header.
     """
     added: dict[str, set[int]] = {}
     current_path: str | None = None
@@ -176,21 +167,12 @@ def _c_unquote(token: str) -> str:
 
 
 def parse_lcov(lcov_text: str, repo_root: str) -> dict[str, dict[int, int]]:
-    """Parse ``SF:``/``DA:`` records into per-file line hit counts.
+    """Parse ``SF:``/``DA:`` records into ``{repo-relative path: {line: hits}}``.
 
-    Duplicate ``SF:`` blocks for one file merge by summing their ``DA:``
-    counts, which is legal lcov and common in multi-producer output (one
-    coverlet attachment per test project, for instance). The optional checksum
-    third field of a ``DA:`` record is ignored.
-
-    Args:
-        lcov_text: Contents of one or more concatenated lcov ``.info`` files.
-        repo_root: Absolute repo root (POSIX or native), used to make absolute
-            ``SF:`` paths repo-relative.
-
-    Returns:
-        Map of repo-relative POSIX path to a map of 1-based line number to hit
-        count.
+    Duplicate ``SF:`` blocks for one file merge by summing their ``DA:`` counts,
+    which is legal lcov and common in multi-producer output (one coverlet
+    attachment per test project); the optional ``DA:`` checksum field is
+    ignored. ``repo_root`` makes absolute ``SF:`` paths repo-relative.
     """
     result: dict[str, dict[int, int]] = {}
     current: dict[int, int] | None = None
@@ -284,6 +266,118 @@ def is_excluded(path: str, extra_globs: list[str]) -> bool:
     return False
 
 
+def parse_diff_file_status(diff_text: str) -> dict[str, tuple[bool, str | None]]:
+    """Map each new-path in a diff to ``(is_new, old_path)``.
+
+    Reads ``new file mode`` and rename headers, so a rename is scored against
+    its old blob; ``old_path`` is the rename source, else the path itself.
+    """
+    status: dict[str, tuple[bool, str | None]] = {}
+    new_path: str | None = None
+    old_path: str | None = None
+    is_new = False
+
+    def commit() -> None:
+        if new_path is not None:
+            status[new_path] = (is_new, old_path if old_path is not None else new_path)
+
+    for raw in diff_text.splitlines():
+        if raw.startswith("diff --git"):
+            commit()
+            new_path, old_path, is_new = None, None, False
+        elif raw.startswith("new file mode"):
+            is_new = True
+        elif raw.startswith("rename from "):
+            old_path = _unquote_diff_path(raw[len("rename from ") :])
+        elif raw.startswith("rename to "):
+            renamed = _unquote_diff_path(raw[len("rename to ") :])
+            if new_path is None:
+                new_path = renamed
+        elif raw.startswith("+++ "):
+            candidate = _diff_new_path(raw[4:])
+            if candidate is not None:
+                new_path = candidate
+    commit()
+    return status
+
+
+def is_size_test_file(path: str) -> bool:
+    """Whether a path is test code (warn-only at the cap): a ``test``/``tests``/
+    ``*.Tests`` segment or a ``Tests.cs`` basename, case-insensitively. Not
+    ``.Designer.cs`` (those are skipped outright by ``is_size_skipped``).
+    """
+    parts = path.split("/")
+    for part in parts[:-1]:
+        low = part.lower()
+        if low in ("test", "tests") or low.endswith(".tests"):
+            return True
+    return parts[-1].lower().endswith("tests.cs")
+
+
+def is_size_skipped(path: str, extra_globs: list[str]) -> bool:
+    """Whether a path is excluded from the size gate entirely: generated
+    ``.Designer.cs`` files and any user ``--exclude`` glob (path or basename).
+    Test files are not skipped; they are warn-only via ``is_size_test_file``.
+    """
+    base = path.split("/")[-1]
+    if base.lower().endswith(".designer.cs"):
+        return True
+    for pattern in extra_globs:
+        if fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(base, pattern):
+            return True
+    return False
+
+
+def size_verdict(
+    counted: int,
+    is_new: bool,
+    base: int | None,
+    is_test: bool,
+    warn: int,
+    cap: int,
+    allowance: int,
+) -> str:
+    """Grade one file's line count: ``"FAIL"``, ``"WARN"``, or ``"OK"``.
+
+    New files fail at the cap and warn at the warn tier; pre-existing files fail
+    only on a change that crosses the cap (never once already over), and warn on
+    growth past the allowance into the warn tier. Test code never fails; ``>=``.
+    """
+    if is_new or base is None:
+        if counted >= cap:
+            verdict = "FAIL"
+        elif counted >= warn:
+            verdict = "WARN"
+        else:
+            verdict = "OK"
+    elif base < cap:
+        if counted >= cap:
+            verdict = "FAIL"
+        elif counted - base > allowance and counted >= warn:
+            verdict = "WARN"
+        else:
+            verdict = "OK"
+    else:
+        verdict = "WARN" if counted - base > allowance else "OK"
+    if verdict == "FAIL" and is_test:
+        return "WARN"
+    return verdict
+
+
+@dataclass
+class SizeFinding:
+    """One file's size-gate result."""
+
+    path: str
+    verdict: str
+    is_new: bool
+    is_test: bool
+    counted: int
+    total: int
+    base: int | None
+    truncated: bool
+
+
 def _strip_cs_noncode(content: str) -> str:
     """Blank out comments, string literals, and char literals in C# source.
 
@@ -360,19 +454,12 @@ def map_changed_projects(
 ) -> tuple[set[str], list[str]]:
     """Map changed files to production projects by nearest ``.csproj`` ancestor.
 
-    A Stryker run from one test project directory mutates only the production
-    projects that test project references, so a branch whose changes resolve
-    to more than one project needs the solution-mode run; this mapping feeds
-    that warning.
-
-    Args:
-        paths: Repo-relative POSIX paths of the in-scope changed ``.cs`` files.
-        csproj_paths: Repo-relative POSIX paths of every ``.csproj`` in the
-            repo (a directory listing snapshot).
-
-    Returns:
-        The set of project directories the changed files resolve to (the repo
-        root is ``""``), and the list of files with no ``.csproj`` ancestor.
+    Returns the set of project directories the changed ``.cs`` files resolve to
+    (the repo root is ``""``) and the list of files with no ``.csproj``
+    ancestor. A Stryker run from one test project directory mutates only the
+    production projects that test project references, so a branch whose changes
+    resolve to more than one project needs the solution-mode run; this mapping
+    feeds that warning. ``csproj_paths`` is a repo-wide ``.csproj`` listing.
     """
     project_dirs = {
         csproj.rsplit("/", 1)[0] if "/" in csproj else "" for csproj in csproj_paths
@@ -435,28 +522,18 @@ def intersect(
     extra_globs: list[str],
     bodyless_paths: set[str],
 ) -> CoverageReport:
-    """Intersect added ``.cs`` lines with lcov data into a coverage report.
+    """Intersect added ``.cs`` lines with lcov data into a ``CoverageReport``.
 
-    An added line in an instrumented file is *coverable* only when lcov
-    emitted a ``DA:`` record for it (blank lines, comments, and other
-    non-executable additions carry none and stay out of the denominator). A
-    changed ``.cs`` file with no ``SF:`` record at all is an everyday .NET
-    layout mistake, usually a project no test project references, so every
-    one of its added lines counts as coverable and uncovered, dragging the
-    total through the threshold check instead of silently dropping out of it.
-    The one carve-out is ``bodyless_paths``: files whose type declarations are
-    all interfaces, enums, or delegates compile to no method bodies, so they
-    are reported as non-coverable and excluded from the ratio.
-
-    Args:
-        added_by_file: Added lines per file, from ``parse_added_lines``.
-        coverage_by_file: Per-file line hit counts from ``parse_lcov``.
-        extra_globs: User exclusion globs.
-        bodyless_paths: Not-instrumented files the content classifier marked
-            as interface/enum/delegate-only.
-
-    Returns:
-        A ``CoverageReport`` with per-file and total covered/coverable counts.
+    An added line in an instrumented file is *coverable* only when lcov emitted
+    a ``DA:`` record for it (blank lines, comments, and other non-executable
+    additions carry none and stay out of the denominator). A changed ``.cs``
+    file with no ``SF:`` record at all is an everyday .NET layout mistake,
+    usually a project no test project references, so every added line counts as
+    coverable and uncovered, dragging the total through the threshold check
+    instead of silently dropping out of it. The one carve-out is
+    ``bodyless_paths``: files whose type declarations are all interfaces, enums,
+    or delegates compile to no method bodies, so they are reported as
+    non-coverable and excluded from the ratio.
     """
     report = CoverageReport()
     for path in sorted(added_by_file):
@@ -512,8 +589,8 @@ def strip_control(text: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# Orchestration: preflight, the two gates, reporting. Shells out to git and
-# dotnet; never exercised by the unit tests.
+# Orchestration: preflight, the size/coverage/mutation phases, reporting.
+# Shells out to git and dotnet; never run by the unit tests.
 # --------------------------------------------------------------------------
 
 
@@ -567,9 +644,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             "coverlet collector) and mutation testing (Stryker.NET --since)."
         ),
         epilog=(
-            "Exit codes: 0 pass; 2 coverage gate failed (both gates report even "
-            "when both fail); 3 mutation gate failed; 64 usage error; 70 an "
-            "underlying tool ran and failed; 78 environment not ready."
+            "Exit codes: 0 pass; 2 coverage gate failed (all phases report before "
+            "exiting); 3 mutation gate failed; 4 file-size gate failed; 64 usage "
+            "error; 70 an underlying tool ran and failed; 78 environment not ready. "
+            "Precedence when several fail: 2 > 3 > 4."
         ),
     )
     parser.add_argument(
@@ -596,7 +674,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         metavar="GLOB",
         default=[],
         help="extra glob (matched against repo-relative path and basename) to "
-        "exclude from the coverage denominator; repeatable",
+        "exclude from the coverage denominator and the file-size gate; repeatable",
     )
     parser.add_argument(
         "--skip-mutants",
@@ -826,6 +904,133 @@ def _read_line(repo_root: str, rel_path: str, lineno: int) -> str:
     return ""
 
 
+def _size_counted_lines(text: str) -> tuple[int, int]:
+    """Return (counted, total) line counts. For C# the two are equal."""
+    total = len(text.splitlines())
+    return total, total
+
+
+def _merge_base_content(git: str, cwd: str, merge_base: str, path: str) -> str | None:
+    """The working blob text of ``path`` at the merge base, or None if absent."""
+    result = run_capture([git, "show", f"{merge_base}:{path}"], cwd=cwd)
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def _read_source_for_size(repo_root: str, rel_path: str) -> tuple[str | None, bool]:
+    """Read a regular source file for counting, capped at a byte ceiling.
+
+    Returns ``(text, truncated)``; a symlink, directory, missing file, or read
+    error yields ``(None, False)`` so the size gate fails open on read errors.
+    """
+    path = Path(repo_root) / rel_path
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None, False
+        with open(path, "rb") as handle:
+            data = handle.read(SIZE_READ_BYTE_CAP + 1)
+    except OSError:
+        return None, False
+    truncated = len(data) > SIZE_READ_BYTE_CAP
+    return data[:SIZE_READ_BYTE_CAP].decode("utf-8", errors="replace"), truncated
+
+
+def _evaluate_sizes(
+    added_by_file: dict[str, set[int]],
+    file_status: dict[str, tuple[bool, str | None]],
+    untracked: list[str],
+    git: str,
+    repo_cwd: str,
+    repo_root: str,
+    merge_base: str,
+    extra_globs: list[str],
+) -> list[SizeFinding]:
+    """Grade every added or new ``.cs`` file against the size policy; untracked
+    ``.cs`` files fold in as new (invisible to the diff, so the other gates miss
+    them, but exactly what the size gate is here to catch).
+    """
+    candidates: dict[str, tuple[bool, str | None]] = {}
+    for path, lines in added_by_file.items():
+        if lines and path.endswith(".cs"):
+            candidates[path] = file_status.get(path, (False, path))
+    for path in untracked:
+        if path.endswith(".cs") and path not in candidates:
+            candidates[path] = (True, None)
+
+    findings: list[SizeFinding] = []
+    for path in sorted(candidates):
+        if is_size_skipped(path, extra_globs):
+            continue
+        is_new, old_path = candidates[path]
+        text, truncated = _read_source_for_size(repo_root, path)
+        if text is None:
+            continue
+        counted, total = _size_counted_lines(text)
+        if is_new:
+            base: int | None = None
+        else:
+            base_text = _merge_base_content(git, repo_cwd, merge_base, old_path or path)
+            base = _size_counted_lines(base_text)[0] if base_text is not None else counted
+        is_test = is_size_test_file(path)
+        verdict = size_verdict(
+            counted,
+            is_new,
+            base,
+            is_test,
+            SIZE_WARN_THRESHOLD,
+            SIZE_FAIL_CAP,
+            SIZE_GROWTH_ALLOWANCE,
+        )
+        findings.append(
+            SizeFinding(path, verdict, is_new, is_test, counted, total, base, truncated)
+        )
+    return findings
+
+
+def _size_finding_line(finding: SizeFinding) -> str:
+    """One report line: classification, line counts, verdict, and next action."""
+    if finding.is_new:
+        classification = "new"
+    elif finding.base is not None and finding.counted - finding.base > SIZE_GROWTH_ALLOWANCE:
+        classification = f"pre-existing, grew {finding.counted - finding.base:+d} net lines"
+    elif finding.base is not None and finding.base >= SIZE_FAIL_CAP:
+        classification = "pre-existing, already over cap"
+    else:
+        classification = "pre-existing"
+    if finding.total != finding.counted:
+        size = f"{finding.counted} production lines ({finding.total} total)"
+    else:
+        size = f"{finding.counted} lines"
+    if finding.truncated:
+        size += ", exceeds the read cap"
+    action = ""
+    if finding.verdict == "FAIL":
+        action = "; split the new code into a new file (or --exclude a generated file)"
+    elif finding.verdict == "WARN" and finding.is_test:
+        action = " (test file, warn-only)"
+    elif finding.verdict == "WARN" and finding.base is not None and finding.base >= SIZE_FAIL_CAP:
+        action = "; route new code into a new file, do not refactor this file for size"
+    elif finding.verdict == "WARN":
+        action = "; approaching the cap, plan to split new code into a new file"
+    return f"{finding.path}: {classification}, {size} -> {finding.verdict}{action}"
+
+
+def _print_size_report(findings: list[SizeFinding], elapsed: float) -> None:
+    """Print the file-size gate section to stdout."""
+    print("-- file-size gate (new code, vs merge-base) --")
+    print(
+        f"  policy: warn >= {SIZE_WARN_THRESHOLD}, fail >= {SIZE_FAIL_CAP} (new and cap-crossing "
+        f"production); net-growth allowance {SIZE_GROWTH_ALLOWANCE}; test files warn-only"
+    )
+    if not findings:
+        print("  no added or newly created .cs files to check")
+    for finding in findings:
+        print(f"  {_size_finding_line(finding)}")
+    print(f"  file-size phase: {elapsed:.1f}s")
+    print()
+
+
 def _default_exclusion_desc() -> str:
     """One-line description of the default coverage exclusions."""
     return (
@@ -1027,16 +1232,7 @@ def _run_gate(args: argparse.Namespace, tmpdir: str) -> int:
     git = _resolve_tool("git")
     if git is None:
         raise GateError(EXIT_ENV_NOT_READY, "git not found on PATH")
-    dotnet = _resolve_tool("dotnet")
-    if dotnet is None:
-        raise GateError(
-            EXIT_ENV_NOT_READY,
-            "dotnet not found on PATH; install the .NET SDK from "
-            "https://dotnet.microsoft.com",
-        )
-
-    tools = (("git", git), ("dotnet", dotnet))
-    _refuse_repo_local_tools(tools, os.getcwd())
+    _refuse_repo_local_tools((("git", git),), os.getcwd())
 
     toplevel = run_capture([git, "rev-parse", "--show-toplevel"])
     if toplevel.returncode != 0:
@@ -1044,16 +1240,7 @@ def _run_gate(args: argparse.Namespace, tmpdir: str) -> int:
     repo_root = toplevel.stdout.strip()
     repo_cwd = os.path.normpath(repo_root)
 
-    _refuse_repo_local_tools(tools, repo_root)
-
-    if not args.skip_mutants and _tracked_dirty(git, repo_cwd):
-        _log(
-            "warning: uncommitted tracked changes present; whether Stryker's "
-            "--since scope covers working-tree-only changes is unverified, so "
-            "uncommitted lines may not be mutation-gated. The verdict is only "
-            "trustworthy once the changes are committed; committing is the "
-            "user's action, so ask them, or run --skip-mutants."
-        )
+    _refuse_repo_local_tools((("git", git),), repo_root)
 
     base_ref, base_sha = _resolve_base_ref(git, repo_cwd, args.base)
 
@@ -1066,133 +1253,180 @@ def _run_gate(args: argparse.Namespace, tmpdir: str) -> int:
 
     zero_diff = _git_diff(git, repo_cwd, merge_base)
     added_by_file = parse_added_lines(zero_diff)
-
-    scope_empty, emptied_by_globs = mutation_scope_empty(added_by_file, args.exclude)
-    mutation_will_run = not args.skip_mutants and not scope_empty
-
-    stryker_workdir = ""
-    solution_path: str | None = None
-    if mutation_will_run:
-        if args.stryker_solution:
-            solution_path = os.path.abspath(args.stryker_solution)
-            if not os.path.isfile(solution_path):
-                raise GateError(
-                    EXIT_ENV_NOT_READY,
-                    f"--stryker-solution not found: {args.stryker_solution}",
-                )
-            stryker_workdir = os.path.dirname(solution_path)
-        else:
-            stryker_workdir = os.path.abspath(args.stryker_dir or ".")
-            if not os.path.isdir(stryker_workdir):
-                raise GateError(
-                    EXIT_ENV_NOT_READY, f"--stryker-dir not found: {args.stryker_dir}"
-                )
-
-    dotnet_ver = _tool_version(
-        [dotnet, "--version"],
-        repo_cwd,
-        "dotnet",
-        "install the .NET SDK from https://dotnet.microsoft.com",
-    )
-    stryker_ver = None
-    if mutation_will_run:
-        # Stryker has no --version flag (--version is a dashboard option that
-        # takes a value); --help exits 0 when the tool is installed.
-        stryker_ver = _tool_version(
-            [dotnet, "stryker", "--help"],
-            stryker_workdir,
-            "dotnet-stryker",
-            "dotnet tool install -g dotnet-stryker",
-        )
+    file_status = parse_diff_file_status(zero_diff)
 
     untracked = _untracked_cs(git, repo_cwd)
     if untracked:
         _log(
-            "warning: untracked .cs files are invisible to git diff and to both gates:"
+            "warning: untracked .cs files are invisible to git diff; coverage and "
+            "mutation miss them, though the file-size gate checks them as new:"
         )
         for name in untracked:
             _log(f"  {name}")
         _log(
-            "  a git write makes them visible (a commit, or `git add -N <file>`); "
-            "git writes are the user's, so ask them first."
+            "  a git write makes them visible to every gate (a commit, or "
+            "`git add -N <file>`); git writes are the user's, so ask them first."
         )
 
-    if mutation_will_run and solution_path is None:
-        scoped = [
-            path
-            for path, lines in added_by_file.items()
-            if lines and path.endswith(".cs") and not is_excluded(path, args.exclude)
-        ]
-        projects, unmapped = map_changed_projects(scoped, _list_csprojs(git, repo_cwd))
-        if len(projects) > 1:
-            listed = ", ".join(sorted(name or "<repo root>" for name in projects))
-            _log(
-                f"warning: the changed files span {len(projects)} projects "
-                f"({listed}); a single-project Stryker run mutates only the "
-                "production projects its test project references, so this run "
-                "may not cover all changed projects. Pass --stryker-solution "
-                "for full-solution scope."
-            )
-        if unmapped:
-            _log(
-                "warning: no .csproj ancestor found for: " + ", ".join(sorted(unmapped))
-            )
-
-    if args.skip_mutants:
-        mutation_line = "mutation gate: skipped (--skip-mutants)"
-    elif scope_empty:
-        mutation_line = "mutation gate: no added in-scope lines (tool not invoked)"
-    else:
-        mutation_line = (
-            f"mutation scope: --since:{merge_base[:12]} (the resolved merge-base, "
-            "passed to dotnet stryker)"
-        )
-
-    _print_header(
-        args, base_ref, base_sha, merge_base, dotnet_ver, stryker_ver, mutation_line
+    # File-size gate runs first, on git and the filesystem alone, so it reports
+    # even where the toolchain is absent.
+    size_start = time.monotonic()
+    size_findings = _evaluate_sizes(
+        added_by_file,
+        file_status,
+        untracked,
+        git,
+        repo_cwd,
+        repo_root,
+        merge_base,
+        args.exclude,
     )
+    _print_size_report(size_findings, time.monotonic() - size_start)
+    size_failed = any(finding.verdict == "FAIL" for finding in size_findings)
 
-    cov_start = time.monotonic()
-    lcov_text = _obtain_lcov(args, dotnet, repo_cwd, tmpdir)
-    coverage_by_file = parse_lcov(lcov_text, repo_root)
-    bodyless: set[str] = set()
-    for path, lines in added_by_file.items():
-        if not lines or not path.endswith(".cs") or is_excluded(path, args.exclude):
-            continue
-        if path in coverage_by_file:
-            continue
-        content = _read_worktree_file(repo_root, path)
-        if content is not None and is_bodyless_cs(content):
-            bodyless.add(path)
-    report = intersect(added_by_file, coverage_by_file, args.exclude, bodyless)
-    verdict = coverage_passes(
-        report.total_covered, report.total_coverable, args.cov_threshold
-    )
-    _print_coverage_report(
-        report, verdict, args.cov_threshold, repo_root, time.monotonic() - cov_start
-    )
-    coverage_failed = verdict is False
-
+    coverage_failed = False
     mutation_failed = False
-    if args.skip_mutants:
-        print("-- mutation gate: skipped (--skip-mutants) --\n")
-    elif scope_empty:
-        note = " (user --exclude globs emptied the scope)" if emptied_by_globs else ""
-        print(
-            f"-- mutation gate: nothing to check (no added in-scope lines){note} --\n"
+    try:
+        dotnet = _resolve_tool("dotnet")
+        if dotnet is None:
+            raise GateError(
+                EXIT_ENV_NOT_READY,
+                "dotnet not found on PATH; install the .NET SDK from "
+                "https://dotnet.microsoft.com",
+            )
+        _refuse_repo_local_tools((("dotnet", dotnet),), os.getcwd())
+        _refuse_repo_local_tools((("dotnet", dotnet),), repo_root)
+
+        if not args.skip_mutants and _tracked_dirty(git, repo_cwd):
+            _log(
+                "warning: uncommitted tracked changes present; whether Stryker's "
+                "--since scope covers working-tree-only changes is unverified, so "
+                "uncommitted lines may not be mutation-gated. The verdict is only "
+                "trustworthy once the changes are committed; committing is the "
+                "user's action, so ask them, or run --skip-mutants."
+            )
+
+        scope_empty, emptied_by_globs = mutation_scope_empty(added_by_file, args.exclude)
+        mutation_will_run = not args.skip_mutants and not scope_empty
+
+        stryker_workdir = ""
+        solution_path: str | None = None
+        if mutation_will_run:
+            if args.stryker_solution:
+                solution_path = os.path.abspath(args.stryker_solution)
+                if not os.path.isfile(solution_path):
+                    raise GateError(
+                        EXIT_ENV_NOT_READY,
+                        f"--stryker-solution not found: {args.stryker_solution}",
+                    )
+                stryker_workdir = os.path.dirname(solution_path)
+            else:
+                stryker_workdir = os.path.abspath(args.stryker_dir or ".")
+                if not os.path.isdir(stryker_workdir):
+                    raise GateError(
+                        EXIT_ENV_NOT_READY, f"--stryker-dir not found: {args.stryker_dir}"
+                    )
+
+        dotnet_ver = _tool_version(
+            [dotnet, "--version"],
+            repo_cwd,
+            "dotnet",
+            "install the .NET SDK from https://dotnet.microsoft.com",
         )
-    else:
-        mut_start = time.monotonic()
-        mutation_failed = _run_mutation_gate(
-            dotnet, stryker_workdir, merge_base, solution_path, tmpdir
+        stryker_ver = None
+        if mutation_will_run:
+            # Stryker has no --version flag (--version is a dashboard option that
+            # takes a value); --help exits 0 when the tool is installed.
+            stryker_ver = _tool_version(
+                [dotnet, "stryker", "--help"],
+                stryker_workdir,
+                "dotnet-stryker",
+                "dotnet tool install -g dotnet-stryker",
+            )
+
+        if mutation_will_run and solution_path is None:
+            scoped = [
+                path
+                for path, lines in added_by_file.items()
+                if lines and path.endswith(".cs") and not is_excluded(path, args.exclude)
+            ]
+            projects, unmapped = map_changed_projects(scoped, _list_csprojs(git, repo_cwd))
+            if len(projects) > 1:
+                listed = ", ".join(sorted(name or "<repo root>" for name in projects))
+                _log(
+                    f"warning: the changed files span {len(projects)} projects "
+                    f"({listed}); a single-project Stryker run mutates only the "
+                    "production projects its test project references, so this run "
+                    "may not cover all changed projects. Pass --stryker-solution "
+                    "for full-solution scope."
+                )
+            if unmapped:
+                _log(
+                    "warning: no .csproj ancestor found for: "
+                    + ", ".join(sorted(unmapped))
+                )
+
+        if args.skip_mutants:
+            mutation_line = "mutation gate: skipped (--skip-mutants)"
+        elif scope_empty:
+            mutation_line = "mutation gate: no added in-scope lines (tool not invoked)"
+        else:
+            mutation_line = (
+                f"mutation scope: --since:{merge_base[:12]} (the resolved merge-base, "
+                "passed to dotnet stryker)"
+            )
+
+        _print_header(
+            args, base_ref, base_sha, merge_base, dotnet_ver, stryker_ver, mutation_line
         )
-        print(f"  mutation phase: {time.monotonic() - mut_start:.1f}s\n")
+
+        cov_start = time.monotonic()
+        lcov_text = _obtain_lcov(args, dotnet, repo_cwd, tmpdir)
+        coverage_by_file = parse_lcov(lcov_text, repo_root)
+        bodyless: set[str] = set()
+        for path, lines in added_by_file.items():
+            if not lines or not path.endswith(".cs") or is_excluded(path, args.exclude):
+                continue
+            if path in coverage_by_file:
+                continue
+            content = _read_worktree_file(repo_root, path)
+            if content is not None and is_bodyless_cs(content):
+                bodyless.add(path)
+        report = intersect(added_by_file, coverage_by_file, args.exclude, bodyless)
+        verdict = coverage_passes(
+            report.total_covered, report.total_coverable, args.cov_threshold
+        )
+        _print_coverage_report(
+            report, verdict, args.cov_threshold, repo_root, time.monotonic() - cov_start
+        )
+        coverage_failed = verdict is False
+
+        if args.skip_mutants:
+            print("-- mutation gate: skipped (--skip-mutants) --\n")
+        elif scope_empty:
+            note = " (user --exclude globs emptied the scope)" if emptied_by_globs else ""
+            print(
+                f"-- mutation gate: nothing to check (no added in-scope lines){note} --\n"
+            )
+        else:
+            mut_start = time.monotonic()
+            mutation_failed = _run_mutation_gate(
+                dotnet, stryker_workdir, merge_base, solution_path, tmpdir
+            )
+            print(f"  mutation phase: {time.monotonic() - mut_start:.1f}s\n")
+    except GateError as err:
+        if size_failed and err.code == EXIT_ENV_NOT_READY:
+            _log(f"note: coverage and mutation phases not run: {err.message}")
+        else:
+            raise
 
     _log(f"quality gate finished in {time.monotonic() - started:.1f}s")
     if coverage_failed:
         return EXIT_COVERAGE_FAILED
     if mutation_failed:
         return EXIT_MUTATION_FAILED
+    if size_failed:
+        return EXIT_SIZE_FAILED
     return EXIT_OK
 
 

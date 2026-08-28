@@ -55,10 +55,26 @@ jobs:
             }
           }
           if ($failed) { exit 1 }
+      # Runs the .ps1 hooks against the same case table the bash jobs run the .sh hooks against
+      # (tools/hook-cases.tsv), under Windows PowerShell 5.1, the interpreter the install snippets
+      # register. The parse check above stays separate so a parse failure reports as one, not as
+      # behavior noise.
+      - name: Run hook behavior tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test-hooks.ps1
 
-  python-tests:
+  # One step per gate suite, each with if: always(), so one suite's failure never hides the other
+  # two results while their size constants are cross-checked by hand and by the harness.
+  gate-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Run python quality gate unit tests
+        if: always()
+        run: python3 -m unittest discover -s skills/python/scripts
+      - name: Run csharp quality gate unit tests
+        if: always()
+        run: python3 -m unittest discover -s skills/csharp/scripts
       - name: Run rust quality gate unit tests
+        if: always()
         run: python3 -m unittest discover -s skills/rust/scripts

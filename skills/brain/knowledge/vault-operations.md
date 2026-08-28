@@ -49,6 +49,13 @@ but the rule binds first, in your reasoning.
 
 - **Names are strict**: single segment, `[A-Za-z0-9._-]` only, max 128 chars. No spaces, no slashes, no
   other punctuation. Anything else fails with `invalid_name`, so slugify before saving.
+- **Argument-shape mistakes fail before the tool runs** with `invalid_argument` (server v3.2.0+): an
+  unknown or misspelled argument name is rejected rather than silently ignored, named with a suggestion
+  when a schema name is close (`tag` for `tags`) alongside any missing required name and the full
+  `expected_arguments`; a known argument of the wrong JSON type, the common one being `tags` sent as a
+  comma-joined string instead of an array, reports the same code. Domain errors (`invalid_name`,
+  `conflict`, `ambiguous_heading`, ...) keep their own codes. Correct the call and retry; it's a caller
+  error, not a server fault.
 - Writes use optimistic concurrency: pass the `base_version` you read. A stale write fails with `conflict`
   carrying the `current_version` and usually a base-to-current diff. Use the diff to fold the other
   change into yours and retry against the current version, rather than re-reading and blindly overwriting.

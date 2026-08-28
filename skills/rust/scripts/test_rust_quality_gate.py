@@ -17,14 +17,20 @@ import unittest
 
 from rust_quality_gate import (
     CoverageReport,
+    _size_counted_lines,
     coverage_passes,
     drop_test_module_lines,
     intersect,
     is_excluded,
+    is_size_skipped,
+    is_size_test_file,
     normalize_sf_path,
     parse_added_lines,
     parse_args,
+    parse_diff_file_status,
     parse_lcov,
+    size_trailing_test_start,
+    size_verdict,
     strip_cfg_test_regions,
 )
 
@@ -408,6 +414,280 @@ class ParseArgsTest(unittest.TestCase):
                     with self.assertRaises(SystemExit) as ctx:
                         parse_args(["--cov-threshold", bad])
                 self.assertEqual(ctx.exception.code, 64)
+
+
+class ParseDiffFileStatusTest(unittest.TestCase):
+    """New / pre-existing / rename classification from diff headers."""
+
+    def test_new_file(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/new.rs b/src/new.rs
+            new file mode 100644
+            index 0000000..1111111
+            --- /dev/null
+            +++ b/src/new.rs
+            @@ -0,0 +1,2 @@
+            +fn a() {}
+            +fn b() {}
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {"src/new.rs": (True, "src/new.rs")})
+
+    def test_modified_file(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/lib.rs b/src/lib.rs
+            index 1111111..2222222 100644
+            --- a/src/lib.rs
+            +++ b/src/lib.rs
+            @@ -3 +3 @@
+            -fn old() {}
+            +fn new() {}
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {"src/lib.rs": (False, "src/lib.rs")})
+
+    def test_rename_with_edits_keeps_old_path(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/old_name.rs b/src/new_name.rs
+            similarity index 90%
+            rename from src/old_name.rs
+            rename to src/new_name.rs
+            index 1111111..2222222 100644
+            --- a/src/old_name.rs
+            +++ b/src/new_name.rs
+            @@ -10,0 +11 @@
+            +fn added() {}
+            """
+        )
+        self.assertEqual(
+            parse_diff_file_status(diff), {"src/new_name.rs": (False, "src/old_name.rs")}
+        )
+
+    def test_deletion_contributes_nothing(self) -> None:
+        diff = textwrap.dedent(
+            """\
+            diff --git a/src/gone.rs b/src/gone.rs
+            deleted file mode 100644
+            index 1111111..0000000
+            --- a/src/gone.rs
+            +++ /dev/null
+            @@ -1,2 +0,0 @@
+            -fn a() {}
+            -fn b() {}
+            """
+        )
+        self.assertEqual(parse_diff_file_status(diff), {})
+
+
+class IsSizeTestFileTest(unittest.TestCase):
+    """Test-file classification for the size gate (warn-only set)."""
+
+    def test_tests_segment_and_basenames(self) -> None:
+        for path in (
+            "tests/integration.rs",
+            "crates/app/tests/api.rs",
+            "src/tests.rs",
+            "src/parser_tests.rs",
+            "src/parser-tests.rs",
+            "src/parser_test.rs",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(is_size_test_file(path))
+
+    def test_production_files_not_test(self) -> None:
+        self.assertFalse(is_size_test_file("src/lib.rs"))
+        self.assertFalse(is_size_test_file("src/attests.rs"))
+
+
+class IsSizeSkippedTest(unittest.TestCase):
+    """Only user --exclude globs skip a file from the size gate."""
+
+    def test_no_globs_skips_nothing(self) -> None:
+        self.assertFalse(is_size_skipped("src/lib.rs", []))
+        self.assertFalse(is_size_skipped("tests/it.rs", []))
+
+    def test_user_glob_against_path_and_basename(self) -> None:
+        self.assertTrue(is_size_skipped("src/generated/schema.rs", ["src/generated/*"]))
+        self.assertTrue(is_size_skipped("src/deep/nested/schema.rs", ["schema.rs"]))
+
+
+class SizeVerdictTest(unittest.TestCase):
+    """The size policy decision, warn 700 / cap 1500 / allowance 50."""
+
+    def verdict(self, counted, is_new, base, is_test=False):
+        return size_verdict(counted, is_new, base, is_test, 700, 1500, 50)
+
+    def test_new_below_warn_is_ok(self) -> None:
+        self.assertEqual(self.verdict(699, True, None), "OK")
+
+    def test_new_at_warn_is_warn(self) -> None:
+        self.assertEqual(self.verdict(700, True, None), "WARN")
+
+    def test_new_at_cap_is_fail(self) -> None:
+        self.assertEqual(self.verdict(1500, True, None), "FAIL")
+
+    def test_new_test_file_at_cap_downgrades_to_warn(self) -> None:
+        self.assertEqual(self.verdict(1600, True, None, is_test=True), "WARN")
+
+    def test_preexisting_under_cap_crossing_fails(self) -> None:
+        self.assertEqual(self.verdict(1500, False, 1400), "FAIL")
+
+    def test_preexisting_grew_past_allowance_into_warn(self) -> None:
+        self.assertEqual(self.verdict(800, False, 700), "WARN")
+
+    def test_preexisting_small_growth_is_ok(self) -> None:
+        self.assertEqual(self.verdict(740, False, 700), "OK")
+
+    def test_preexisting_already_over_cap_grew_warns(self) -> None:
+        self.assertEqual(self.verdict(1700, False, 1600), "WARN")
+
+    def test_preexisting_already_over_cap_never_fails(self) -> None:
+        self.assertNotEqual(self.verdict(3000, False, 1600), "FAIL")
+
+
+class SizeTrailingTestStartTest(unittest.TestCase):
+    """Trailing ``#[cfg(test)]`` run detection for the production-line count."""
+
+    def test_single_trailing_module_returns_attribute_line(self) -> None:
+        content = textwrap.dedent(
+            """\
+            fn prod() {
+                1
+            }
+
+            #[cfg(test)]
+            mod tests {
+                #[test]
+                fn t() {
+                    assert!(true);
+                }
+            }
+            """
+        )
+        self.assertEqual(size_trailing_test_start(content), 5)
+
+    def test_stacked_trailing_modules_return_first(self) -> None:
+        content = textwrap.dedent(
+            """\
+            fn prod() {}
+
+            #[cfg(test)]
+            mod tests {
+                fn a() {}
+            }
+
+            #[cfg(test)]
+            mod proptests {
+                fn b() {}
+            }
+            """
+        )
+        self.assertEqual(size_trailing_test_start(content), 3)
+
+    def test_mid_file_module_not_subtracted(self) -> None:
+        content = textwrap.dedent(
+            """\
+            #[cfg(test)]
+            mod tests {
+                fn t() {}
+            }
+
+            fn prod() {
+                1
+            }
+            """
+        )
+        self.assertIsNone(size_trailing_test_start(content))
+
+    def test_production_after_module_not_subtracted(self) -> None:
+        content = "#[cfg(test)]\nmod tests {\n    fn t() {}\n}\npub const X: u32 = 1;\n"
+        self.assertIsNone(size_trailing_test_start(content))
+
+    def test_attribute_on_non_mod_item_is_not_an_anchor(self) -> None:
+        content = "fn prod() {}\n#[cfg(test)]\nfn helper() {}\n"
+        self.assertIsNone(size_trailing_test_start(content))
+
+    def test_semicolon_module_form(self) -> None:
+        content = "fn prod() {}\n\n#[cfg(test)]\nmod tests;\n"
+        self.assertEqual(size_trailing_test_start(content), 3)
+
+    def test_doc_comment_between_attribute_and_mod_tolerated(self) -> None:
+        content = "#[cfg(test)]\n/// doc\nmod tests {\n    fn t() {}\n}\n"
+        self.assertEqual(size_trailing_test_start(content), 1)
+
+    def test_attribute_stack_between_cfg_and_mod(self) -> None:
+        content = "#[cfg(test)]\n#[allow(dead_code)]\nmod tests {\n    fn t() {}\n}\n"
+        self.assertEqual(size_trailing_test_start(content), 1)
+
+    def test_pub_and_pub_crate_visibility(self) -> None:
+        for header in ("pub mod tests {", "pub(crate) mod tests {"):
+            with self.subTest(header=header):
+                content = f"#[cfg(test)]\n{header}\n    fn t() {{}}\n}}\n"
+                self.assertEqual(size_trailing_test_start(content), 1)
+
+    def test_cfg_all_test_not_recognized(self) -> None:
+        content = 'fn prod() {}\n#[cfg(all(test, feature = "x"))]\nmod tests {\n}\n'
+        self.assertIsNone(size_trailing_test_start(content))
+
+    def test_unbalanced_brace_in_string_fails_open(self) -> None:
+        content = 'fn prod() {}\n\n#[cfg(test)]\nmod tests {\n    fn t() { let s = "}"; }\n}\n'
+        self.assertIsNone(size_trailing_test_start(content))
+
+    def test_balanced_braces_in_string_still_strips(self) -> None:
+        content = 'fn prod() {}\n\n#[cfg(test)]\nmod tests {\n    fn t() { let s = "{}"; }\n}\n'
+        self.assertEqual(size_trailing_test_start(content), 3)
+
+    def test_trailing_blanks_after_close(self) -> None:
+        content = "#[cfg(test)]\nmod tests {\n    fn t() {}\n}\n\n\n"
+        self.assertEqual(size_trailing_test_start(content), 1)
+
+    def test_trailing_comment_after_close(self) -> None:
+        content = "#[cfg(test)]\nmod tests {\n    fn t() {}\n}\n// eof\n"
+        self.assertEqual(size_trailing_test_start(content), 1)
+
+    def test_crlf_line_endings(self) -> None:
+        content = "fn prod() {}\r\n\r\n#[cfg(test)]\r\nmod tests {\r\n}\r\n"
+        self.assertEqual(size_trailing_test_start(content), 3)
+
+    def test_bom_prefix_does_not_break_detection(self) -> None:
+        content = "﻿// header\nfn prod() {}\n\n#[cfg(test)]\nmod tests {\n}\n"
+        self.assertEqual(size_trailing_test_start(content), 4)
+
+    def test_all_tests_file(self) -> None:
+        content = "#[cfg(test)]\nmod tests {\n    fn t() {}\n}\n"
+        self.assertEqual(size_trailing_test_start(content), 1)
+
+    def test_no_test_module(self) -> None:
+        self.assertIsNone(size_trailing_test_start("fn prod() {\n    1\n}\n"))
+
+    def test_empty_file(self) -> None:
+        self.assertIsNone(size_trailing_test_start(""))
+
+
+class SizeCountedLinesTest(unittest.TestCase):
+    """Production line count subtracts the trailing test module."""
+
+    def test_subtracts_trailing_tests(self) -> None:
+        content = textwrap.dedent(
+            """\
+            fn prod() {}
+
+            #[cfg(test)]
+            mod tests {
+                fn t() {}
+            }
+            """
+        )
+        counted, total = _size_counted_lines(content)
+        self.assertEqual(total, 6)
+        self.assertEqual(counted, 2)
+
+    def test_no_tests_counts_all(self) -> None:
+        content = "fn a() {}\nfn b() {}\n"
+        self.assertEqual(_size_counted_lines(content), (2, 2))
 
 
 class CoveragePassesTest(unittest.TestCase):

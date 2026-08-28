@@ -1,5 +1,26 @@
 # Changelog
 
+## v9
+- Updated the MCP knowledge files for toolset v16, which ported the pre-run argument-shape validation
+  `text-search` gained in v15 to the remaining servers. `git-readonly-operations.md` (git-ops v2.1.0)
+  and `text-edit-operations.md` (text-edit v1.3.0) now document the `InvalidArgument` shape rejection
+  in their envelope sections, and `vault-operations.md` (file-vault v3.2.0) gained the matching
+  `invalid_argument` rule. Each notes the behavior change (an unknown argument name is now rejected
+  instead of silently ignored) and that a shape rejection is a caller error, never a capability-gap
+  ticket.
+- Consistency pass over the v8 additions. `quality-gates.md` caught up with the three-phase gate
+  contract: it now documents the file-size phase, exit code 4, and the 2 > 3 > 4 precedence it was
+  missing. The root README's hooks section now lists all five hooks (it said four, all `PreToolUse`,
+  while `warn-file-size` registers under `PostToolUse` and needs git), and its repo-lint section and
+  layout tree mention the hook test harness. CI's gate-suite job was renamed `python-tests` to
+  `gate-tests` to match what it runs; anything pinning the old name as a required check needs the new
+  one.
+
+## v8
+- Added `tools/test-hooks.ps1`, a Windows PowerShell 5.1 behavior harness that runs the five `.ps1` hooks the way they ship. The case table moved out of the bash harness into `tools/hook-cases.tsv`, shared by both harnesses, so a behavior divergence inside a hook pair fails one platform's CI job. Two new regression rows pin the `warn-file-size` secret-skip anchoring that a review had caught broken on the Windows side while every existing check stayed green. Wired into the CI Windows job next to the `.ps1` parse check.
+- Added a threshold-sync layer to `tools/test-hooks.sh`: the file-size warn thresholds and size constants declared in five scripts (both `warn-file-size` hooks and the three `*_quality_gate.py` gates) are extracted and cross-compared, so a hand-sync miss fails the harness instead of drifting silently.
+- CI's gate-suite job now runs the python and csharp unit suites alongside rust, one step each. The v6 entry claimed all three were wired in; only rust was.
+
 ## v7
 - Updated `skills\brain\knowledge\text-search-operations.md` to account for the latest version of the `text-search` skill.
 

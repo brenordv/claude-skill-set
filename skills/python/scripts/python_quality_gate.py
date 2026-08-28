@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 """New-code quality gate for Python projects.
 
-Answers two questions about the lines a branch adds, over the merge-base to
-working-tree diff:
+Grades the lines a branch adds, over the merge-base to working-tree diff:
 
-* Are they tested?  pytest with pytest-cov produces lcov output; this script
-  intersects it with the added lines and enforces a new-line coverage
+* Coverage: pytest-cov lcov intersected with the added lines against a new-line
   threshold.
-* Do the tests mean anything?  Cosmic Ray, scoped to the changed lines with
-  ``cr-filter-git``, mutates only the added code and fails when a mutant
-  survives the suite.
+* Mutation: Cosmic Ray scoped to the changed lines with ``cr-filter-git``,
+  failing when a mutant survives the suite.
+* File size: new and cap-crossing production files graded against per-language
+  line tiers. Needs only git and the filesystem, so it runs first and reports
+  even where pytest and cosmic-ray are absent.
 
-Standard library only, so it runs anywhere a Python 3 interpreter and the
-pytest-cov and cosmic-ray packages are present. The parsing and intersection
-logic is factored into pure functions that the co-located test file imports
-directly; the phases that shell out to git and the tools live in the
-orchestration half. The language-agnostic core (diff parsing, lcov parsing,
-path normalization, threshold check) is deliberately duplicated in the
-sibling gates ``skills/rust/scripts/rust_quality_gate.py`` and
-``skills/csharp/scripts/csharp_quality_gate.py`` because each skill folder is
-a self-contained distribution unit; a bug fix in that core belongs in all
+Standard library only. The pure functions (diff/lcov parsing, path
+normalization, threshold check) are the language-agnostic core, deliberately
+duplicated in the sibling ``rust`` and ``csharp`` gates because each skill
+folder is a self-contained distribution unit; a fix to that core belongs in all
 three. See ``skills/python/testing-guidelines.md`` for the two-gate model,
 install commands, and the trust boundary.
 """
@@ -44,12 +39,19 @@ from typing import NoReturn
 EXIT_OK = 0
 EXIT_COVERAGE_FAILED = 2
 EXIT_MUTATION_FAILED = 3
+EXIT_SIZE_FAILED = 4
 EXIT_USAGE = 64
 EXIT_TOOL_FAILED = 70
 EXIT_ENV_NOT_READY = 78
 
 DEFAULT_COV_THRESHOLD = 80
 DEFAULT_TIMEOUT_SECONDS = 300.0
+
+SIZE_WARN_THRESHOLD = 800
+SIZE_FAIL_CAP = 1500
+SIZE_GROWTH_ALLOWANCE = 50
+SIZE_READ_BYTE_CAP = 2_000_000
+SIZE_DEFAULT_EXCLUDE_GLOBS = ("skills/*/scripts/*_quality_gate.py",)
 
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
@@ -62,28 +64,17 @@ _RATE_CONTEXT_RE = re.compile(
 
 
 # --------------------------------------------------------------------------
-# Pure functions: diff parsing, lcov parsing, path normalization, config
-# generation, gating. These take strings and return data; the test file
-# drives them directly.
+# Pure functions: diff/lcov parsing, path normalization, config, gating.
+# Strings in, data out; the co-located test file drives them directly.
 # --------------------------------------------------------------------------
 
 
 def parse_added_lines(diff_text: str) -> dict[str, set[int]]:
-    """Extract added line numbers per file from a unified diff.
+    """Map each file's repo-relative POSIX path to the 1-based line numbers the
+    diff adds in its new version (deletions contribute nothing).
 
-    Reads the destination path from each ``+++`` header and the new-file line
-    numbers from each hunk, counting hunk-body lines against the declared
-    counts so an added source line that itself begins with ``+++`` or ``@@`` is
-    never mistaken for a header.
-
-    Args:
-        diff_text: Output of ``git diff`` (any ``-U`` context; ``-U0`` is what
-            the gate feeds it).
-
-    Returns:
-        Map of repo-relative POSIX path to the set of 1-based line numbers the
-        diff adds in the new version of that file. Deletions (``+++
-        /dev/null``) contribute nothing.
+    Counts hunk-body lines against the declared counts, so an added source line
+    that itself begins with ``+++`` or ``@@`` is never mistaken for a header.
     """
     added: dict[str, set[int]] = {}
     current_path: str | None = None
@@ -180,20 +171,12 @@ def _c_unquote(token: str) -> str:
 
 
 def parse_lcov(lcov_text: str, repo_root: str) -> dict[str, dict[int, int]]:
-    """Parse ``SF:``/``DA:`` records into per-file line hit counts.
+    """Parse ``SF:``/``DA:`` records into ``{repo-relative path: {line: hits}}``.
 
-    Duplicate ``SF:`` blocks for one file merge by summing their ``DA:``
-    counts, which is legal lcov and common in multi-producer output. The
-    optional checksum third field of a ``DA:`` record is ignored.
-
-    Args:
-        lcov_text: Contents of an lcov ``.info`` file.
-        repo_root: Absolute repo root (POSIX or native), used to make absolute
-            ``SF:`` paths repo-relative.
-
-    Returns:
-        Map of repo-relative POSIX path to a map of 1-based line number to hit
-        count.
+    Duplicate ``SF:`` blocks for one file merge by summing their ``DA:`` counts,
+    which is legal lcov and common in multi-producer output; the optional
+    ``DA:`` checksum field is ignored. ``repo_root`` makes absolute ``SF:``
+    paths repo-relative.
     """
     result: dict[str, dict[int, int]] = {}
     current: dict[int, int] | None = None
@@ -265,6 +248,124 @@ def is_excluded(path: str, extra_globs: list[str]) -> bool:
     return False
 
 
+def parse_diff_file_status(diff_text: str) -> dict[str, tuple[bool, str | None]]:
+    """Map each new-path in a diff to ``(is_new, old_path)``.
+
+    Reads ``new file mode`` and rename headers, so a rename is scored against
+    its old blob; ``old_path`` is the rename source, else the path itself.
+    """
+    status: dict[str, tuple[bool, str | None]] = {}
+    new_path: str | None = None
+    old_path: str | None = None
+    is_new = False
+
+    def commit() -> None:
+        if new_path is not None:
+            status[new_path] = (is_new, old_path if old_path is not None else new_path)
+
+    for raw in diff_text.splitlines():
+        if raw.startswith("diff --git"):
+            commit()
+            new_path, old_path, is_new = None, None, False
+        elif raw.startswith("new file mode"):
+            is_new = True
+        elif raw.startswith("rename from "):
+            old_path = _unquote_diff_path(raw[len("rename from ") :])
+        elif raw.startswith("rename to "):
+            renamed = _unquote_diff_path(raw[len("rename to ") :])
+            if new_path is None:
+                new_path = renamed
+        elif raw.startswith("+++ "):
+            candidate = _diff_new_path(raw[4:])
+            if candidate is not None:
+                new_path = candidate
+    commit()
+    return status
+
+
+def is_size_test_file(path: str) -> bool:
+    """Whether a repo-relative POSIX path is test code for the size gate.
+
+    Test code is warn-only at the cap, never a hard failure: any path with a
+    ``tests`` segment, plus the ``test_*.py``, ``*_test.py``, and
+    ``conftest.py`` basenames.
+    """
+    parts = path.split("/")
+    if "tests" in parts:
+        return True
+    base = parts[-1]
+    if base == "conftest.py":
+        return True
+    return base.endswith(".py") and (base.startswith("test_") or base.endswith("_test.py"))
+
+
+def is_size_skipped(path: str, extra_globs: list[str]) -> bool:
+    """Whether a path is excluded from the size gate entirely.
+
+    The gate's own scripts are skipped by default: they are large single-file
+    distribution units by design (the core is duplicated across the three
+    language gates), so the gate never flags its own tooling. User ``--exclude``
+    globs skip further files, matched against the full path and the basename.
+    Test files are not skipped; they are evaluated warn-only via
+    ``is_size_test_file``.
+    """
+    base = path.split("/")[-1]
+    for pattern in (*SIZE_DEFAULT_EXCLUDE_GLOBS, *extra_globs):
+        if fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(base, pattern):
+            return True
+    return False
+
+
+def size_verdict(
+    counted: int,
+    is_new: bool,
+    base: int | None,
+    is_test: bool,
+    warn: int,
+    cap: int,
+    allowance: int,
+) -> str:
+    """Grade one file's line count: ``"FAIL"``, ``"WARN"``, or ``"OK"``.
+
+    New files fail at the cap and warn at the warn tier; pre-existing files fail
+    only on a change that crosses the cap (never once already over), and warn on
+    growth past the allowance into the warn tier. Test code never fails; ``>=``.
+    """
+    if is_new or base is None:
+        if counted >= cap:
+            verdict = "FAIL"
+        elif counted >= warn:
+            verdict = "WARN"
+        else:
+            verdict = "OK"
+    elif base < cap:
+        if counted >= cap:
+            verdict = "FAIL"
+        elif counted - base > allowance and counted >= warn:
+            verdict = "WARN"
+        else:
+            verdict = "OK"
+    else:
+        verdict = "WARN" if counted - base > allowance else "OK"
+    if verdict == "FAIL" and is_test:
+        return "WARN"
+    return verdict
+
+
+@dataclass
+class SizeFinding:
+    """One file's size-gate result."""
+
+    path: str
+    verdict: str
+    is_new: bool
+    is_test: bool
+    counted: int
+    total: int
+    base: int | None
+    truncated: bool
+
+
 def mutation_scope_empty(
     added_by_file: dict[str, set[int]], extra_globs: list[str]
 ) -> tuple[bool, bool]:
@@ -304,24 +405,15 @@ def intersect(
     coverage_by_file: dict[str, dict[int, int]],
     extra_globs: list[str],
 ) -> CoverageReport:
-    """Intersect added ``.py`` lines with lcov data into a coverage report.
+    """Intersect added ``.py`` lines with lcov data into a ``CoverageReport``.
 
-    An added line in an instrumented file is *coverable* only when lcov
-    emitted a ``DA:`` record for it (blank lines, comments, and other
-    non-executable additions carry none and stay out of the denominator). A
-    changed ``.py`` file with no ``SF:`` record at all is an everyday layout
-    mistake, a module the suite never imports or one the coverage sources do
-    not include, so every one of its added lines counts as coverable and
-    uncovered, dragging the total through the threshold check instead of
-    silently dropping out of it.
-
-    Args:
-        added_by_file: Added lines per file, from ``parse_added_lines``.
-        coverage_by_file: Per-file line hit counts from ``parse_lcov``.
-        extra_globs: User exclusion globs.
-
-    Returns:
-        A ``CoverageReport`` with per-file and total covered/coverable counts.
+    An added line in an instrumented file is *coverable* only when lcov emitted
+    a ``DA:`` record for it (blank lines, comments, and other non-executable
+    additions carry none and stay out of the denominator). A changed ``.py``
+    file with no ``SF:`` record at all is an everyday layout mistake, a module
+    the suite never imports or one the coverage sources do not include, so every
+    added line counts as coverable and uncovered, dragging the total through the
+    threshold check instead of silently dropping out of it.
     """
     report = CoverageReport()
     for path in sorted(added_by_file):
@@ -383,18 +475,13 @@ class GateError(Exception):
 
 
 def toml_basic_string(value: str) -> str:
-    """Encode a string as a TOML basic string.
+    """Encode a string as a TOML basic string, escaping ``\\`` and ``"``.
 
-    Backslashes and double quotes are escaped per the TOML basic-string
-    grammar. Control characters, newlines included, are rejected as a usage
-    error rather than escaped, because none of the values the gate
+    Control characters, newlines included, are rejected as a usage error
+    (``GateError``) rather than escaped: none of the values the gate
     interpolates (a module path, a test command, a git ref) legitimately
-    contains one; accepting them would let a crafted value smuggle extra TOML
-    lines into the generated config.
-
-    Raises:
-        GateError: With the usage exit code, when ``value`` contains a
-            control character.
+    contains one, and accepting them would let a crafted value smuggle extra
+    TOML lines into the generated config.
     """
     for char in value:
         if ord(char) < 0x20 or ord(char) == 0x7F:
@@ -411,22 +498,9 @@ def build_cosmic_ray_config(
     """Generate the Cosmic Ray TOML configuration for one gate run.
 
     The config uses the local distributor and the git filter, so a following
-    ``cr-filter-git`` pass skips every mutation outside the lines changed
-    since ``scope_ref``. All interpolated strings go through
-    ``toml_basic_string``.
-
-    Args:
-        module_path: Package directory or module Cosmic Ray mutates.
-        test_command: Command Cosmic Ray runs against each mutant.
-        timeout: Per-mutant test timeout in seconds.
-        scope_ref: Ref or commit the git filter diffs against.
-
-    Returns:
-        The TOML document as text.
-
-    Raises:
-        GateError: With the usage exit code, when an interpolated value
-            contains a control character.
+    ``cr-filter-git`` pass skips every mutation outside the lines changed since
+    ``scope_ref``. All interpolated strings go through ``toml_basic_string``,
+    which raises ``GateError`` on a control character.
     """
     return (
         "[cosmic-ray]\n"
@@ -469,20 +543,14 @@ def parse_survival_rate(text: str) -> float | None:
 
 
 def files_outside_module_path(paths: list[str], module_path: str) -> list[str]:
-    """In-scope changed files that do not live under the mutation module path.
+    """The subset of in-scope changed files not equal to and not under the
+    mutation ``module_path`` (all repo-relative POSIX).
 
     Cosmic Ray only generates mutants for files under ``module-path``, and its
     git filter marks a skipped mutant as killed, so a mutation scope made
     entirely of files outside the module path produces an all-skipped session
     that ``cr-rate`` scores as 0.00 survival: a silent false pass. The gate
     refuses that shape and warns about partial mismatches.
-
-    Args:
-        paths: Repo-relative POSIX paths of the in-scope changed ``.py`` files.
-        module_path: The ``--module-path`` value, repo-relative.
-
-    Returns:
-        The subset of ``paths`` not equal to and not under ``module_path``.
     """
     root = module_path.replace("\\", "/").rstrip("/")
     if root in ("", "."):
@@ -492,8 +560,8 @@ def files_outside_module_path(paths: list[str], module_path: str) -> list[str]:
 
 
 # --------------------------------------------------------------------------
-# Orchestration: preflight, the two gates, reporting. Shells out to git,
-# pytest, and cosmic-ray; never exercised by the unit tests.
+# Orchestration: preflight, the size/coverage/mutation phases, reporting.
+# Shells out to git, pytest, and cosmic-ray; never run by the unit tests.
 # --------------------------------------------------------------------------
 
 
@@ -549,9 +617,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             "mutation testing (Cosmic Ray with cr-filter-git)."
         ),
         epilog=(
-            "Exit codes: 0 pass; 2 coverage gate failed (both gates report even "
-            "when both fail); 3 mutation gate failed; 64 usage error; 70 an "
-            "underlying tool ran and failed; 78 environment not ready."
+            "Exit codes: 0 pass; 2 coverage gate failed (all phases report before "
+            "exiting); 3 mutation gate failed; 4 file-size gate failed; 64 usage "
+            "error; 70 an underlying tool ran and failed; 78 environment not ready. "
+            "Precedence when several fail: 2 > 3 > 4."
         ),
     )
     parser.add_argument(
@@ -578,7 +647,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         metavar="GLOB",
         default=[],
         help="extra glob (matched against repo-relative path and basename) to "
-        "exclude from the coverage denominator; repeatable",
+        "exclude from the coverage denominator and the file-size gate; repeatable "
+        "(the gate's own *_quality_gate.py scripts are already size-exempt)",
     )
     parser.add_argument(
         "--skip-mutants",
@@ -817,6 +887,133 @@ def _read_line(repo_root: str, rel_path: str, lineno: int) -> str:
     return ""
 
 
+def _size_counted_lines(text: str) -> tuple[int, int]:
+    """Return (counted, total) line counts. For Python the two are equal."""
+    total = len(text.splitlines())
+    return total, total
+
+
+def _merge_base_content(git: str, cwd: str, merge_base: str, path: str) -> str | None:
+    """The working blob text of ``path`` at the merge base, or None if absent."""
+    result = run_capture([git, "show", f"{merge_base}:{path}"], cwd=cwd)
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def _read_source_for_size(repo_root: str, rel_path: str) -> tuple[str | None, bool]:
+    """Read a regular source file for counting, capped at a byte ceiling.
+
+    Returns ``(text, truncated)``; a symlink, directory, missing file, or read
+    error yields ``(None, False)`` so the size gate fails open on read errors.
+    """
+    path = Path(repo_root) / rel_path
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None, False
+        with open(path, "rb") as handle:
+            data = handle.read(SIZE_READ_BYTE_CAP + 1)
+    except OSError:
+        return None, False
+    truncated = len(data) > SIZE_READ_BYTE_CAP
+    return data[:SIZE_READ_BYTE_CAP].decode("utf-8", errors="replace"), truncated
+
+
+def _evaluate_sizes(
+    added_by_file: dict[str, set[int]],
+    file_status: dict[str, tuple[bool, str | None]],
+    untracked: list[str],
+    git: str,
+    repo_cwd: str,
+    repo_root: str,
+    merge_base: str,
+    extra_globs: list[str],
+) -> list[SizeFinding]:
+    """Grade every added or new ``.py`` file against the size policy; untracked
+    ``.py`` files fold in as new (invisible to the diff, so the other gates miss
+    them, but exactly what the size gate is here to catch).
+    """
+    candidates: dict[str, tuple[bool, str | None]] = {}
+    for path, lines in added_by_file.items():
+        if lines and path.endswith(".py"):
+            candidates[path] = file_status.get(path, (False, path))
+    for path in untracked:
+        if path.endswith(".py") and path not in candidates:
+            candidates[path] = (True, None)
+
+    findings: list[SizeFinding] = []
+    for path in sorted(candidates):
+        if is_size_skipped(path, extra_globs):
+            continue
+        is_new, old_path = candidates[path]
+        text, truncated = _read_source_for_size(repo_root, path)
+        if text is None:
+            continue
+        counted, total = _size_counted_lines(text)
+        if is_new:
+            base: int | None = None
+        else:
+            base_text = _merge_base_content(git, repo_cwd, merge_base, old_path or path)
+            base = _size_counted_lines(base_text)[0] if base_text is not None else counted
+        is_test = is_size_test_file(path)
+        verdict = size_verdict(
+            counted,
+            is_new,
+            base,
+            is_test,
+            SIZE_WARN_THRESHOLD,
+            SIZE_FAIL_CAP,
+            SIZE_GROWTH_ALLOWANCE,
+        )
+        findings.append(
+            SizeFinding(path, verdict, is_new, is_test, counted, total, base, truncated)
+        )
+    return findings
+
+
+def _size_finding_line(finding: SizeFinding) -> str:
+    """One report line: classification, line counts, verdict, and next action."""
+    if finding.is_new:
+        classification = "new"
+    elif finding.base is not None and finding.counted - finding.base > SIZE_GROWTH_ALLOWANCE:
+        classification = f"pre-existing, grew {finding.counted - finding.base:+d} net lines"
+    elif finding.base is not None and finding.base >= SIZE_FAIL_CAP:
+        classification = "pre-existing, already over cap"
+    else:
+        classification = "pre-existing"
+    if finding.total != finding.counted:
+        size = f"{finding.counted} production lines ({finding.total} total)"
+    else:
+        size = f"{finding.counted} lines"
+    if finding.truncated:
+        size += ", exceeds the read cap"
+    action = ""
+    if finding.verdict == "FAIL":
+        action = "; split the new code into a new cohesive module (or --exclude a generated file)"
+    elif finding.verdict == "WARN" and finding.is_test:
+        action = " (test file, warn-only)"
+    elif finding.verdict == "WARN" and finding.base is not None and finding.base >= SIZE_FAIL_CAP:
+        action = "; route new code into a new module, do not refactor this file for size"
+    elif finding.verdict == "WARN":
+        action = "; approaching the cap, plan to split new code into a new module"
+    return f"{finding.path}: {classification}, {size} -> {finding.verdict}{action}"
+
+
+def _print_size_report(findings: list[SizeFinding], elapsed: float) -> None:
+    """Print the file-size gate section to stdout."""
+    print("-- file-size gate (new code, vs merge-base) --")
+    print(
+        f"  policy: warn >= {SIZE_WARN_THRESHOLD}, fail >= {SIZE_FAIL_CAP} (new and cap-crossing "
+        f"production); net-growth allowance {SIZE_GROWTH_ALLOWANCE}; test files warn-only"
+    )
+    if not findings:
+        print("  no added or newly created .py files to check")
+    for finding in findings:
+        print(f"  {_size_finding_line(finding)}")
+    print(f"  file-size phase: {elapsed:.1f}s")
+    print()
+
+
 def _default_exclusion_desc() -> str:
     """One-line description of the default coverage exclusions."""
     return "paths under any tests/ segment; basenames test_*.py, *_test.py, conftest.py"
@@ -1002,16 +1199,6 @@ def _run_gate(args: argparse.Namespace, tmpdir: str) -> int:
 
     _refuse_repo_local_tools(tuple(tools), repo_root)
 
-    if not args.skip_mutants and _tracked_dirty(git, repo_cwd):
-        raise GateError(
-            EXIT_ENV_NOT_READY,
-            "uncommitted tracked changes present; Cosmic Ray mutates source on "
-            "disk during exec, so an interrupted run would leave a mutant "
-            "indistinguishable from your uncommitted work. The tree must be "
-            "clean first; committing is the user's action, so ask them, or run "
-            "--skip-mutants.",
-        )
-
     base_ref, base_sha = _resolve_base_ref(git, repo_cwd, args.base)
 
     merge = run_capture([git, "merge-base", base_sha, "HEAD"], cwd=repo_cwd)
@@ -1024,141 +1211,178 @@ def _run_gate(args: argparse.Namespace, tmpdir: str) -> int:
 
     zero_diff = _git_diff(git, repo_cwd, merge_base)
     added_by_file = parse_added_lines(zero_diff)
-
-    scope_empty, emptied_by_globs = mutation_scope_empty(added_by_file, args.exclude)
-    mutation_will_run = not args.skip_mutants and not scope_empty
-
-    cr_tools: dict[str, str] = {}
-    config_text = ""
-    if mutation_will_run:
-        for name in ("cosmic-ray", "cr-filter-git", "cr-report", "cr-rate"):
-            resolved = _resolve_tool(name)
-            if resolved is None:
-                raise GateError(
-                    EXIT_ENV_NOT_READY,
-                    f"{name} not found on PATH; install it with: pip install cosmic-ray",
-                )
-            cr_tools[name] = resolved
-        cr_entries = tuple(cr_tools.items())
-        _refuse_repo_local_tools(cr_entries, os.getcwd())
-        _refuse_repo_local_tools(cr_entries, repo_root)
-        if not os.path.exists(os.path.join(repo_cwd, args.module_path)):
-            raise GateError(
-                EXIT_ENV_NOT_READY, f"--module-path not found: {args.module_path}"
-            )
-        scoped = sorted(
-            path
-            for path, lines in added_by_file.items()
-            if lines and path.endswith(".py") and not is_excluded(path, args.exclude)
-        )
-        outside = files_outside_module_path(scoped, args.module_path)
-        if len(outside) == len(scoped):
-            raise GateError(
-                EXIT_ENV_NOT_READY,
-                "no added in-scope file lies under --module-path "
-                f"{args.module_path}; Cosmic Ray would skip every mutant and "
-                "score 0.00 survival, a false pass. Pass the module path that "
-                "holds the changed files.",
-            )
-        if outside:
-            _log(
-                "warning: these changed files are outside --module-path "
-                f"{args.module_path} and will not be mutation-tested: "
-                + ", ".join(outside)
-            )
-        config_text = build_cosmic_ray_config(
-            args.module_path, args.test_command, args.timeout, scope_ref
-        )
-
-    pytest_ver = None
-    pytest_cov_ver = None
-    if not args.lcov_file:
-        pytest_ver = _tool_version(
-            [sys.executable, "-m", "pytest", "--version"],
-            repo_cwd,
-            "pytest",
-            "pip install pytest pytest-cov",
-        )
-        pytest_cov_ver = _tool_version(
-            [sys.executable, "-c", "import pytest_cov; print(pytest_cov.__version__)"],
-            repo_cwd,
-            "pytest-cov",
-            "pip install pytest-cov",
-        )
-        pytest_cov_ver = f"pytest-cov {pytest_cov_ver}"
-    cosmic_ray_ver = None
-    if mutation_will_run:
-        cosmic_ray_ver = _tool_version(
-            [cr_tools["cosmic-ray"], "--version"],
-            repo_cwd,
-            "cosmic-ray",
-            "pip install cosmic-ray",
-        )
+    file_status = parse_diff_file_status(zero_diff)
 
     untracked = _untracked_py(git, repo_cwd)
     if untracked:
         _log(
-            "warning: untracked .py files are invisible to git diff and to both gates:"
+            "warning: untracked .py files are invisible to git diff; coverage and "
+            "mutation miss them, though the file-size gate checks them as new:"
         )
         for name in untracked:
             _log(f"  {name}")
         _log(
-            "  a git write makes them visible (a commit, or `git add -N <file>`); "
-            "git writes are the user's, so ask them first."
+            "  a git write makes them visible to every gate (a commit, or "
+            "`git add -N <file>`); git writes are the user's, so ask them first."
         )
 
-    if args.skip_mutants:
-        mutation_line = "mutation gate: skipped (--skip-mutants)"
-    elif scope_empty:
-        mutation_line = "mutation gate: no added in-scope lines (tool not invoked)"
-    else:
-        mutation_line = (
-            f"mutation scope: {scope_ref[:12]} (the resolved merge-base, passed to "
-            f"the git filter); module path: {args.module_path}; "
-            f"per-mutant timeout: {args.timeout:.0f}s"
-        )
-
-    _print_header(
-        args,
-        base_ref,
-        base_sha,
+    # File-size gate runs first, on git and the filesystem alone, so it reports
+    # even where the toolchain is absent.
+    size_start = time.monotonic()
+    size_findings = _evaluate_sizes(
+        added_by_file,
+        file_status,
+        untracked,
+        git,
+        repo_cwd,
+        repo_root,
         merge_base,
-        pytest_ver,
-        pytest_cov_ver,
-        cosmic_ray_ver,
-        mutation_line,
+        args.exclude,
     )
+    _print_size_report(size_findings, time.monotonic() - size_start)
+    size_failed = any(finding.verdict == "FAIL" for finding in size_findings)
 
-    cov_start = time.monotonic()
-    lcov_text = _obtain_lcov(args, repo_cwd, tmpdir)
-    coverage_by_file = parse_lcov(lcov_text, repo_root)
-    report = intersect(added_by_file, coverage_by_file, args.exclude)
-    verdict = coverage_passes(
-        report.total_covered, report.total_coverable, args.cov_threshold
-    )
-    _print_coverage_report(
-        report, verdict, args.cov_threshold, repo_root, time.monotonic() - cov_start
-    )
-    coverage_failed = verdict is False
-
+    coverage_failed = False
     mutation_failed = False
-    if args.skip_mutants:
-        print("-- mutation gate: skipped (--skip-mutants) --\n")
-    elif scope_empty:
-        note = " (user --exclude globs emptied the scope)" if emptied_by_globs else ""
-        print(
-            f"-- mutation gate: nothing to check (no added in-scope lines){note} --\n"
+    try:
+        if not args.skip_mutants and _tracked_dirty(git, repo_cwd):
+            raise GateError(
+                EXIT_ENV_NOT_READY,
+                "uncommitted tracked changes present; Cosmic Ray mutates source on "
+                "disk during exec, so an interrupted run would leave a mutant "
+                "indistinguishable from your uncommitted work. The tree must be "
+                "clean first; committing is the user's action, so ask them, or run "
+                "--skip-mutants.",
+            )
+
+        scope_empty, emptied_by_globs = mutation_scope_empty(added_by_file, args.exclude)
+        mutation_will_run = not args.skip_mutants and not scope_empty
+
+        cr_tools: dict[str, str] = {}
+        config_text = ""
+        if mutation_will_run:
+            for name in ("cosmic-ray", "cr-filter-git", "cr-report", "cr-rate"):
+                resolved = _resolve_tool(name)
+                if resolved is None:
+                    raise GateError(
+                        EXIT_ENV_NOT_READY,
+                        f"{name} not found on PATH; install it with: pip install cosmic-ray",
+                    )
+                cr_tools[name] = resolved
+            cr_entries = tuple(cr_tools.items())
+            _refuse_repo_local_tools(cr_entries, os.getcwd())
+            _refuse_repo_local_tools(cr_entries, repo_root)
+            if not os.path.exists(os.path.join(repo_cwd, args.module_path)):
+                raise GateError(
+                    EXIT_ENV_NOT_READY, f"--module-path not found: {args.module_path}"
+                )
+            scoped = sorted(
+                path
+                for path, lines in added_by_file.items()
+                if lines and path.endswith(".py") and not is_excluded(path, args.exclude)
+            )
+            outside = files_outside_module_path(scoped, args.module_path)
+            if len(outside) == len(scoped):
+                raise GateError(
+                    EXIT_ENV_NOT_READY,
+                    "no added in-scope file lies under --module-path "
+                    f"{args.module_path}; Cosmic Ray would skip every mutant and "
+                    "score 0.00 survival, a false pass. Pass the module path that "
+                    "holds the changed files.",
+                )
+            if outside:
+                _log(
+                    "warning: these changed files are outside --module-path "
+                    f"{args.module_path} and will not be mutation-tested: "
+                    + ", ".join(outside)
+                )
+            config_text = build_cosmic_ray_config(
+                args.module_path, args.test_command, args.timeout, scope_ref
+            )
+
+        pytest_ver = None
+        pytest_cov_ver = None
+        if not args.lcov_file:
+            pytest_ver = _tool_version(
+                [sys.executable, "-m", "pytest", "--version"],
+                repo_cwd,
+                "pytest",
+                "pip install pytest pytest-cov",
+            )
+            pytest_cov_ver = _tool_version(
+                [sys.executable, "-c", "import pytest_cov; print(pytest_cov.__version__)"],
+                repo_cwd,
+                "pytest-cov",
+                "pip install pytest-cov",
+            )
+            pytest_cov_ver = f"pytest-cov {pytest_cov_ver}"
+        cosmic_ray_ver = None
+        if mutation_will_run:
+            cosmic_ray_ver = _tool_version(
+                [cr_tools["cosmic-ray"], "--version"],
+                repo_cwd,
+                "cosmic-ray",
+                "pip install cosmic-ray",
+            )
+
+        if args.skip_mutants:
+            mutation_line = "mutation gate: skipped (--skip-mutants)"
+        elif scope_empty:
+            mutation_line = "mutation gate: no added in-scope lines (tool not invoked)"
+        else:
+            mutation_line = (
+                f"mutation scope: {scope_ref[:12]} (the resolved merge-base, passed to "
+                f"the git filter); module path: {args.module_path}; "
+                f"per-mutant timeout: {args.timeout:.0f}s"
+            )
+
+        _print_header(
+            args,
+            base_ref,
+            base_sha,
+            merge_base,
+            pytest_ver,
+            pytest_cov_ver,
+            cosmic_ray_ver,
+            mutation_line,
         )
-    else:
-        mut_start = time.monotonic()
-        mutation_failed = _run_mutation_gate(config_text, cr_tools, repo_cwd, tmpdir)
-        print(f"  mutation phase: {time.monotonic() - mut_start:.1f}s\n")
+
+        cov_start = time.monotonic()
+        lcov_text = _obtain_lcov(args, repo_cwd, tmpdir)
+        coverage_by_file = parse_lcov(lcov_text, repo_root)
+        report = intersect(added_by_file, coverage_by_file, args.exclude)
+        verdict = coverage_passes(
+            report.total_covered, report.total_coverable, args.cov_threshold
+        )
+        _print_coverage_report(
+            report, verdict, args.cov_threshold, repo_root, time.monotonic() - cov_start
+        )
+        coverage_failed = verdict is False
+
+        if args.skip_mutants:
+            print("-- mutation gate: skipped (--skip-mutants) --\n")
+        elif scope_empty:
+            note = " (user --exclude globs emptied the scope)" if emptied_by_globs else ""
+            print(
+                f"-- mutation gate: nothing to check (no added in-scope lines){note} --\n"
+            )
+        else:
+            mut_start = time.monotonic()
+            mutation_failed = _run_mutation_gate(config_text, cr_tools, repo_cwd, tmpdir)
+            print(f"  mutation phase: {time.monotonic() - mut_start:.1f}s\n")
+    except GateError as err:
+        if size_failed and err.code == EXIT_ENV_NOT_READY:
+            _log(f"note: coverage and mutation phases not run: {err.message}")
+        else:
+            raise
 
     _log(f"quality gate finished in {time.monotonic() - started:.1f}s")
     if coverage_failed:
         return EXIT_COVERAGE_FAILED
     if mutation_failed:
         return EXIT_MUTATION_FAILED
+    if size_failed:
+        return EXIT_SIZE_FAILED
     return EXIT_OK
 
 

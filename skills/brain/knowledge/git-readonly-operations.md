@@ -68,7 +68,14 @@ holds even when you can't ask), file the ticket, and note the limitation in the 
 
 Collection-returning tools wrap their payload in `{ results, count, filters_applied, truncated, repo_root, error }`.
 
-- Check `error` first. If it's `null`, work with `results`. If not, branch on `error.code` (stable values like `RefNotFound`, `PathOutsideRepo`, `RejectedArgument`, `GitTimeout`, `PcreUnavailable`), not on the message text.
+- Check `error` first. If it's `null`, work with `results`. If not, branch on `error.code` (stable values like `RefNotFound`, `PathOutsideRepo`, `RejectedArgument`, `InvalidArgument`, `GitTimeout`, `PcreUnavailable`), not on the message text.
+- Argument-shape mistakes are rejected before the tool runs (server v2.1.0+), as `InvalidArgument`: an
+  unknown argument name now fails the call instead of being silently ignored by the SDK, with
+  `detail.unknown_arguments` naming each one (plus a `did_you_mean` when a schema name is close),
+  `missing_required` (a `git_status` with no `cwd`, say), and the full `expected_arguments`. A known
+  argument of the wrong JSON type reports the same code with the SDK's fixed generic text in
+  `detail.sdk_error`. Correct the call from the detail and retry; this is a caller error, never a
+  capability gap, so no `gitops-gap` ticket in those cases.
 - `truncated: true` means git's output hit the 8 MB cap. Narrow the query (lower `maxCount`, restrict `paths`, tighten `since`/`until`) and call again rather than guessing what got cut.
 - `GitTimeout` means the call ran past 30 s. Same fix: narrow the query.
 
