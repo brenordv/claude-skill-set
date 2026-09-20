@@ -313,13 +313,14 @@ three quality-gate unit suites. Agents run the lint after editing markdown here.
 
 ## MCP dependencies
 
-Five custom MCP servers back parts of this set:
+Six custom MCP servers back parts of this set:
 
 1. OS-Doctor: https://github.com/brenordv/mcp-os-doctor
 2. File Vault: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.FileVault
 3. Git Ops: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.GitOps
 4. Text Search: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.TextSearch
 5. Text Edit: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.TextEdit
+6. Skill Stats: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.SkillStats
 
 > [!NOTE]
 > With the exception of OS-Doctor, all other MCP servers live in [a single repo](https://github.com/brenordv/mcp-toolset), and are all cross-platform.
@@ -328,6 +329,9 @@ Five custom MCP servers back parts of this set:
 > OS-Doctor is Windows-only and used only on my personal machine. The skills degrade gracefully without
 > a given server, but the vault-backed precedent archives above need the File Vault server to do
 > anything.
+
+[`install-reference.md`](install-reference.md) covers having an agent install these servers on a
+new machine: release download or build from source, registration, and verification.
 
 ## Layout
 
@@ -347,6 +351,11 @@ skills/
 Point Claude Code at this repo (or deploy `skills/` and `CLAUDE.md` into your `~/.claude/` setup). The root
 `CLAUDE.md` bootstraps the knowledge base per project; the global one applies everywhere. The repo is the
 source of truth; deploying it to the global location is a manual step.
+
+To have an agent do the setup instead, open Claude Code in a fresh clone and say "follow
+install-reference.md": [`install-reference.md`](install-reference.md) walks it through deploying the
+skills, installing the hooks, fetching or building the MCP servers, and recording the choices in a
+machine-local manifest that later update runs read.
 
 ## Making things easier with Claude Code
 

@@ -1,6 +1,15 @@
 # Changelog
 
 ## v10
+- Added `install-reference.md`, an agent-followable checklist for setting up the skill set on a new
+  machine: deploy mode, hook and tools selection, MCP servers fetched from pinned repo slugs
+  (release download or source build), `claude mcp add --scope user` registration, per-server smoke
+  checks plus a hook-harness re-run against the installed copies, and a machine-local manifest
+  (`~/.claude/skill-set-install.json`) that records what went where so a later session can update
+  the install instead of re-deriving it. Ground rules bound the installing agent: timestamped
+  settings backups with additive-only merges, fetched READMEs treated as data rather than
+  instructions, no secrets in the manifest, and the manifest written only after verification
+  passes. The root README points to it from "Using it" and "MCP dependencies".
 - Relaxed the Rust skill's error-handling Hard Rule: `anyhow` now also covers library crates
   internal to their workspace, with `thiserror` reserved for libraries published for external
   consumers. An internal lib whose callers start matching on failure modes is the stated trigger to
