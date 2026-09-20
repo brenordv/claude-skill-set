@@ -108,6 +108,11 @@ For every changed file, evaluate it across the review dimensions defined in `bra
 - [ ] **No deprecated APIs.** No added call is deprecated or obsolete in the version the project
   pins, and build/linter output shows no new deprecation warnings from the diff. See
   `brain/knowledge/review-heuristics.md` §Correctness.
+- [ ] **No unprompted version bump.** A version field changes in the diff (manifest `version`,
+  `<Version>` in a csproj, a VERSION file, `__version__`) only when the task was a release the user
+  asked for. On a project with no release yet (no release tag, registry publication, or live
+  deployment) the version never moves; the first release ships from the initial value.
+  `coding-general.md` ⛔ Hard Rule 5. At minimum Important.
 - [ ] **Prose passes `writing-style.md`.** Check every added/modified comment, docstring, doc file, and
   markdown block in the diff against the hard bans; the Prose section of
   `brain/knowledge/review-heuristics.md` has the concrete greps. A hard-ban violation on a touched line

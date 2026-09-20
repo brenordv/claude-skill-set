@@ -1,5 +1,5 @@
 #requires -Version 5
-# Windows behavior harness for the five hook pairs in hooks/: runs each hooks/*.ps1 against the
+# Windows behavior harness for the six hook pairs in hooks/: runs each hooks/*.ps1 against the
 # shared case table tools/hook-cases.tsv, the same table tools/test-hooks.sh runs the .sh hooks
 # against, so a behavior divergence between the two implementations shows up as one platform's CI
 # job failing while the other passes. Written for Windows PowerShell 5.1, the interpreter the

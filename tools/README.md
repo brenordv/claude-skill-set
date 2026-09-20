@@ -57,8 +57,8 @@ to both scripts.
 
 ## test-hooks (`test-hooks.sh` / `test-hooks.ps1` / `hook-cases.tsv`)
 
-Parses and exercises the five hook pairs in `../hooks/` (four `PreToolUse`, plus the `PostToolUse`
-`warn-file-size`). Each side runs the way it ships: the `.sh` harness runs the `.sh` hooks under
+Parses and exercises the six hook pairs in `../hooks/` (four `PreToolUse`, plus the `PostToolUse`
+`warn-file-size` and `warn-writing-tells`). Each side runs the way it ships: the `.sh` harness runs the `.sh` hooks under
 bash, the `.ps1` harness runs the `.ps1` hooks under Windows PowerShell 5.1, and both grade against
 the same case table, `hook-cases.tsv`, so a behavior divergence inside a hook pair surfaces as one
 platform's CI job failing while the other passes.

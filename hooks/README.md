@@ -6,13 +6,13 @@ strongest exactly where recall is weakest (fresh chat, long context, deep in a t
 depend on recall. It intercepts the tool call after the model emits it and before it runs, and its
 denial message lands in context at the one moment it steers the next attempt.
 
-This folder holds five independent hooks, each shipped as a Windows `.ps1` and a POSIX `.sh` with
+This folder holds six independent hooks, each shipped as a Windows `.ps1` and a POSIX `.sh` with
 identical behavior, each failing open. Four are `PreToolUse`: three match the shell tools
-(`Bash|PowerShell`), one matches the native file tools (`Glob|Grep|Read`). The fifth is
+(`Bash|PowerShell`), one matches the native file tools (`Glob|Grep|Read`). The other two are
 `PostToolUse`, matching the write tools (`Write|Edit`):
 - **route-to-text-tools** routes file-probing, in-place-edit, and read-only-git shell commands to the
   `text-search`, `text-edit`, and `git-ops` MCPs.
-- **block-secrets** hard-blocks shell commands that read or copy secret-looking files.
+- **block-secrets** hard-blocks shell commands that read, write, or copy secret-looking files.
 - **guard-file-targets** hard-blocks native `Glob`/`Grep`/`Read` calls that target a secret-looking
   file, so a secret cannot be located or read by stepping around the shell hooks.
 - **block-vcs-writes** hard-blocks the git writes the user owns (`commit`, `add`, `stash`) and every
@@ -20,6 +20,9 @@ identical behavior, each failing open. Four are `PreToolUse`: three match the sh
 - **warn-file-size** (PostToolUse) warns when a newly created `.py`/`.cs`/`.rs` file is written past
   its language's "worth reviewing" line tier. It never blocks and stays silent for files already
   tracked in git.
+- **warn-writing-tells** (PostToolUse) warns when the text a `Write`/`Edit` just added carries a
+  hard-banned writing tell (an em-dash or a curly quote/apostrophe, per `writing-style.md`). It
+  scans only the added text and never blocks.
 
 > [!IMPORTANT]
 > It is crucial to know that those hooks are not a foolproof, be-all, end-all security solution. 
@@ -156,7 +159,7 @@ behavior; keep them in sync when you tune one.
 
 ### Verify
 
-All five hooks run together from the repo root with `bash tools/test-hooks.sh`: it parses every
+All six hooks run together from the repo root with `bash tools/test-hooks.sh`: it parses every
 script, guards against the command-substitution heredoc that broke them on macOS bash 3.2, checks the
 file-size thresholds stay in sync across hooks and gates, and checks every verdict in the tables
 above. On Windows, `tools\test-hooks.ps1` runs the `.ps1` hooks against the same case table (see
@@ -220,25 +223,26 @@ The hook fails **open**: any parse error, missing Perl/`JSON::PP` (bash), or an 
 
 ## block-secrets
 
-A second `PreToolUse` hook: it denies a command that would **read or copy a file that looks like a
-secret** (`.env`, `appsettings.json`, `secrets.*`, `credentials.*`, `*.key`, `*.pem`, `*.pfx`, `*.p12`,
-`*.jks`, `*.keystore`, `master.key`, `private_key`, `.htpasswd`). This is defense-in-depth next to
-`route-to-text-tools`: that hook routes reads to `text-search` (which withholds secret-shaped content),
-while this one hard-blocks the shell commands that would read or exfiltrate a secret file directly. It is
-shell-only (matcher `Bash|PowerShell`) and blocks reading or copying, not merely locating; the native
-`Glob`/`Grep`/`Read` tools and pure enumeration are covered by `guard-file-targets` below.
+A second `PreToolUse` hook: it denies a command that would **read, write, or copy a file that looks
+like a secret** (`.env`, `appsettings.json`, `secrets.*`, `credentials.*`, `*.key`, `*.pem`, `*.pfx`,
+`*.p12`, `*.jks`, `*.keystore`, `master.key`, `private_key`, `.htpasswd`). This is defense-in-depth
+next to `route-to-text-tools`: that hook routes reads to `text-search` (which withholds secret-shaped
+content), while this one hard-blocks the shell commands that would read, write into, or exfiltrate a
+secret file directly. It is shell-only (matcher `Bash|PowerShell`) and blocks touching a secret's
+content, not merely locating it; the native `Glob`/`Grep`/`Read` tools and pure enumeration are
+covered by `guard-file-targets` below.
 
 ### What it blocks, and what it does not
 
 A command is denied only when all three hold: it names a secret-file pattern, it is **not** the
-`.example`/`.template`/`.sample` form, and it uses a content-reading or copying construct.
+`.example`/`.template`/`.sample` form, and it uses a content-reading, writing, or copying construct.
 
 | Command | Verdict |
 |---|---|
-| `cat .env`, `Get-Content secrets.yaml`, `sed -n 1p .env`, `head master.key` | deny (reads a secret) |
-| `cp secrets.json ...`, `cat .env > out`, `curl -d @credentials.json`, `. ./secrets.env` | deny (copy / redirect / source / exfil) |
-| `cat .env.example`, `cat config.sample.json` | **allow** (sample/template) |
-| `grep FOO .env`, `git status`, `cat application.json`, `ls` | **allow** (not a content read of a secret) |
+| `cat .env`, `Get-Content secrets.yaml`, `sed -n 1p .env`, `head master.key`, `sort < .env` | deny (reads a secret) |
+| `echo KEY=x \| tee .env`, `cp secrets.json ...`, `cat .env > out`, `curl -d @credentials.json`, `. ./secrets.env` | deny (write / copy / redirect / source / exfil) |
+| `cat .env.example`, `cat config.sample.json`, `echo x \| tee .env.example` | **allow** (sample/template) |
+| `grep FOO .env`, `git status`, `cat application.json`, `dotnet build \| tee build.log` | **allow** (no secret content touched) |
 
 `grep .env` passes this hook (grep is not a content-read here); the routing hook handles `grep`
 separately, and `text-search` itself withholds secret content.
@@ -259,15 +263,16 @@ open.
 
 ### Verify
 
-The full harness for all five hooks runs from the repo root with `bash tools/test-hooks.sh` (on
+The full harness for all six hooks runs from the repo root with `bash tools/test-hooks.sh` (on
 Windows, `tools\test-hooks.ps1` runs the `.ps1` side against the same case table); the hand checks
 below exercise just this one.
 
 ```bash
 s=~/.claude/hooks/block-secrets.sh
-bash "$s" --command 'cat .env'          # -> secret
-bash "$s" --command 'cat .env.example'  # -> allow
-bash "$s" --command 'grep FOO .env'     # -> allow
+bash "$s" --command 'cat .env'              # -> secret
+bash "$s" --command 'echo KEY=x | tee .env' # -> secret
+bash "$s" --command 'cat .env.example'      # -> allow
+bash "$s" --command 'grep FOO .env'         # -> allow
 ```
 
 PowerShell: pipe a `{"tool_name":"Bash","tool_input":{"command":"cat .env"}}` payload into
@@ -289,7 +294,7 @@ its matcher is `Glob|Grep|Read`. It denies a call whose **target** is a secret-l
 The motivating incident: on a fresh chat in a monorepo the model reached for `Glob("**/.env*")` to find
 where a shared `.env` lived, telling itself "I won't read the contents, only find the file." Both shell
 hooks missed it, they match `Bash|PowerShell` and the model never shelled out, and `block-secrets` would
-not have caught it even on the shell path: it blocks reading or copying a secret, not locating one. This
+not have caught it even on the shell path: it blocks touching a secret's content, not locating one. This
 hook closes both gaps. It watches the native tools the shell hooks cannot see, and because it keys on the
 **target** rather than on a read construct, it denies pure enumeration too. It also codifies the
 principle the model rationalized around: seeking a secret is off-limits, not only reading it.
@@ -328,7 +333,7 @@ open.
 
 ### Verify
 
-The full harness for all five hooks runs from the repo root with `bash tools/test-hooks.sh` (on
+The full harness for all six hooks runs from the repo root with `bash tools/test-hooks.sh` (on
 Windows, `tools\test-hooks.ps1` runs the `.ps1` side against the same case table); the hand checks
 below exercise just this one.
 
@@ -442,7 +447,7 @@ picked up until then).
 
 ### Verify
 
-The full harness for all five hooks runs from the repo root with `bash tools/test-hooks.sh` (on
+The full harness for all six hooks runs from the repo root with `bash tools/test-hooks.sh` (on
 Windows, `tools\test-hooks.ps1` runs the `.ps1` side against the same case table); the hand checks
 below exercise just this one.
 
@@ -466,7 +471,7 @@ scripts in sync.
 
 ## warn-file-size
 
-The fifth hook, and the only `PostToolUse` one: its matcher is `Write|Edit`. The write has already
+The fifth hook, and the first of the two `PostToolUse` ones: its matcher is `Write|Edit`. The write has already
 landed (a `PostToolUse` hook cannot block), so this one warns rather than denies: when a **newly
 created** `.py`/`.cs`/`.rs` file exceeds its language's "worth reviewing" line tier (Python 800, C#
 700, Rust 700; the tiers live in `coding-general.md` section 3), it prints a two-to-three line message
@@ -588,6 +593,64 @@ exit 2 and a `[warn-file-size]` line on stderr, or exits 0 silently.
 The hook fails **open**: a missing `git`/`perl`, an unreadable file, a parse error, or any fault exits
 0 and warns nothing, so it never interferes with a write.
 
+## warn-writing-tells
+
+The sixth hook, and the second `PostToolUse` one, with the same matcher as `warn-file-size`:
+`Write|Edit`. It warns when the text a write just added carries a hard-banned writing tell: an
+em-dash (U+2014) or a curly quote/apostrophe (U+2018, U+2019, U+201C, U+201D), per
+[`../skills/brain/knowledge/writing-style.md`](../skills/brain/knowledge/writing-style.md). The
+motivating gap: `tools/lint-repo` enforces the em-dash ban, but only over this repo's markdown, so
+prose written into any other repo (docs, commit-message files, code comments) had no structural
+backstop, and that is exactly where the tells kept resurfacing. This hook covers every repo on the
+machine the hooks are installed on.
+
+It scans only the payload the tool wrote, `tool_input.content` for `Write` and
+`tool_input.new_string` for `Edit`, never the file on disk. Editing a file that already contains
+em-dashes stays silent unless the added text itself carries one, which encodes the guide's "leave
+existing prose alone" rule at the tool layer. It reports counts only, never content.
+
+### What it warns on, and what it does not
+
+| Write | Verdict |
+|---|---|
+| a `Write` whose `content` adds an em-dash; an `Edit` whose `new_string` adds a curly apostrophe | warn (exit 2, `[warn-writing-tells]` on stderr) |
+| clean text; an `Edit` that removes a tell (`old_string` has it, `new_string` does not) | **silent** |
+| a write to a skip-list file: `writing-style.md`, `lint-repo.sh`/`.ps1`, `hook-cases.tsv`, this hook pair | **silent** (those files quote or test the characters) |
+
+One limit worth knowing: detection happens after JSON decoding, so `\u`-escaped characters in the
+payload always detect; a raw multibyte character reaching the `.ps1` through a console whose input
+codepage is not UTF-8 may decode wrong and stay silent (fail-open, like every other fault).
+
+### Install
+
+Same mechanics as `warn-file-size`: copy the script for your OS (`warn-writing-tells.ps1` on
+Windows, `warn-writing-tells.sh` on macOS/Linux) to `~/.claude/hooks/` and add a **second** hook
+group under `hooks.PostToolUse` with matcher `Write|Edit` pointing at it. Requirements are the
+usual pair (Windows `powershell.exe`; macOS/Linux `bash` + `perl` with `JSON::PP` core), no `git`
+needed, and it fails open.
+
+### Verify
+
+The full harness for all six hooks covers it (`bash tools/test-hooks.sh`; on Windows,
+`tools\test-hooks.ps1`). The `.sh` also has a `--text` self-test that classifies a raw string with
+neither JSON nor Claude Code:
+
+```bash
+s=~/.claude/hooks/warn-writing-tells.sh
+bash "$s" --text 'plain text'                    # -> silent
+bash "$s" --text "$(printf 'a \342\200\224 b')"  # -> warn (an em-dash, spelled as UTF-8 bytes)
+```
+
+Piping a `{"tool_name":"Write","tool_input":{"file_path":"x.md","content":"..."}}` payload into
+either script warns with exit 2 and `[warn-writing-tells]` lines on stderr, or exits 0 silently.
+
+### Tuning
+
+- **Character set:** the two match expressions in the Perl pass (`.sh`) or `$emDash` / `$curly`
+  (`.ps1`).
+- **Skip list:** the `SKIP` regex (`.sh`) or `$skip` (`.ps1`); extend it when a file legitimately
+  quotes the banned characters. Keep both scripts in sync.
+
 ## Protected MCP stores (guard-file-targets + block-secrets)
 
 `guard-file-targets` and `block-secrets` each carry a `PROTECTED_STORES` tunable (`$protectedStores`
@@ -600,12 +663,12 @@ shell command naming one has no legitimate use. Set the same regex in all four s
 portable enforcement; for a hard wall, put the store under filesystem permissions the agent's
 process cannot read.
 
-## Full install: all five hooks at once
+## Full install: all six hooks at once
 
-For a fresh machine, copy the five scripts for your OS into `~/.claude/hooks/`, then paste the
+For a fresh machine, copy the six scripts for your OS into `~/.claude/hooks/`, then paste the
 whole `hooks` block below into `~/.claude/settings.json` (merge it if the file already has other
 keys). Each hook is its own group; every group runs on each matching tool call, a deny from any
-`PreToolUse` group blocks the call, and the `PostToolUse` `warn-file-size` group only warns after the
+`PreToolUse` group blocks the call, and the two `PostToolUse` groups only warn after the
 write. Reload with `/hooks` or a restart when done.
 
 **Windows**:
@@ -685,6 +748,20 @@ write. Reload with `/hooks` or a restart when done.
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\warn-writing-tells.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
       }
     ]
   }
@@ -727,6 +804,12 @@ write. Reload with `/hooks` or a restart when done.
         "matcher": "Write|Edit",
         "hooks": [
           { "type": "command", "command": "bash \"$HOME/.claude/hooks/warn-file-size.sh\"", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/warn-writing-tells.sh\"", "timeout": 10 }
         ]
       }
     ]

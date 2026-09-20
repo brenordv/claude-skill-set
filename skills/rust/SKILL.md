@@ -22,12 +22,15 @@ these. Softer conflicts between repo patterns and this skill go to the user per
 `brain/knowledge/coding-general.md` §2, "When the repo and the guidelines disagree". Re-read this
 list before writing code, and walk it again at handoff (§8).
 
-1. **`anyhow` for binaries and applications, `thiserror` for library crates, nothing else.**
-   Application code returns `anyhow::Result<T>` with `.context(...)` attached at every level. A
-   library crate consumed by others exposes typed errors via `thiserror` instead, because `anyhow`
-   erases the type callers need to match on; the consuming binary converts at its boundary with `?`
-   and `.context(...)`. No `eyre`, no hand-rolled error enums where `thiserror` fits, and never
-   both patterns mixed inside one crate.
+1. **`anyhow` for binaries, applications, and internal workspace libs; `thiserror` for published
+   library crates; nothing else.** Application code returns `anyhow::Result<T>` with `.context(...)`
+   attached at every level, and a library crate internal to its workspace (consumed only by that
+   workspace's own tools) follows the same pattern. A library crate published for external consumers
+   exposes typed errors via `thiserror` instead, because `anyhow` erases the type callers need to
+   match on; the consuming binary converts at its boundary with `?` and `.context(...)`. An internal
+   lib whose callers start matching on failure modes is the trigger to move that lib to `thiserror`.
+   No `eyre`, no hand-rolled error enums where `thiserror` fits, and never both patterns mixed
+   inside one crate.
 2. **No `unwrap()` or `expect()` outside test code, even in a repo sprinkled with them.** Errors
    propagate with `?`. A case you believe impossible still gets handled explicitly, with the
    reasoning stated where it's handled, never panicked through.
@@ -67,12 +70,13 @@ list before writing code, and walk it again at handoff (§8).
 - Pin the lint policy in the repo with a `[workspace.lints]` (or per-crate `[lints]`) table in `Cargo.toml` and `lints.workspace = true` in member crates, so the clippy bar travels with the project instead of living in anyone's head
 - When you are the one creating that lint-policy table (not when a crate merely joins an existing workspace), add `[workspace.lints.clippy] too_many_lines = "warn"`. The lint is allow-by-default (pedantic), and under Hard Rule 4's `-D warnings` a `"warn"` entry becomes a hard error, so a function past clippy's `too-many-lines-threshold` (kept at the default 100, consistent with the ~50-line function guidance in §4) stops the gate. A function that is legitimately long escapes with `#[allow(clippy::too_many_lines)]` plus a one-line site-specific reason, the same sanctioned-exception shape as Hard Rule 4. If the same table also enables a lint group (for example `pedantic = "warn"`), give the group `priority = -1` so the individual `too_many_lines` level still wins. This is a per-function guard; whole-file size is enforced by Hard Rule 5 and the new-code gate, since no file-level clippy lint exists.
 
-### 2. Error Handling (anyhow for binaries, thiserror for libraries)
+### 2. Error Handling (anyhow by default, thiserror for published libraries)
 
-**Applications use `anyhow`; library crates consumed by others use `thiserror`** (Hard Rule 1). No
-other error library, and never both patterns mixed inside one crate.
+**Applications and internal workspace libs use `anyhow`; library crates published for external
+consumers use `thiserror`** (Hard Rule 1). No other error library, and never both patterns mixed
+inside one crate.
 
-In application/binary code:
+In application/binary code and internal workspace libs:
 
 - All fallible functions return `anyhow::Result<T>`
 - Attach context at every level with `.context("message")` or `.with_context(|| format!(...))`
@@ -81,7 +85,7 @@ In application/binary code:
 - At the entrypoint: print the error to `stderr` with `eprintln!`, log with `error!`, and exit non-zero (if the workspace defines a shared error-exit helper, use it)
 - For tools needing distinct exit codes, define a custom `AppError { message, exit_code }` struct (follow the workspace's existing pattern if one exists)
 
-In a library crate:
+In a published library crate:
 
 - Define one error enum per module or domain with `#[derive(thiserror::Error, Debug)]`, a `#[error("...")]` message per variant, and `#[from]` where a source error maps one-to-one
 - Return `Result<T, YourError>` from the public API; let binaries wrap it into `anyhow` at their boundary with `?` and `.context(...)`
@@ -132,7 +136,7 @@ In a library crate:
 
 - `unsafe` code unless explicitly approved
 - `unwrap()` / `expect()` in non-test code (Hard Rule 2)
-- Error libraries other than `anyhow` in binaries and `thiserror` in libraries; no `eyre` and friends (Hard Rule 1)
+- Error libraries other than `anyhow` (binaries and internal workspace libs) and `thiserror` (published libraries); no `eyre` and friends (Hard Rule 1)
 - `log`, `env_logger`, or `println!`/`eprintln!` diagnostics where `tracing` belongs (Hard Rule 3; the entrypoint's final error print is the exception)
 - Changing `edition`, `rustfmt`, or `clippy` settings in an existing project (setting the lint policy when you create a new crate or workspace is the one sanctioned exception, §1)
 

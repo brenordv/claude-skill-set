@@ -90,7 +90,8 @@ def test_database_migration_applies_cleanly(db_session):
 
 - Use `pytest-cov` for coverage measurement
 - Aim for **>80% coverage** for critical modules
-- Run: `pytest --cov=src --cov-report=term-missing`
+- Run: `pytest --cov=src --cov-report=term-missing`, through the project's environment manager
+  (`uv run pytest ...` on a uv project; SKILL.md Hard Rule 7)
 - Focus coverage on business logic, not boilerplate
 
 ## New-code quality gate
@@ -130,10 +131,12 @@ units, the convention the Rust gate set.
 ### Install
 
 The script is Python 3, standard library only. The two tool packages install into the target
-project's environment:
+project's environment, through its environment manager (SKILL.md Hard Rule 7):
 
 ```bash
-pip install pytest-cov cosmic-ray
+uv add --dev pytest-cov cosmic-ray        # uv project
+poetry add --group dev pytest-cov cosmic-ray  # poetry project
+pip install pytest-cov cosmic-ray         # plain venv, activated
 ```
 
 Version floors: pytest-cov >= 4.0 and coverage.py >= 6.3 (where lcov output arrived), and

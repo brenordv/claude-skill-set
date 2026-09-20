@@ -1,5 +1,47 @@
 # Changelog
 
+## v10
+- Relaxed the Rust skill's error-handling Hard Rule: `anyhow` now also covers library crates
+  internal to their workspace, with `thiserror` reserved for libraries published for external
+  consumers. An internal lib whose callers start matching on failure modes is the stated trigger to
+  move it to `thiserror`. §2 (Error Handling) and §7 (Forbidden) in `skills/rust/SKILL.md` and the
+  README's Rust summary carry the same split.
+- Added `coding-general.md` ⛔ Hard Rule 5: a project version moves only as a release act, never as
+  a side effect of other work, and never before the first release; an unpublished project keeps its
+  initial version however many changes land. Wired into the handoff walk (§10) and §9 Version
+  Control Hygiene, plus the review side: a `branch-review` checklist item and a
+  `review-heuristics.md` §Infrastructure heuristic, both flagging an unprompted bump as at minimum
+  Important. The README's general-rules summary carries the one-line version.
+- Added `skills/python/SKILL.md` ⛔ Hard Rule 7: every toolchain command runs through the project's
+  environment manager, detected from the lockfile (`uv run`, `poetry run`, `pipenv run`, or the
+  venv's `python -m`), never a `.venv` binary called by path or a global install. Wired into the §5
+  checklist, the pytest and install commands in `testing-guidelines.md`, and the README's Python
+  summary.
+- `block-secrets` now catches `tee` and input redirection: `echo KEY=x | tee .env` and `sort < .env`
+  passed before because the read/exfil construct list had neither `tee` nor `<`. Both scripts
+  updated in sync, the deny message reworded to "reads, writes, or copies" (case-table signatures
+  updated to match), four new rows in `tools/hook-cases.tsv`, and the hooks README extended.
+- Refreshed `writing-style.md` against the current revision of Wikipedia's signs-of-AI-writing
+  field guide: straight quotes/apostrophes rule (curly forms are a documented tell), the
+  thematic-break (`---`) tell, vague-association chains ("associated with", "linked to"),
+  era-rotated vocabulary (nestled, groundbreaking, participial "emphasizing"/"highlighting"),
+  knowledge-cutoff disclaimers and collaborative "we" as chat residue in durable artifacts, and
+  citation hygiene (cite content, not coverage; strip `utm_source` params). The self-check list
+  grew the same tells.
+- Added `warn-writing-tells`, a sixth hook pair (`PostToolUse`, matcher `Write|Edit`): warns when
+  the text a write just added carries an em-dash or a curly quote/apostrophe, scanning only the
+  written payload (`content`/`new_string`) so tells already present in an edited file never nag.
+  The markdown lint enforces the em-dash ban inside this repo only; the hook extends the backstop
+  to every repo on the machine. Five rows in the shared case table (banned characters spelled as
+  JSON `\u` escapes to keep it ASCII), full section in `hooks/README.md`, hook counts updated
+  across both READMEs and the harness headers.
+- Documented the file-vault v3.3.0 retrieval surface in `vault-operations.md` and
+  `general-remembering-lessons.md`: all-terms-then-ranked-fallback query semantics with
+  `query_mode` and the 16-term cap, `vault_list` pagination (`limit`, `count`, `truncated`,
+  `cursor`; fallback results cap without a cursor), and the new body-only `vault_search`
+  (case-insensitive substring terms, capped snippets, `skipped`), which replaces the
+  list-everything-then-`vault_get`-one-by-one retrieval pattern the old server forced.
+
 ## v9
 - Updated the MCP knowledge files for toolset v16, which ported the pre-run argument-shape validation
   `text-search` gained in v15 to the remaining servers. `git-readonly-operations.md` (git-ops v2.1.0)

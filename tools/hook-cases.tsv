@@ -10,7 +10,7 @@
 # run's warn-file-size fixture directory) and @REPO_ROOT@ (the checkout root).
 # Both harnesses verify the declared count below against the rows they parse; update it when
 # adding or removing rows.
-# cases: 51
+# cases: 60
 #
 # route-to-text-tools: file-probing, in-place-edit, and read-only-git shell commands
 route-to-text-tools	Bash	{"command":"grep -r foo ."}	deny	command's OWN output
@@ -34,13 +34,17 @@ route-to-text-tools	Bash	{"command":"node -e \"fs.readFileSync(\\\"cfg.json\\\")
 route-to-text-tools	Bash	{"command":"pytest -c ci.ini test_read_text.py"}	allow	-
 #
 # block-secrets: shell commands that read or copy secret-looking files
-block-secrets	Bash	{"command":"cat .env"}	deny	reads or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"cat .env"}	deny	reads, writes, or copies a file matching a secret-file pattern
 block-secrets	Bash	{"command":"cat .env.example"}	allow	-
 block-secrets	Bash	{"command":"grep FOO .env"}	allow	-
-block-secrets	Bash	{"command":"cp secrets.json out"}	deny	reads or copies a file matching a secret-file pattern
-block-secrets	Bash	{"command":"head master.key"}	deny	reads or copies a file matching a secret-file pattern
-block-secrets	Bash	{"command":"cat appsettings.Production.json"}	deny	reads or copies a file matching a secret-file pattern
-block-secrets	Bash	{"command":"cat .env > out"}	deny	reads or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"cp secrets.json out"}	deny	reads, writes, or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"head master.key"}	deny	reads, writes, or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"cat appsettings.Production.json"}	deny	reads, writes, or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"cat .env > out"}	deny	reads, writes, or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"echo KEY=x | tee .env"}	deny	reads, writes, or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"sort < .env"}	deny	reads, writes, or copies a file matching a secret-file pattern
+block-secrets	Bash	{"command":"dotnet build | tee build.log"}	allow	-
+block-secrets	Bash	{"command":"echo x | tee .env.example"}	allow	-
 #
 # guard-file-targets: native file tools aimed at secret-looking files
 guard-file-targets	Glob	{"pattern":"**/.env*"}	deny	targets a secret-looking file
@@ -75,3 +79,12 @@ warn-file-size	Write	{"file_path":"@WF_FIXDIR@/nope.py"}	silent	-
 warn-file-size	Write	{"file_path":"@REPO_ROOT@/skills/python/scripts/python_quality_gate.py"}	silent	-
 warn-file-size	Write	{"file_path":"@WF_FIXDIR@/cfg.sample/secrets.py"}	silent	-
 warn-file-size	Write	{"file_path":"@WF_FIXDIR@/secrets.example.py"}	warn	[warn-file-size]
+#
+# warn-writing-tells (PostToolUse): the written payload adds a banned character (em-dash, curly
+# quote/apostrophe) and warns; clean text, exempt files, and tells only in the REPLACED text are
+# silent. Payloads carry the characters as JSON \u escapes so this table stays ASCII.
+warn-writing-tells	Write	{"file_path":"docs/notes.md","content":"a \u2014 b"}	warn	[warn-writing-tells]
+warn-writing-tells	Edit	{"file_path":"src/app.py","old_string":"x","new_string":"it\u2019s done"}	warn	[warn-writing-tells]
+warn-writing-tells	Write	{"file_path":"docs/notes.md","content":"plain text, no tells"}	silent	-
+warn-writing-tells	Write	{"file_path":"skills/brain/knowledge/writing-style.md","content":"quotes \u2014 the banned character"}	silent	-
+warn-writing-tells	Edit	{"file_path":"docs/notes.md","old_string":"a \u2014 b","new_string":"a, b"}	silent	-
