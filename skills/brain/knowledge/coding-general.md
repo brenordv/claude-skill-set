@@ -42,6 +42,15 @@ Re-read this list before writing code and walk it again at handoff (§10).
    already-oversized file you had to touch is never yours to refactor for size. Route your addition
    into a new module and name the oversized file in the handoff. Test code is exempt from the hard cap.
    The new-code quality gate enforces this on new and cap-crossing production files.
+5. **A version number moves only as a release act, never as a side effect of other work.** Don't
+   bump a project version (`version` in Cargo.toml, package.json, or pyproject.toml, `<Version>` in
+   a csproj, a VERSION file, `__version__`) while doing feature or fix work. On a project that has
+   never been released (no release tag, nothing on a registry, no live deployment), the version
+   keeps its initial value however many changes land, so the first release ships as 1.0.0 or the
+   scaffold's 0.1.0, not an accumulated 1.4.9 that no consumer ever saw. A history of per-change
+   bumps in the repo is precedent, not permission. Once the project is live, bump only when the
+   user asks for a release or the repo's release process calls for it in the task at hand; the
+   increment then follows that process.
 
 ---
 
@@ -242,6 +251,9 @@ detail behind ⛔ Hard Rule 4; they are not a mandate to refactor existing files
   even to "snapshot a baseline". Leave the working tree exactly as your file edits made it; the user
   manages git and commits when ready. To inspect state, use the read-only git-ops MCP tools. The
   `block-vcs-writes` hook enforces this at the tool layer when installed; the rule binds regardless.
+- **Version fields are release acts**: a change to a project version accompanies a release the user
+  asked for, never ordinary feature or fix work, and never lands before the project's first release
+  (⛔ Hard Rule 5).
 - **Follow existing commit conventions**: Match the repo's style.
 
 ---
@@ -253,9 +265,10 @@ Before delivering work:
 1. Run the project's formatter and linters; fix all issues.
 2. Walk the ⛔ Hard Rules block at the top of this file: the build/linter output shows zero new
    deprecation warnings on lines you touched, and the pre-write reuse search happened. Name any
-   near-duplicate you deliberately did not reuse in the summary, with the reason. Then reread every
-   comment the diff adds or edits: any that narrates the change rather than the current code gets
-   deleted here, its story moved to the summary (Hard Rule 3).
+   near-duplicate you deliberately did not reuse in the summary, with the reason. Confirm the diff
+   touches no version field unless the task was a release the user asked for (Hard Rule 5). Then
+   reread every comment the diff adds or edits: any that narrates the change rather than the current
+   code gets deleted here, its story moved to the summary (Hard Rule 3).
 3. Ensure new code is covered by tests.
 4. Run the test suite; confirm nothing is broken.
 5. Summarize the change, its rationale, and any caveats or warnings.

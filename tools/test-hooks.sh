@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test harness for the five hook pairs in hooks/ (.sh side; tools/test-hooks.ps1 runs the .ps1 side
+# Test harness for the six hook pairs in hooks/ (.sh side; tools/test-hooks.ps1 runs the .ps1 side
 # against the same case table, so a behavior divergence between the two implementations shows up as
 # one platform's CI job failing while the other passes). Nothing else in the pipeline ever parses or
 # runs these scripts: lint-repo checks markdown prose, and the hooks only execute on an installed

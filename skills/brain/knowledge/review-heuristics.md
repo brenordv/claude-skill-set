@@ -20,6 +20,11 @@ general principle. Distilled from real review findings.
   equivalent, a no-op when the prefix is absent). Such a workflow passes every dry run and fails the
   first real release. Prefer sourcing the version from the package manifest over the tag; the manifest
   is already digit-first.
+- **A version bump inside an unrelated diff is a finding.** A change to a project version (manifest
+  `version`, `<Version>` in a csproj, a VERSION file, `__version__`) belongs to a release the user
+  asked for. On a project that has never shipped (no release tag, no registry publication, no live
+  deployment) any bump is noise: it inflates the first release's number with increments no consumer
+  ever saw (`coding-general.md` ⛔ Hard Rule 5). At minimum Important.
 
 ## Security
 

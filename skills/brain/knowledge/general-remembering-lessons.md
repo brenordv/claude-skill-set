@@ -7,8 +7,8 @@ Always pass `project: "lessons"` explicitly on every lesson read and write; neve
 
 Before producing any plan, strategy, design, or architectural decision, query the vault for relevant prior lessons:
 
-1. `vault_list` with `project: "lessons"` and either a `query` (keywords from the task) or concept `tags`. Pull the topic, not the tech: for a Python test task, search `tags: ["testing"]`, not `["pytest"]`.
-2. **Triage on summaries first.** `vault_list` returns names, summaries, and `parent` links; scan those and only `vault_get` the handful that look directly applicable. Don't fetch everything that matched.
+1. `vault_list` with `project: "lessons"` and either a `query` (keywords from the task) or concept `tags`. Pull the topic, not the tech: for a Python test task, search `tags: ["testing"]`, not `["pytest"]`. Multi-word queries are safe on server v3.3.0+: all terms must match first, and a ranked any-term fallback runs automatically when that yields nothing (`query_mode` reports which pass answered).
+2. **Triage on summaries first.** `vault_list` returns names, summaries, and `parent` links; scan those and only `vault_get` the handful that look directly applicable. Don't fetch everything that matched. When the memory is a phrase from a lesson's body rather than its summary, `vault_search` with `project: "lessons"` returns it as a snippet (server v3.3.0+); `vault_get` the winner. Never fall back to listing everything and reading notes one by one.
 3. **Follow the hierarchy when you land on one.** `vault_get` returns the note's `parent` and active `children`. A child may be the tech-specific application you actually need; a parent may state the general principle a child is just one instance of. Read the family, not just the node.
 4. Factor relevant lessons into the plan.
 
@@ -92,7 +92,7 @@ Apply tags in three layers; **always include layers 1 and 2**, add layer 3 only 
 
 Rule of thumb: if the only tag that fits is a tech tag, you haven't identified the concept yet: the concept exists, find it.
 
-When retrieval fails to surface a lesson you know exists, the tags or summary are the bug; fix them with `vault_set_meta` immediately. No new version, no friction; treat discovery hygiene as cheap.
+When retrieval fails to surface a lesson you know exists, the tags or summary are the bug; fix them with `vault_set_meta` immediately. No new version, no friction; treat discovery hygiene as cheap. `vault_search` (server v3.3.0+) can locate the note by body text so you can repair its metadata.
 
 ### Example of a well-formed lesson family
 

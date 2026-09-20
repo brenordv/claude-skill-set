@@ -30,6 +30,9 @@ As a high level, here are some examples:
   cap-crossing file at 1,500 lines, and an already-oversized file is grown into, never mass-refactored
   to satisfy the gate. A PostToolUse hook echoes the same warning the moment an oversized new file lands.
 - Git stays human. The agent inspects freely (through a read-only MCP) but never stages or commits.
+- Version numbers move only at release time. A project that has never shipped keeps its initial
+  version no matter how much lands, so the first release goes out as 1.0.0, not an accumulated
+  1.4.9 that no consumer ever saw.
 - Pushes the agents to follow Clean Code, best practices, SOLID, etc.
 
 ### For C#
@@ -51,14 +54,17 @@ As a high level, here are some examples:
 - Type hints everywhere, and docstrings (Google or NumPy style) on every public API.
 - Done means the toolchain passes: `ruff check`, `ruff format`, `mypy`, and `pytest` with coverage,
   all clean before work is called complete.
+- Every tool runs through the project's environment manager, detected from the lockfile (`uv run`,
+  `poetry run`, `pipenv run`, or the venv's `python -m`), never a `.venv` binary called by path or a
+  global install.
 - Tests use pytest with Arrange-Act-Assert and mirror the source package layout under `tests/`, never
   dumped flat at the root.
 - Pickle-based model weights (`torch.load`, `joblib`) are treated as untrusted code, not data: trusted
   sources only, prefer safetensors, and `weights_only=True` where the call supports it.
 
 ### For Rust
-- `anyhow` in binaries with `.context(...)` attached at every level; `thiserror` for library crates.
-  No `eyre`.
+- `anyhow` in binaries and internal workspace libs with `.context(...)` attached at every level;
+  `thiserror` for library crates published for external consumers. No `eyre`.
 - No `unwrap()` or `expect()` outside test code; errors propagate with `?`.
 - `tracing` is the logging crate, with structured fields on events, never `log`/`env_logger` or
   `println!` diagnostics.
@@ -218,7 +224,7 @@ something a competent practitioner does by default), and they're consulted befor
 |--------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `csharp`                       | Production C#: formatting, naming, async, DI, xUnit; nullable disabled, one public type per file                                                                        |
 | `python`                       | Production Python: PEP 8, type safety, testing                                                                                                                          |
-| `rust`                         | Idiomatic Rust: `anyhow`-only error handling, borrow over clone, clippy-clean                                                                                           |
+| `rust`                         | Idiomatic Rust: `anyhow`-by-default error handling, borrow over clone, clippy-clean                                                                                     |
 | `angular`                      | Angular v17+: Signals, standalone components, zoneless, SSR/hydration, RxJS                                                                                             |
 | `reactjs`                      | React 19+/TypeScript: hooks, component architecture, state, performance, a11y                                                                                           |
 | `nextjs`                       | Next.js App Router: Server/Client Components, Server Actions, deployment                                                                                                |
@@ -261,27 +267,31 @@ consulted before planning and during reviews so the same trap isn't hit twice.
 `hooks/` (at the repo root) holds optional Claude Code hooks that enforce the always-on rules
 the knowledge files describe, so they hold even when a reflex fires before the rule is salient (a fresh
 chat, a long context, deep in a task). A knowledge rule is a nudge the model can forget mid-task; a
-hook intercepts the tool call and does not depend on recall. Five are included, each shipped as a Windows
+hook intercepts the tool call and does not depend on recall. Six are included, each shipped as a Windows
 `.ps1` and a POSIX `.sh` with identical behavior, each failing open so a fault never blocks a legitimate
 command:
 
 - **route-to-text-tools** denies shell commands that read or search files, rewrite files in place, or
   inspect a repo read-only through `git`, and points the agent at the `text-search`, `text-edit`, and
   `git-ops` MCPs instead.
-- **block-secrets** hard-blocks shell commands that read or copy secret-looking files (`.env`,
-  `secrets.*`, `*.key`, and the like).
+- **block-secrets** hard-blocks shell commands that read, write, or copy secret-looking files (`.env`,
+  `secrets.*`, `*.key`, and the like), `tee` and redirection in either direction included.
 - **guard-file-targets** hard-blocks native `Glob`/`Grep`/`Read` calls that target a secret-looking
   file, so a secret can't be located or read by stepping around the shell hooks.
 - **block-vcs-writes** hard-blocks the git writes the user owns (`commit`, `add`, `stash`) and every
   `gh stack` subcommand except `view`, enforcing the hands-off-git rule and the PR-stack Hard Rules.
-- **warn-file-size** is the one `PostToolUse` hook: after a `Write`/`Edit` lands a newly created
+- **warn-file-size** is a `PostToolUse` hook: after a `Write`/`Edit` lands a newly created
   `.py`/`.cs`/`.rs` file at or over its language's "worth reviewing" line tier, it tells the model to
   split new code into a new module, the same policy the quality gates enforce at handoff. It never
   blocks and stays silent for files already tracked in git.
+- **warn-writing-tells** is the second `PostToolUse` hook: it warns when the text a `Write`/`Edit`
+  just added carries a hard-banned writing tell (an em-dash or a curly quote/apostrophe, per
+  `writing-style.md`). The repo lint enforces that ban only inside this repo; the hook extends it to
+  prose written anywhere on the machine. It scans only the added text and never blocks.
 
 They are opt-in machine config, not auto-loaded like the knowledge files: copy the script for your OS
 into `~/.claude/hooks/` and register it in your settings, the first four under `hooks.PreToolUse` and
-`warn-file-size` under `hooks.PostToolUse`. They need only a stock interpreter (`powershell.exe` on
+the two warn hooks under `hooks.PostToolUse`. They need only a stock interpreter (`powershell.exe` on
 Windows; `bash` plus `perl` on macOS/Linux), plus `git` on PATH for `warn-file-size`, nothing to
 install. `hooks/README.md` has the per-OS install, the exact block and allow behavior, and tuning.
 
@@ -303,13 +313,14 @@ three quality-gate unit suites. Agents run the lint after editing markdown here.
 
 ## MCP dependencies
 
-Five custom MCP servers back parts of this set:
+Six custom MCP servers back parts of this set:
 
 1. OS-Doctor: https://github.com/brenordv/mcp-os-doctor
 2. File Vault: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.FileVault
 3. Git Ops: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.GitOps
 4. Text Search: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.TextSearch
 5. Text Edit: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.TextEdit
+6. Skill Stats: https://github.com/brenordv/mcp-toolset/tree/master/src/RaccoonNinja.McpToolset.Server.SkillStats
 
 > [!NOTE]
 > With the exception of OS-Doctor, all other MCP servers live in [a single repo](https://github.com/brenordv/mcp-toolset), and are all cross-platform.
@@ -318,6 +329,9 @@ Five custom MCP servers back parts of this set:
 > OS-Doctor is Windows-only and used only on my personal machine. The skills degrade gracefully without
 > a given server, but the vault-backed precedent archives above need the File Vault server to do
 > anything.
+
+[`install-reference.md`](install-reference.md) covers having an agent install these servers on a
+new machine: release download or build from source, registration, and verification.
 
 ## Layout
 
@@ -337,6 +351,11 @@ skills/
 Point Claude Code at this repo (or deploy `skills/` and `CLAUDE.md` into your `~/.claude/` setup). The root
 `CLAUDE.md` bootstraps the knowledge base per project; the global one applies everywhere. The repo is the
 source of truth; deploying it to the global location is a manual step.
+
+To have an agent do the setup instead, open Claude Code in a fresh clone and say "follow
+install-reference.md": [`install-reference.md`](install-reference.md) walks it through deploying the
+skills, installing the hooks, fetching or building the MCP servers, and recording the choices in a
+machine-local manifest that later update runs read.
 
 ## Making things easier with Claude Code
 

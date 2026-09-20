@@ -56,6 +56,25 @@ but the rule binds first, in your reasoning.
   comma-joined string instead of an array, reports the same code. Domain errors (`invalid_name`,
   `conflict`, `ambiguous_heading`, ...) keep their own codes. Correct the call and retry; it's a caller
   error, not a server fault.
+- **Query semantics (server v3.3.0+).** `vault_list`'s `query` matches whole tokens over
+  name/summary/tags, every term required; when that finds nothing and the query has two or more
+  terms, a ranked any-term fallback runs automatically and `query_mode` reports which pass answered
+  (`all_terms` / `any_term_fallback`). Only the first 16 terms are used. Read a fallback result as
+  ranked best-effort relevance, not an exact match, and read an empty result as "really nothing":
+  the rescue pass already ran.
+- **Listing paginates (server v3.3.0+).** `vault_list` returns at most `limit` items (default 50,
+  ceiling 500) plus `count` and `truncated`, and, on all-terms/no-query results, a `cursor`: pass it
+  back with the same arguments to continue. Fallback results never carry a cursor; refine the query
+  instead of paging a rescue result. A malformed or stale cursor fails as `invalid_argument`:
+  re-issue the call without it.
+- **Body content goes through `vault_search`, never fetch-and-scan (server v3.3.0+).** It takes
+  `query` (required), `project` (omitted = all projects, no inference), and `limit` (default 20,
+  max 100), and matches case-insensitive substrings against the bodies of active notes;
+  name/summary/tags stay `vault_list`'s domain. Same all-terms-then-fallback semantics and 16-term
+  cap. Results carry `matched_terms`, up to 3 short snippets per note (never whole bodies), and a
+  `skipped` count of unreadable notes; read the winner with `vault_get`. The old pattern of listing
+  everything and `vault_get`-ing note after note to find a phrase is exactly what this tool
+  replaces; reaching for it is now a bug, not a workaround.
 - Writes use optimistic concurrency: pass the `base_version` you read. A stale write fails with `conflict`
   carrying the `current_version` and usually a base-to-current diff. Use the diff to fold the other
   change into yours and retry against the current version, rather than re-reading and blindly overwriting.
@@ -123,13 +142,15 @@ This is a **two-sided** protocol; the save half is worthless without the retriev
 
 **Retrieve first, before producing one of these artifacts:**
 - `vault_list` with `project: "<archive>"` and a `query`/`tags` drawn from the task; triage on the returned
-  names + summaries, then `vault_get` only the close matches.
+  names + summaries, then `vault_get` only the close matches. When what you remember is phrasing from
+  an artifact's body rather than its name or summary, `vault_search` with the same pinned `project`
+  finds it as snippets (server v3.3.0+).
 - Let them inform the new artifact: prior approaches, pitfalls, wording, structure, decisions already made.
 - Treat them as **dated precedent, not current truth.** Re-verify against the repo / current state; do not
   assume the code, plan, PR, or ticket they describe still reflects reality. When age matters,
   `vault_history` shows when a note was created and last revised.
 
-**Save after, once the artifact is finalised:**
+**Save after, once the artifact is finalized:**
 - `vault_save` with `project: "<archive>"`, `format: "markdown"` (on every save, per the Rules above), and
   the full artifact as the body verbatim (secrets redacted). First save omits `base_version`; later updates
   read `current_version` and pass it as `base_version`. If only one section changed (a revised review

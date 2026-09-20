@@ -19,11 +19,11 @@ the filesystem, so it reports even where the language toolchain is absent. Test 
 and an already-oversized file warns with a message to route new code into a new module rather than
 mass-refactor the old one.
 
-| Gate | Coverage producer | Mutation tool | Default threshold |
-|------|-------------------|---------------|-------------------|
-| C# | `dotnet test` + coverlet collector (lcov) | Stryker.NET, scoped with `--since` | 90% |
-| Python | pytest + pytest-cov (lcov) | Cosmic Ray, scoped with its git filter | 80% |
-| Rust | cargo-llvm-cov (lcov) | cargo-mutants `--in-diff` | 80% |
+| Gate   | Coverage producer                         | Mutation tool                          | Default threshold |
+|--------|-------------------------------------------|----------------------------------------|-------------------|
+| C#     | `dotnet test` + coverlet collector (lcov) | Stryker.NET, scoped with `--since`     | 90%               |
+| Python | pytest + pytest-cov (lcov)                | Cosmic Ray, scoped with its git filter | 80%               |
+| Rust   | cargo-llvm-cov (lcov)                     | cargo-mutants `--in-diff`              | 80%               |
 
 ## Running a gate
 
@@ -46,15 +46,15 @@ testing guidelines (linked below).
 
 All three gates share one exit-code contract:
 
-| Code | Meaning |
-|------|---------|
-| 0 | all gates pass |
-| 2 | coverage gate failed |
-| 3 | mutation gate failed |
-| 4 | file-size gate failed (a new or cap-crossing production file hit the 1,500-line cap) |
-| 64 | usage error |
-| 70 | an underlying tool ran and failed: broken build, red test run, missing output |
-| 78 | environment not ready: tool missing, not a git repo, base ref unresolvable |
+| Code | Meaning                                                                              |
+|------|--------------------------------------------------------------------------------------|
+| 0    | all gates pass                                                                       |
+| 2    | coverage gate failed                                                                 |
+| 3    | mutation gate failed                                                                 |
+| 4    | file-size gate failed (a new or cap-crossing production file hit the 1,500-line cap) |
+| 64   | usage error                                                                          |
+| 70   | an underlying tool ran and failed: broken build, red test run, missing output        |
+| 78   | environment not ready: tool missing, not a git repo, base ref unresolvable           |
 
 All phases run and report before the process exits; when several fail the precedence is 2
 (coverage) > 3 (mutation) > 4 (file size). Codes 2, 3, and 4 mean the new code is undertested or
@@ -109,11 +109,11 @@ Each gate belongs to one language skill. The skill's instructions tell an agent 
 coverage half before handing off work and to treat the mutation half as the user's opt-in, and
 the skill's testing guidelines carry the full documentation:
 
-| Skill | Wiring | Full documentation |
-|-------|--------|--------------------|
+| Skill    | Wiring                                                                                               | Full documentation                                                                                          |
+|----------|------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
 | `csharp` | testing section and quality-validation checklist in [skills/csharp/SKILL.md](skills/csharp/SKILL.md) | [skills/csharp/testing-guidelines.md](skills/csharp/testing-guidelines.md), section "New-code quality gate" |
-| `python` | testing section and completion checklist in [skills/python/SKILL.md](skills/python/SKILL.md) | [skills/python/testing-guidelines.md](skills/python/testing-guidelines.md), section "New-code quality gate" |
-| `rust` | testing section in [skills/rust/SKILL.md](skills/rust/SKILL.md) | [skills/rust/testing-guidelines.md](skills/rust/testing-guidelines.md), section "New-code quality gate" |
+| `python` | testing section and completion checklist in [skills/python/SKILL.md](skills/python/SKILL.md)         | [skills/python/testing-guidelines.md](skills/python/testing-guidelines.md), section "New-code quality gate" |
+| `rust`   | testing section in [skills/rust/SKILL.md](skills/rust/SKILL.md)                                      | [skills/rust/testing-guidelines.md](skills/rust/testing-guidelines.md), section "New-code quality gate"     |
 
 Each script keeps its unit tests beside it (`test_*_quality_gate.py` in the same `scripts/`
 folder), and CI runs all three suites on every push and pull request

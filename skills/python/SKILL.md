@@ -48,6 +48,14 @@ list before writing code, and walk it again at handoff (§5).
    module and name the oversized file in the handoff. Test files (`tests/` trees, `test_*.py`,
    `*_test.py`, `conftest.py`) are warn-only, never a hard failure. The new-code quality gate (§5)
    enforces the cap.
+7. **Toolchain commands run through the project's environment manager, never a guessed
+   interpreter.** Detect the manager from the lockfile and prefix every tool invocation with its
+   runner: `uv run` when `uv.lock` is present (`uv run mypy src/`), `poetry run` for `poetry.lock`,
+   `pipenv run` for `Pipfile.lock`. With none of those, use the project venv's interpreter as
+   `python -m <tool>`. Never call a tool's entry-point binary out of `.venv/Scripts` or `.venv/bin`
+   by path, never fall back to a globally installed copy, and never install into whichever
+   environment happens to be active: a missing tool is added through the manager (`uv add --dev`,
+   `poetry add --group dev`) or surfaced to the user.
 
 ### 1. Code Style & Standards
 
@@ -146,6 +154,7 @@ Run these checks before marking work complete:
 - [ ] Formatting clean: `ruff format --check .` (run `ruff format .` to fix)
 - [ ] Type checking clean: `mypy src/`
 - [ ] Tests pass with coverage (>=80% for critical paths): `pytest --cov=src --cov-report=term-missing`
+- [ ] Every command above ran through the project's environment manager (`uv run` / `poetry run` / `pipenv run`, or the venv's `python -m`), not a `.venv` binary by path or a global install (Hard Rule 7)
 - [ ] Coverage half of the new-code quality gate run where the toolchain is available (`scripts/python_quality_gate.py --skip-mutants` in this skill folder). The mutation half is optional: never commit anything yourself; ask the user whether they want it and to commit the changes themselves first (see `testing-guidelines.md` §"New-code quality gate")
 - [ ] File-size gate clean: no new or cap-crossing production file hits the 1,500-line cap (warn at 800), and new code goes into a new module rather than growing a file past the cap (Hard Rule 6). The gate reports exit code 4 on a cap crossing and runs on git and the filesystem alone, so it works even where pytest is absent. Ruff has no file- or module-length rule; a greenfield project wanting a related lint signal can enable the function-level PLR0915 (too-many-statements) and C901 (complexity), but neither caps a file.
 - [ ] Test files mirror the source package layout under `tests/`, not dumped flat at the root (Hard Rule 4)

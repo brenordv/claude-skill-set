@@ -21,6 +21,9 @@ file feels abstract.
 
 - **No em-dashes (—).** This is the single most obvious tell. Use a period, a comma, parentheses, or a
   colon. If you reach for one, the sentence usually wants to be two sentences.
+- **Straight quotes and apostrophes only.** Curly quotation marks and apostrophes (“ ” ‘ ’) are a
+  documented tell: keyboards produce ' and ", word processors and models produce the typographic
+  forms. Leave them alone when quoting text that already has them; never type them yourself.
 - **No trailing participial summary clause.** The `..., ensuring seamless integration` / `..., allowing
   users to...` / `..., making it easy to...` / `..., providing a robust solution` pattern is a dead
   giveaway. Cut it or make it its own sentence with a concrete subject.
@@ -46,9 +49,14 @@ delve, leverage, robust, seamless, comprehensive, holistic, intricate, nuanced, 
 facilitate, ensure (as filler), enhance, navigate (figuratively), unlock, empower, harness, foster,
 underscore, highlight (as a praise verb), tapestry, realm, landscape, myriad, plethora, boasts, utilize
 (say "use"), showcase, crucial, vital, pivotal, key (as an adjective), meticulous, garner, bolster,
-enduring, testament, interplay, vibrant, valuable (as filler praise), align with, cutting-edge,
-game-changing, state-of-the-art, world-class, powerful, flexible, elegant (as praise). If one is
-genuinely the right word, use it, but that's the exception.
+enduring, testament, interplay, vibrant, nestled (figuratively), groundbreaking, valuable (as filler
+praise), align with, cutting-edge, game-changing, state-of-the-art, world-class, powerful, flexible,
+elegant (as praise). If one is genuinely the right word, use it, but that's the exception.
+
+The set rotates: as each generation of models gets caught, the next leans on new filler, and the
+current era's is the participial glue "emphasizing X" / "highlighting Y" bolted onto a sentence's
+tail (the trailing-participle ban above catches it). Treat the list as examples of a category, not
+its boundary.
 
 Same family: stiff synonyms for plain verbs. Wrote, not authored; moved, not relocated; tried, not
 attempted; died, not passed away. Plain verbs and plain is/has phrases are documented signs of *human*
@@ -73,6 +81,8 @@ writing; the stiff synonym is the tell.
   headings in sentence case ("Error handling"), not Title Case ("Error Handling").
 - **No boilerplate "Challenges" or "Limitations and future work" scaffolding,** and no "Despite these
   challenges..." pivot back to optimism. If limitations matter, list them and stop.
+- **No thematic breaks (`---`) between prose sections.** A horizontal rule standing in for a
+  transition is a documented tell. Headings carry the structure; paragraphs just follow each other.
 
 ## Hedging and filler
 
@@ -85,6 +95,8 @@ writing; the stiff synonym is the tell.
   when you don't actually mean both.
 - **No vague authority.** "Widely considered best practice," "experts recommend," "industry standards
   suggest." Name the actual source, or make the claim in your own voice and own it.
+- **No vague association.** "Associated with," "linked to," "in connection with" where the actual
+  relationship is known. Name it: caused, wrote, funded, replaced, depends on.
 - **Don't paper over unknowns.** "Details are limited" followed by "likely..." speculation is an AI
   signature. If you don't know, say you don't know and stop.
 
@@ -102,7 +114,13 @@ spot AI edits from the edit summary alone. The equivalents here:
   is a tell. Claim "no behavior change" only when that claim is the point of the commit and you verified
   it.
 - **No chat voice in durable artifacts.** "I hope this helps," "let me know if," "would you like me
-  to..." live in conversation only, never in a commit, PR, ticket, or doc.
+  to..." live in conversation only, never in a commit, PR, ticket, or doc. Same for assistant
+  residue: knowledge-cutoff disclaimers ("as of my last update") and a collaborative "we" narrating
+  what "we changed" when one author made the change.
+- **Cite content, not coverage.** Link the actual source and say what it states; "covered by
+  several national outlets" and other source-type inventories are a tell. Strip tracking parameters
+  (`utm_source=...`) from any URL you cite; an AI-referrer parameter left in a link is a giveaway
+  on its own.
 
 ## What good looks like
 
@@ -119,7 +137,9 @@ spot AI edits from the edit summary alone. The equivalents here:
 
 ## Self-check before sending
 
-Reread once and strip tells. Search your own draft for `—`, for `ensuring`/`allowing`/`making it` at a
-clause boundary, for `serves as`/`stands as`/`acts as`/`plays a`, for `not just` and `it's not`, for
-`- **` label bullets, for `while preserving`, and for the vocabulary words above. Cut any sentence that
-adds no information. If a paragraph is all the same sentence length, break the rhythm.
+Reread once and strip tells. Search your own draft for `—`, for curly quotes and apostrophes
+(`“` `”` `‘` `’`), for `---` between paragraphs, for `ensuring`/`allowing`/`making it`/`emphasizing`/
+`highlighting` at a clause boundary, for `serves as`/`stands as`/`acts as`/`plays a`, for `not just`
+and `it's not`, for `associated with`/`linked to`, for `- **` label bullets, for `while preserving`,
+for `utm_source` in links, and for the vocabulary words above. Cut any sentence that adds no
+information. If a paragraph is all the same sentence length, break the rhythm.
