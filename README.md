@@ -248,6 +248,7 @@ something a competent practitioner does by default), and they're consulted befor
 | `pr-description`               | Generates a PR description in the house format from the diff; retrieves precedent and archives it                                                                       |
 | `ticket-description`           | Drafts a ticket title and description from a branch or via Q&A; retrieves precedent and archives it                                                                     |
 | `theme-factory`                | Styling toolkit for artifacts, with preset themes                                                                                                                       |
+| `startup-founder`              | Startup strategy: idea validation, user interviews, product briefs, personas, competitor analysis, MVP scoping, pricing, metrics, go-to-market, launch copy, pitch decks, fundraising |
 
 ## The knowledge layer
 
