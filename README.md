@@ -247,7 +247,7 @@ something a competent practitioner does by default), and they're consulted befor
 | `delivery-lead`                | Scope-discipline lens on a drafted plan: flags scope creep, gold-plating, speculative work, and problems the ask never raised; the review panel's one voice for less    |
 | `pr-description`               | Generates a PR description in the house format from the diff; retrieves precedent and archives it                                                                       |
 | `ticket-description`           | Drafts a ticket title and description from a branch or via Q&A; retrieves precedent and archives it                                                                     |
-| `theme-factory`                | Styling toolkit for artifacts, with preset themes                                                                                                                       |
+| `visual-design`                | High-end visual design: premium/Apple-like pages, UIs, and motion, plus preset artifact themes |
 | `startup-founder`              | Startup strategy: idea validation, user interviews, product briefs, personas, competitor analysis, MVP scoping, pricing, metrics, go-to-market, launch copy, pitch decks, fundraising |
 
 ## The knowledge layer

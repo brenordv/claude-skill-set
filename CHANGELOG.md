@@ -1,5 +1,17 @@
 # Changelog
 
+## v11
+- Replaced `theme-factory` with `skills/visual-design/`, a consolidated high-end design skill:
+  an entry file with eight design Hard Rules (composited-property motion, no default `linear`
+  on state transitions, blur confined to chrome/overlays, reduced-motion plus no-JS visibility,
+  LCP and scroll-jack bans, AA contrast, anti-AI-tell defaults, no external hosts in artifact
+  output) and five references covering canonical design tokens, motion physics and recipes,
+  Apple HIG/Liquid Glass plus the apple.com marketing playbook, premium page composition, and
+  the artifact-theming content carried over intact from theme-factory (same 10 themes and
+  triggers, so nothing users relied on is lost; theme-factory had zero recorded invocations).
+  A `review-heuristics.md` Frontend & Motion bullet backs Hard Rules 1 and 4 on the review
+  side, and the README skill table row was swapped.
+
 ## v10
 - Added `install-reference.md`, an agent-followable checklist for setting up the skill set on a new
   machine: deploy mode, hook and tools selection, MCP servers fetched from pinned repo slugs

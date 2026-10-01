@@ -72,6 +72,14 @@ general principle. Distilled from real review findings.
   reward already used for {IndividualClientId}"` names the condition. And if a structured parameter is
   always the same value (it sits inside an `if` that already pins it), drop it or inline the literal.
 
+## Frontend & Motion
+
+- **Animating layout-triggering properties is a finding.** A transition or animation on
+  `top`/`left`/`width`/`height`/`margin`/`padding`, or a continuous animation of `filter` or
+  `box-shadow`, causes layout thrashing; the composited route is `transform`/`opacity` (see the
+  `visual-design` skill's Hard Rules). Same for new animation code with no
+  `prefers-reduced-motion` handling: at minimum Important.
+
 ## Maintainability
 
 - **Logic added that already exists elsewhere in the repo is a finding.** Before approving a new
