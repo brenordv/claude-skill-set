@@ -1,5 +1,53 @@
 # Changelog
 
+## v12
+- Added a ⛔ Hard Rules block to `task-workflows.md` binding every workflow stage to this skill
+  set's own skills: Claude Code's bundled near-namesakes (`/code-review`, `/security-review`,
+  `/simplify`, `/verify`) are never substitutes for `branch-review`, `security`, and the Stage 1
+  panel, while `/review` stays out of the ban (remote-PR review is a role the set doesn't cover)
+  and so do utilities like `run`. A stage now counts as run only when its vault artifact exists and
+  carries the stage's evidence, the completion handoff names the workflow path, the exact vault
+  note names, and the per-command verify results, and a re-anchor rule makes the agent re-read the
+  workflow file at stage boundaries or after compaction whenever it can't quote the current
+  stage's steps (appending a line to the progress checkpoint when one exists). Driven by two
+  incidents: an agent proposing the bundled code-review over branch-review, and a long session
+  claiming workflow compliance it couldn't evidence.
+- Mirrored the two highest-signal rules into the repo CLAUDE.md always-in-context block (items 6
+  and 7), per the `skill-authoring.md` failure-mode-5 playbook. The hoist works because CLAUDE.md
+  reloads from disk after compaction, verified against the Claude Code prompt-caching docs; the
+  knowledge files it points to are exactly what long sessions evict.
+- Added `coding-general.md` ⛔ Hard Rule 6: match the mechanism to the cases in front of you. An
+  accumulator array, registry, or config-driven loop whose only justification is future additions
+  nobody named is a defect even when it works; the test is whether deleting the mechanism and
+  writing the cases directly reads shorter and clearer, with an exemption for extractions made for
+  testability or clarity. Wired into §1 (an Open/Closed boundary sentence and an over-engineering
+  cross-reference), the §10 handoff walk, a new `review-heuristics.md` §Maintainability heuristic
+  plus a boundary qualifier on the extract-reusable-logic bullet there, a `branch-review` Step 4
+  checklist item, and a README general-rules bullet. Driven by a deploy script that gated two
+  settings behind a conditionally-built settings array where an if/else was the right size.
+- Documented the `skillOverrides` per-skill states in a new README workflow-fidelity paragraph,
+  with a ready-to-paste block hiding the overlapping bundled skills (`off` for the duplicates,
+  `user-invocable-only` where a manual fallback is worth keeping) and its caveats: per-machine
+  config the repo documents but does not apply, merge rather than replace, bundled names vary by
+  Claude Code version. The same paragraph records the decision against an orchestrator agent (a
+  subagent can't observe or intercept the main conversation; the named-artifact ledger does the
+  supervising) and states plainly that the Hard Rules are doc rules while the hooks,
+  `skillOverrides`, and the hook-fed skill-stats record are the mechanical and audit layers.
+- Added `coding-general.md` ⛔ Hard Rule 7: acquiring and running software is the machine owner's
+  act. A tool that is missing or the wrong version or build is reported with the exact install
+  command for the user, never self-fixed by downloading a release binary, installer, or script
+  and executing it, and global tool installs (`dotnet tool install -g`, `cargo install`,
+  `npm install -g`, winget, brew) count as the same act. Still in bounds: tools already installed
+  that the task implies, the project's own dependency manager inside its manifest and local
+  environment, and a documented install flow the user invoked by name (`install-reference.md`).
+  Wired into the §10 handoff walk, a §12 tooling-hygiene bullet, the Stage 2 verify gate in
+  `task-workflows.md`, a new item 8 in the repo CLAUDE.md always-in-context block, a README
+  general-rules bullet, and user's-act clarifiers on the install sections of the rust and csharp
+  testing guides. Promoted from the vault lesson written when an agent fetched and executed the
+  official dart-sass release zip mid-task to fix a version mismatch, in a session where installs
+  were explicitly the user's call; the lesson was purged after promotion per the
+  `skill-authoring.md` protocol.
+
 ## v11
 - Replaced `theme-factory` with `skills/visual-design/`, a consolidated high-end design skill:
   an entry file with eight design Hard Rules (composited-property motion, no default `linear`

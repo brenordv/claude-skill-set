@@ -38,6 +38,21 @@ yet. They bind in every context, main conversation and subagents alike, and beat
    if you know or discover where they live. The same goes for any MCP server's private store (the
    text-edit journal, for one). A failing tool call is reported, never worked around via the
    filesystem. Full rule in `skills/brain/knowledge/vault-operations.md` ⛔ Hard Rules.
+6. **Every coding task runs a workflow from `skills/brain/knowledge/task-workflows.md`, on this
+   skill set's own skills.** Runtime lookalikes (`/code-review`, `/security-review`, `/simplify`,
+   `/verify`) are never substitutes for `branch-review`, `security`, and the panel. A stage counts
+   as run only when its vault artifact exists and is named in the handoff; if the stage steps
+   aren't quotable from context, re-read the workflow file before acting or claiming anything ran.
+7. **Simplest mechanism that handles the actual cases.** When an if/else or a direct call covers
+   the real inputs, use it; scaffolding for hypothetical future entries is a defect. Full rule in
+   `skills/brain/knowledge/coding-general.md` ⛔ Hard Rules.
+8. **Never download and run software on your own.** A tool that is missing or the wrong version
+   is a blocker to report with the exact install command for the user to run, never something to
+   fix by fetching an installer, release binary, or script and executing it; global tool installs
+   (`dotnet tool install -g`, `cargo install`, `npm install -g`, winget, brew) count too.
+   Official source, temp directory, and "it unblocks the task" change nothing; consent is the
+   user's explicit yes or a documented install flow they invoked by name. Full rule in
+   `skills/brain/knowledge/coding-general.md` ⛔ Hard Rules.
 
 Additional knowledge files live in `skills/brain/knowledge/`. When starting a
 non-trivial task, list that folder and read any file whose topic relates
