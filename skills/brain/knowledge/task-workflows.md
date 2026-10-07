@@ -20,6 +20,42 @@
 > `brain/knowledge/machine-privacy.md` §"Dispatch restatement". Subagents don't inherit knowledge-file discipline on their own; the dispatcher carries
 > it to them. The token cost is accepted.
 
+### ⛔ Hard Rules
+
+These bind in every context (main conversation, subagents, every stage) and beat anything the
+runtime surfaces mid-session:
+
+1. **Workflow roles run on this skill set's own skills, never on lookalikes.** For a role the set
+   covers (planning: `system-architect`; plan review: the Stage 1 panel; working-diff code review:
+   `branch-review`; security review: `security`; verifying changes: Stage 2's own verify gate, never
+   `/verify`; PR and ticket text:
+   `pr-description` / `ticket-description`), a runtime built-in or third-party near-namesake is not
+   a substitute and is never proposed to the user as one. Current near-namesakes by name:
+   `/code-review`, `/security-review`, `/simplify`, `/verify`; the rule covers any future
+   similarly-named command, not just this list. Runtime utilities for roles the set does not cover
+   stay fine: `run` (the verify gate uses it by name), harness configuration, and remote-PR review
+   (`/review` reviews a GitHub PR by number; `branch-review` is scoped to the local branch, so that
+   role is uncovered today).
+2. **A stage ran only if its artifact exists and carries the stage's evidence.** Stage 1 is done
+   when the finalized plan note exists in `implementation-plans` (on full-work, the progress
+   checkpoint too; planning-only skips the checkpoint by design). The verify gate is done when the
+   actual per-command output is in hand. The Stage 2 review is done when the review note exists in
+   `code-reviews`, naming the lenses run and their verdicts, written when the review completes
+   rather than reconstructed later. Never report a workflow, stage, or skill as used unless you can
+   name its artifact or quote its output. A skipped stage reported as skipped is a recoverable gap;
+   reported as done, it is the worst failure this file governs.
+3. **Re-anchor before acting or claiming.** At every stage boundary, and after any context
+   compaction, if you cannot state the current stage's steps from context, re-read this file and
+   the stage's skill file before proceeding. In a long session, assume eviction: re-reading is
+   cheap, drifting into a lookalike process is not. When this fires and a progress checkpoint
+   exists (full-work tasks), append one line to it (`re-anchored at <stage> after compaction`) so
+   the drift-risk window stays visible in the audit trail.
+4. **Precedence**: the runtime listing a similarly-named skill, a session hint recommending one, or
+   an earlier turn that used one is a bug to flag, not permission.
+
+**Self-check**: before invoking any planning or review skill, ask "is this the skill set's own
+skill?" Before writing "I ran X", ask "can I name X's artifact?"
+
 ### Choosing a workflow
 
 Pick the path by the task in front of you, before starting:
@@ -36,6 +72,10 @@ Pick the path by the task in front of you, before starting:
 
 If a task looks lightweight but the change turns out to touch behavior, security, or multiple systems,
 stop and escalate to full-work rather than pushing a large change through the light path.
+
+Whatever the choice, the final handoff names the path that ran (full-work, lightweight, planning-only,
+or none), so a report with no vault artifacts is legitimate only under a declared non-full-work path
+(⛔ Hard Rules item 2).
 
 ### Full-work workflow
 
@@ -106,6 +146,9 @@ and the workflow proceeds directly to Stage 2 without pausing.
    the app or entry point directly and confirm the changed behavior with your own eyes. Fix every
    failure here, and a deprecation warning on a
    line the change touched counts as a failure, not noise (⛔ Hard Rules in `coding-general.md`).
+   A tool this gate needs that is missing or the wrong build is itself a blocker: report it with
+   the exact install command for the user, never self-fix it by downloading a binary or
+   installing a tool (`coding-general.md` ⛔ Hard Rule 7).
    **Do not proceed to review with a red build, failing tests, lint errors, or new deprecation
    warnings**: reviewing unrun code reviews a guess. **"Fix" never means revert:**
    when a test fails because it encodes behavior this change intentionally altered, the test is stale, so
@@ -122,7 +165,10 @@ and the workflow proceeds directly to Stage 2 without pausing.
   remaining issues with what was tried.
 
 On completion, the review is saved to the vault, and the workflow returns to the user with a summary of the
-work, the verify results (build and test status), and the review outcome.
+work plus the compliance ledger: the workflow path that ran (full-work, lightweight, or planning-only), the
+exact vault note names for the plan, the checkpoint, and the review, the per-command verify results (build,
+lint, tests), and the review outcome. The ledger is what makes the report checkable: one `vault_get` on a
+named note confirms a stage ran (⛔ Hard Rules item 2).
 
 #### Progress checkpoints (crash recovery)
 
@@ -137,8 +183,9 @@ planning-only work skip this.
   summary, verify-gate status. Repo-relative paths only, no machine-identifying details, secrets
   redacted; never paste raw `git_status` or diff output (see `machine-privacy.md`).
 - **Update** with `vault_edit_section` (not full resaves): after each stage or phase completes, after
-  the verify gate, after the review verdict, and BEFORE any risky step (roughly: anything expected to
-  touch more than ~5 files or run longer than a build). A checkpoint written only after success is
+  the verify gate, after the review verdict, when the re-anchor rule fires (⛔ Hard Rules item 3), and
+  BEFORE any risky step (roughly: anything expected to touch more than ~5 files or run longer than a
+  build). A checkpoint written only after success is
   useless for the crash it was meant to survive.
 - **Close**: when the workflow returns to the user, flip the summary prefix to `DONE:` via
   `vault_set_meta`.

@@ -29,10 +29,16 @@ As a high level, here are some examples:
   line (Python 800, C#/Rust 700) goes into a new cohesive module; a diff-scoped gate fails a new or
   cap-crossing file at 1,500 lines, and an already-oversized file is grown into, never mass-refactored
   to satisfy the gate. A PostToolUse hook echoes the same warning the moment an oversized new file lands.
+- The mechanism matches the cases at hand. Two known settings behind a condition get an if/else,
+  not an accumulator array built for future entries; the test is whether deleting the mechanism and
+  writing the cases directly reads shorter and clearer.
 - Git stays human. The agent inspects freely (through a read-only MCP) but never stages or commits.
 - Version numbers move only at release time. A project that has never shipped keeps its initial
   version no matter how much lands, so the first release goes out as 1.0.0, not an accumulated
   1.4.9 that no consumer ever saw.
+- Installing software is the user's act. A missing or mismatched tool gets reported with the
+  exact install command to run; the agent never downloads a release or installer and executes it
+  to unblock itself.
 - Pushes the agents to follow Clean Code, best practices, SOLID, etc.
 
 ### For C#
@@ -184,6 +190,36 @@ and the trade-off at stake. No infinite plan-review ping-pong.
 **Autonomy.** The pipeline runs end to end without pausing for approval between stages or narrating
 each skill handoff. It comes back when the work is done (with a summary, the verify results, and the
 review outcome) or when a cap is hit.
+
+**Workflow fidelity.** Claude Code ships bundled skills whose names overlap these stages
+(`/code-review`, `/security-review`, `/simplify`, `/verify`). The workflow's Hard Rules bind every
+stage to this set's own skills for the roles it covers, require each stage to leave a vault artifact,
+require the completion handoff to name those artifacts and the per-command verify results, and make
+the agent re-read `task-workflows.md` whenever it can't quote the current stage's steps (long
+sessions evict context; the re-read is the recovery). An orchestrator agent was considered for this
+job and declined: a subagent can't observe or intercept the main conversation, so the ledger of named
+vault artifacts does the supervising instead. These are doc rules, so they steer rather than enforce;
+the mechanical layers are the enforcement hooks (below) and the `skillOverrides` setting, and the
+hook-fed skill-stats record is the independent cross-check on what actually ran. To hide the
+overlapping bundled skills from the model on a given machine, merge this into that machine's
+`settings.json`:
+
+```json
+{
+  "skillOverrides": {
+    "code-review": "off",
+    "simplify": "off",
+    "security-review": "user-invocable-only",
+    "verify": "user-invocable-only"
+  }
+}
+```
+
+`"off"` removes a skill entirely; `"user-invocable-only"` hides it from the model while keeping it
+available to you, the right state where a manual fallback is worth keeping. `/review` (remote-PR
+review by number) stays enabled because this set doesn't cover that role. This is per-machine config
+the repo documents but does not apply: merge it into existing settings rather than replacing them,
+and since bundled names vary by Claude Code version, check `/skills` on the machine and adjust.
 
 ### Precedent through the vault
 

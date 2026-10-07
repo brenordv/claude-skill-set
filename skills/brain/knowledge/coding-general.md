@@ -51,6 +51,28 @@ Re-read this list before writing code and walk it again at handoff (§10).
    bumps in the repo is precedent, not permission. Once the project is live, bump only when the
    user asks for a release or the repo's release process calls for it in the task at hand; the
    increment then follows that process.
+6. **Match the mechanism to the cases in front of you.** When the inputs are a known, small, fixed
+   set, handle them directly: an if/else, a literal, a direct call. A mechanism whose only
+   justification is absorbing future additions nobody named (an accumulator array of settings, a
+   registry or config-driven loop, an abstraction seam with one implementation) is a defect even
+   when it works. The test: if deleting the mechanism and writing the cases directly makes the code
+   shorter and clearer, the mechanism is the finding. The canonical shape: a deploy script builds
+   an `EXTRA_SETTINGS=()` array conditionally and expands it later, for exactly two settings; the
+   right-sized version passes the two values inside the `if` directly. Scalability
+   justifies the mechanism only when the ask names the growth. A helper extracted for testability
+   or clarity is not this defect; the defect is the helper whose only argument is future callers.
+7. **Acquiring and running software is the machine owner's act, never yours.** When a tool the
+   task needs is missing or the wrong version or build, stop, report it, hand the user the exact
+   install command, and proceed only on their explicit yes. Never fetch and execute anything new:
+   an installer, a release binary or archive, a script piped to a shell. A global tool install
+   (`dotnet tool install -g`, `cargo install`, `npm install -g`, winget, brew) is the same act
+   even though nothing is downloaded by hand. "It's the official release artifact", "it only went
+   to a temp directory", and "it unblocks the task" are rationalizations, not consent, and
+   announcing the install while performing it is still a violation. Fine without asking: tools
+   already installed that the task implies (the project's compiler, linter, build tool), and the
+   project's own dependency manager restoring or adding packages inside the project's manifest
+   and local environment. A documented install flow the user invoked by name
+   (`install-reference.md`) is consent for exactly the steps it defines.
 
 ---
 
@@ -59,7 +81,7 @@ Re-read this list before writing code and walk it again at handoff (§10).
 ### SOLID
 
 - **Single Responsibility**: Each class/function has one clear purpose. If you cannot describe what it does in one sentence without "and", split it.
-- **Open/Closed**: Code should be open for extension, closed for modification. Favor composition and polymorphism over editing existing logic.
+- **Open/Closed**: Code should be open for extension, closed for modification. Favor composition and polymorphism over editing existing logic. Design an extension point when a requirement exists for it; pre-building seams for futures nobody named is the defect ⛔ Hard Rule 6 bans.
 - **Liskov Substitution**: Subtypes must be substitutable for their base types without breaking behavior.
 - **Interface Segregation**: Clients should not be forced to depend on methods they do not use. Keep interfaces small and focused.
 - **Dependency Inversion**: High-level modules depend on abstractions, not concretions. This also applies to data types: use the most appropriate abstraction for the use case.
@@ -87,7 +109,7 @@ Re-read this list before writing code and walk it again at handoff (§10).
 - **Think before coding**: Pause and reason about the problem. Understand the full picture before touching code. This prevents both duplication and over-engineering.
 - **Readability over cleverness**: Always. A clear 10-line solution beats a clever 3-line one that requires a comment to explain.
 - **Avoid premature abstraction**: Don't create helpers, utilities, or frameworks for things that only happen once. Wait until you see the pattern repeat.
-- **Avoid over-engineering**: The right amount of complexity is what the task actually requires. No speculative abstractions, but no half-finished implementations either.
+- **Avoid over-engineering**: The right amount of complexity is what the task actually requires. No speculative abstractions, but no half-finished implementations either. The mechanism-sizing test is ⛔ Hard Rule 6.
 - **Avoid code duplication through thoughtfulness**: Before writing new code, check if similar logic already exists. If it does, reuse or extend it. If you're about to write similar code in multiple places, extract it once. The pre-write search is mandatory, not aspirational: ⛔ Hard Rule 1.
 - **Minimal changes**: Solve the problem asked. Don't add features, refactor surrounding code, or make "improvements" beyond what was requested.
 - **Contain the blast radius**: A change that tightens or fixes one thing must not loosen or alter anything unrelated. Making one field's validation stricter must never make another field's more lenient. Keep a change's effect scoped to exactly what it targets.
@@ -266,7 +288,11 @@ Before delivering work:
 2. Walk the ⛔ Hard Rules block at the top of this file: the build/linter output shows zero new
    deprecation warnings on lines you touched, and the pre-write reuse search happened. Name any
    near-duplicate you deliberately did not reuse in the summary, with the reason. Confirm the diff
-   touches no version field unless the task was a release the user asked for (Hard Rule 5). Then
+   touches no version field unless the task was a release the user asked for (Hard Rule 5). Any
+   mechanism added for cases that don't exist yet gets named and justified in the summary, or
+   removed (Hard Rule 6). Confirm nothing newly fetched was executed and no tool was installed
+   mid-task without the user's explicit yes; a tool gap you hit goes in the summary with the
+   suggested install command (Hard Rule 7). Then
    reread every comment the diff adds or edits: any that narrates the change rather than the current
    code gets deleted here, its story moved to the summary (Hard Rule 3).
 3. Ensure new code is covered by tests.
@@ -291,3 +317,6 @@ Before delivering work:
 - **Run every command you publish in docs once before writing it down.** Shell quirks (PowerShell 5.1
   mangling native stderr on redirection, quoting differences between shells) make plausible-looking
   commands produce garbage. A documented command that was never executed is a guess.
+- **Never fetch and run software to unblock yourself.** A tool that is missing or the wrong version
+  mid-task is a blocker to report with the exact install command for the user, never something to
+  fix by downloading a release or installer and executing it (⛔ Hard Rule 7).

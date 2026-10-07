@@ -173,6 +173,9 @@ cargo install --locked cargo-mutants
 `--locked` pins each tool's dependency tree, not its version: a CI job rerunning the install still
 fetches the current release. Add `--version X.Y.Z` where reproducibility matters.
 
+Both installs are the user's act: when a tool is missing, hand the user these commands instead of
+running them yourself (`coding-general.md` ⛔ Hard Rule 7).
+
 ### Running the gate
 
 Run it from anywhere inside the target repo; `<skill-set>` is the folder this skill set lives in,

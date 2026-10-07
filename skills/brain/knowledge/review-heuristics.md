@@ -88,10 +88,18 @@ general principle. Distilled from real review findings.
   domain terms, a characteristic constant or format string. A near-duplicate the diff didn't reuse is
   at minimum Important, unless the handoff names it and justifies the divergence
   (`coding-general.md` ⛔ Hard Rule 1).
+- **A mechanism heavier than its requirement is a finding.** Added lines that introduce an accumulator
+  array, registry, lookup table, or config-driven loop to gate a small fixed set of cases the ask named
+  concretely, where an if/else or a direct call would do, are at minimum Important
+  (`coding-general.md` ⛔ Hard Rule 6). The test: delete the mechanism mentally and write the cases
+  directly; if that version is shorter and clearer, flag it. Scalability counts as justification only
+  when the ask names the growth.
 - **Extract reusable, dependency-free logic into an independently testable unit.** When a private method
   operates purely on its parameters (no services, no side effects) and the logic could be needed elsewhere,
   pull it out (in C#, an extension method on the parameter's type). It becomes testable without
-  constructing the parent class and keeps handlers focused on orchestration.
+  constructing the parent class and keeps handlers focused on orchestration. The justification is
+  testability and focus, not speculative reuse: an extraction whose only argument is hypothetical future
+  callers is the defect ⛔ Hard Rule 6 flags, not this heuristic.
 - **Extract complex inline logic into a named method.** Multi-step pagination, filter assembly, and the
   like read better behind a descriptive name than inline. The caller reads as a narrative.
 - **Avoid reflection for data mapping or filtering.** It hides the mapping rules from the call site. If

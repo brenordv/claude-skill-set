@@ -101,6 +101,11 @@ For every changed file, evaluate it across the review dimensions defined in `bra
   search tools, never shell grep) per
   `brain/knowledge/review-heuristics.md` §Maintainability. An unacknowledged near-duplicate is at
   minimum Important.
+- [ ] **No oversized mechanism.** No added mechanism exists only to serve cases the ask never named:
+  an accumulator array, registry, or config-driven loop gating a small fixed set where an if/else or
+  a direct call is shorter and clearer is at minimum Important on touched lines
+  (`brain/knowledge/coding-general.md` ⛔ Hard Rule 6; concrete tells in
+  `brain/knowledge/review-heuristics.md` §Maintainability).
 - [ ] **No change-narration comments.** Every comment the diff adds or edits describes the current
   code, not the edit: nothing referencing the fix, the request, the old behavior, or the task that
   produced it. Concrete tells in `brain/knowledge/review-heuristics.md` §Prose;

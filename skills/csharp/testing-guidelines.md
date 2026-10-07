@@ -235,6 +235,9 @@ A repo-local install (`dotnet new tool-manifest` then `dotnet tool install dotne
 too; the gate runs it as `dotnet stryker` either way. Stryker itself needs the .NET 10 runtime or
 newer, whatever the target app targets.
 
+The install is the user's act either way: when Stryker is missing, hand the user the command
+instead of running it yourself (`coding-general.md` ⛔ Hard Rule 7).
+
 ### Running the gate
 
 Run it from anywhere inside the target repo; `<skill-set>` is the folder this skill set lives in,
