@@ -31,6 +31,42 @@ async with CosmosClient(endpoint, credential=DefaultAzureCredential()) as client
     container = database.get_container_client("mycontainer")
 ```
 
+## Client Configuration
+
+Keep one `CosmosClient` per application lifetime; initialization is heavy and a shared instance
+reuses connections. The Python SDK is gateway-only (`connection_mode` supports only `'Gateway'`).
+Configure through constructor keyword arguments; never build an
+`azure.cosmos.documents.ConnectionPolicy` by hand (legacy v3 surface).
+([CosmosClient API](https://learn.microsoft.com/python/api/azure-cosmos/azure.cosmos.cosmosclient))
+
+```python
+client = CosmosClient(
+    url,
+    credential=DefaultAzureCredential(),
+    connection_timeout=10,                      # seconds
+    retry_total=9,
+    retry_backoff_max=30,
+    preferred_locations=["West US 2", "East US 2"],
+    enable_diagnostics_logging=True,            # pair with logger=
+    logger=logger,
+)
+```
+
+`connection_verify=False` is for the local emulator's self-signed certificate only; never disable
+TLS verification against a real account.
+
+The async client (`azure.cosmos.aio`) takes the same kwargs. Prefer `async with CosmosClient(...)`;
+outside a context manager you must call `await client.close()` yourself. The async client has no
+`enable_cross_partition_query` flag; queries without a partition key fan out by default.
+
+### Throttling and RU Visibility
+
+The SDK retries 429s internally up to `retry_total`, and those retries are silent: a
+`CosmosHttpResponseError` with status 429 means retries were already exhausted. When raising retry
+limits, also watch the 429 rate in Azure Monitor, or slowdowns become invisible. Responses carry
+their RU cost in the `x-ms-request-charge` header (per page for queries, so sum across pages); log
+it together with the status code when handling errors.
+
 ## CRUD Operations
 
 ### Create

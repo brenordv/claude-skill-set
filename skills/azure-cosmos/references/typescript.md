@@ -67,9 +67,15 @@ const { resources } = await container.items.query<Item>(querySpec).fetchAll();
 ```
 
 ### Cross-Partition Queries
+
+Queries are cross-partition by default in SDK v4; `enableCrossPartitionQuery` no longer exists.
+Scope a query to one partition with the `partitionKey` option, and tune fan-out with
+`maxDegreeOfParallelism`.
+([FeedOptions](https://learn.microsoft.com/javascript/api/@azure/cosmos/feedoptions))
+
 ```typescript
 // TypeScript
-container.items.query<Item>(query, { enableCrossPartitionQuery: true }).fetchAll();
+container.items.query<Item>(querySpec, { partitionKey: "electronics" }).fetchAll();
 ```
 
 ### Pagination
@@ -99,6 +105,31 @@ response.forEach((result, i) => {
   }
 });
 ```
+
+## Client Lifetime and Gotchas
+
+Keep one `CosmosClient` per process and cache database and container references between requests
+([service quotas](https://learn.microsoft.com/azure/cosmos-db/concepts-limits#request-limits)).
+The JS SDK is gateway-only; direct TCP mode exists only in the .NET and Java SDKs
+([connection modes](https://learn.microsoft.com/azure/cosmos-db/sdk-connection-modes)).
+
+There is no `readMany` in `@azure/cosmos`
+([Items class](https://learn.microsoft.com/javascript/api/@azure/cosmos/items)). For batched
+lookups by known id and partition key, use parallel point reads (bound the batch size) instead of
+an `IN` query spanning partition keys:
+
+```typescript
+const results = await Promise.all(
+  pairs.map(({ id, pk }) => container.item(id, pk).read<Item>()),
+);
+const items = results.map((r) => r.resource).filter(Boolean);
+```
+
+Each query page from `fetchNext()` carries `requestCharge`
+([FeedResponse](https://learn.microsoft.com/javascript/api/@azure/cosmos/feedresponse)); sum across
+pages for the query's real RU cost. The SDK retries 429s internally, so a surfaced 429 means
+retries were exhausted; watch the 429 metric when tuning retries, and log the status code,
+`activityId`, and `diagnostics` from responses when handling errors.
 
 ## Service Layer Pattern
 

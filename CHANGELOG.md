@@ -1,5 +1,8 @@
 # Changelog
 
+## v13
+- Updated Azure Cosmos DB skill.
+
 ## v12
 - Added a ⛔ Hard Rules block to `task-workflows.md` binding every workflow stage to this skill
   set's own skills: Claude Code's bundled near-namesakes (`/code-review`, `/security-review`,

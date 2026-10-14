@@ -23,7 +23,8 @@ Per-language install commands and package notes: see `references/python.md`, `re
 COSMOS_ENDPOINT=https://<account>.documents.azure.com:443/
 COSMOS_DATABASE=<database-name>
 COSMOS_CONTAINER=<container-name>
-# For key-based auth only (prefer RBAC/AAD in production)
+# Emulator only; production auth is Entra ID, and accounts should disable keys
+# entirely (see references/security.md)
 COSMOS_KEY=<account-key>
 ```
 
@@ -119,6 +120,13 @@ Per-language CRUD examples: see `references/python.md`, `references/java.md`, `r
 
 Pass the partition key for single-partition queries; use `maxItemCount` + continuation tokens for pagination.
 
+Query gotchas (all backed by the query-language docs):
+- `TOP` accepts a parameter (`SELECT TOP @top ...`); never build it by string interpolation
+- Compute min/max/avg/count in one scoped aggregate query, not by iterating documents
+- "Latest item" needs an explicit `ORDER BY c.ts DESC` plus `TOP 1`; nothing is implicitly ordered
+- An `IN` list spanning partition keys costs more than targeted reads; prefer point reads,
+  Java `readMany`, or bounded parallel point reads (see the language references)
+
 Per-language query examples (parameterized, cross-partition, pagination): see `references/python.md`, `references/java.md`, `references/typescript.md`.
 
 ## Bulk Operations
@@ -193,9 +201,23 @@ Default policy indexes all properties. Customize for performance and RU savings:
 
 **Rules:**
 - Exclude paths not used in WHERE, ORDER BY, or JOIN to reduce write RU cost
-- Add composite indexes for ORDER BY on multiple fields
+- Add composite indexes for ORDER BY on multiple fields; the index's ascending/descending
+  directions must match the ORDER BY combination (or its exact reverse)
 - Use range indexes (default) for equality and range filters
 - Spatial indexes for geospatial queries
+
+## Vector Search
+
+Store embeddings next to the data and query them with `VectorDistance` (flat, quantizedFlat, or
+diskANN indexes). Needs the account capability flag, a container vector policy, and the vector path
+excluded from the regular index. Full setup, index-type tradeoffs, query shapes, and hybrid RRF
+search: see `references/vector-search.md`.
+
+## Full-Text Search
+
+Native BM25 keyword search via `FullTextContains` and `ORDER BY RANK FullTextScore`, backed by a
+container full-text policy and index. Orders of magnitude cheaper than `CONTAINS` scans. Setup,
+query functions, and hybrid queries: see `references/full-text-search.md`.
 
 ## Change Feed
 
@@ -325,6 +347,10 @@ All APIs share the same underlying engine, global distribution, and SLAs. The No
 
 **Tools:** Azure Monitor, Azure Diagnostics Logs, Application Insights, SDK-level diagnostics headers.
 
+Useful diagnostic-settings log categories: `DataPlaneRequests`, `QueryRuntimeStatistics`,
+`PartitionKeyStatistics`, and `PartitionKeyRUConsumption` (the last is how hot partitions are
+actually found).
+
 ## Backup and Restore
 
 | Mode | Description |
@@ -342,9 +368,27 @@ Use continuous backup for production workloads requiring granular recovery.
 | Custom | Merge procedure (stored procedure) resolves conflicts |
 | Async | Conflicts written to conflict feed for manual resolution |
 
+## Service Limits
+
+Hard limits that shape data models, from the
+[service quotas](https://learn.microsoft.com/azure/cosmos-db/concepts-limits):
+
+| Limit | Value |
+|-------|-------|
+| Max item size | 2 MB (UTF-8 length of the JSON) |
+| Max storage per logical partition | 20 GB |
+| Max RU/s per logical or physical partition | 10,000 |
+| Max partition key value length | 2,048 bytes (101 bytes if large partition keys are off) |
+| Max `id` length | 1,023 bytes; `/` and `\` are forbidden, and sticking to alphanumeric ASCII avoids known SDK/connector issues |
+| Max nesting depth | 128 levels |
+| Numeric precision | IEEE 754 binary64: integers beyond 2^53 and exact decimals silently lose precision; store them as strings or integer minor units (cents) |
+| Transactional batch | 100 operations, 2 MB request, same partition key |
+
 ## Performance Best Practices
 
-1. **Use direct mode** (Java/TypeScript) for lowest latency in production
+1. **Use direct mode** where available: only the .NET and Java SDKs support it; Python, TypeScript,
+   and Rust connect through the gateway
+   ([connection modes](https://learn.microsoft.com/azure/cosmos-db/sdk-connection-modes))
 2. **Prefer point reads** (`read_item`) over queries for single-document retrieval (1 RU for 1KB)
 3. **Always specify partition key** in read and query operations
 4. **Use async clients** for high-throughput scenarios (Python `aio`, Java `CosmosAsyncClient`)
@@ -367,6 +411,10 @@ Use continuous backup for production workloads requiring granular recovery.
 - [ ] Validate partition key access matches user authorization (tenant isolation)
 - [ ] Configure RBAC roles (Cosmos DB Built-in Data Reader/Contributor)
 - [ ] Use private endpoints / VNet integration for network isolation
+- [ ] Disable key-based auth (`disableLocalAuth`) once RBAC is in place
+
+Role IDs, scoping syntax, managed identity, key lockdown, and firewall pitfalls: see
+`references/security.md`.
 
 ## Anti-Patterns
 

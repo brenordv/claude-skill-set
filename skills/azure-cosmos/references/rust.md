@@ -19,6 +19,10 @@ let credential = DeveloperToolsCredential::new(None)?;
 let client = CosmosClient::new(endpoint, credential.clone(), None)?;
 ```
 
+`CosmosClient` implements `Clone`; build it once and clone the handle where needed instead of
+reconstructing it per request
+([docs.rs](https://docs.rs/azure_data_cosmos/latest/azure_data_cosmos/struct.CosmosClient.html)).
+
 ## CRUD Operations
 
 ### Create
