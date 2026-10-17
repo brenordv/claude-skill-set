@@ -105,7 +105,9 @@ For every changed file, evaluate it across the review dimensions defined in `bra
   an accumulator array, registry, or config-driven loop gating a small fixed set where an if/else or
   a direct call is shorter and clearer is at minimum Important on touched lines
   (`brain/knowledge/coding-general.md` ⛔ Hard Rule 6; concrete tells in
-  `brain/knowledge/review-heuristics.md` §Maintainability).
+  `brain/knowledge/review-heuristics.md` §Maintainability). A clock abstraction injected beside a
+  parameter that already carries the instant is the same finding
+  (`brain/knowledge/review-heuristics.md` §Testing).
 - [ ] **No change-narration comments.** Every comment the diff adds or edits describes the current
   code, not the edit: nothing referencing the fix, the request, the old behavior, or the task that
   produced it. Concrete tells in `brain/knowledge/review-heuristics.md` §Prose;

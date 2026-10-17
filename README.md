@@ -19,6 +19,9 @@ As a high level, here are some examples:
 - Search before writing: before adding any helper, mapper, or constant, the agent looks for an existing
   implementation to reuse or extend. Duplicating logic the repo already has counts as a defect, even
   when the new copy works.
+- The language skill and the topic's knowledge file load before the first edit, on every workflow
+  path. "Add some tests" is a C# task and a testing task however small the diff; task size picks the
+  path, never whether the rules apply.
 - No deprecated APIs, ever. A deprecation warning on a line the agent touched blocks delivery; it's a
   failure to fix, not noise to scroll past.
 - A deliberate change is the source of truth. When it breaks an old test, the test gets updated; the
@@ -31,7 +34,9 @@ As a high level, here are some examples:
   to satisfy the gate. A PostToolUse hook echoes the same warning the moment an oversized new file lands.
 - The mechanism matches the cases at hand. Two known settings behind a condition get an if/else,
   not an accumulator array built for future entries; the test is whether deleting the mechanism and
-  writing the cases directly reads shorter and clearer.
+  writing the cases directly reads shorter and clearer. A guideline naming a mechanism by example
+  (`TimeProvider`) doesn't change that: a method that already takes the date as a parameter gets the
+  parameter passed, with no clock injected beside it.
 - Git stays human. The agent inspects freely (through a read-only MCP) but never stages or commits.
 - Version numbers move only at release time. A project that has never shipped keeps its initial
   version no matter how much lands, so the first release goes out as 1.0.0, not an accumulated
@@ -110,7 +115,8 @@ of four paths:
 - **Planning-only**: the user wants a plan or a design decision, not code. Runs Stage 1 of the
   full-work pipeline and stops there.
 - **Lightweight**: a small mechanical change (typo, config tweak, doc edit, rename). Skips the review
-  panel; the change still passes the verify gate and gets one focused self-review.
+  panel; the change still passes the verify gate and gets one focused self-review, and the language
+  skill and the topic's knowledge file still load. The path trims review, never the rules.
 - **None**: read-only questions and conversation run no workflow at all.
 
 Classification isn't final. A task that starts lightweight but turns out to touch behavior or multiple
@@ -304,7 +310,7 @@ consulted before planning and during reviews so the same trap isn't hit twice.
 `hooks/` (at the repo root) holds optional Claude Code hooks that enforce the always-on rules
 the knowledge files describe, so they hold even when a reflex fires before the rule is salient (a fresh
 chat, a long context, deep in a task). A knowledge rule is a nudge the model can forget mid-task; a
-hook intercepts the tool call and does not depend on recall. Six are included, each shipped as a Windows
+hook intercepts the tool call and does not depend on recall. Seven are included, each shipped as a Windows
 `.ps1` and a POSIX `.sh` with identical behavior, each failing open so a fault never blocks a legitimate
 command:
 
@@ -325,10 +331,17 @@ command:
   just added carries a hard-banned writing tell (an em-dash or a curly quote/apostrophe, per
   `writing-style.md`). The repo lint enforces that ban only inside this repo; the hook extends it to
   prose written anywhere on the machine. It scans only the added text and never blocks.
+- **compact-test-output** is the third `PostToolUse` hook, matching the shell tools: it rewrites
+  noisy test-runner output (`dotnet test`, `pytest`, `cargo test`, jest, vitest) before the model
+  reads it.
+  A passing run collapses to its summary line(s); when failure indicators are present only
+  positively identified noise is dropped, and an unrecognized line is never dropped, so errors
+  survive by construction. The replacement is never larger than the original, and `#keep-output`
+  on the command skips it.
 
 They are opt-in machine config, not auto-loaded like the knowledge files: copy the script for your OS
 into `~/.claude/hooks/` and register it in your settings, the first four under `hooks.PreToolUse` and
-the two warn hooks under `hooks.PostToolUse`. They need only a stock interpreter (`powershell.exe` on
+the other three under `hooks.PostToolUse`. They need only a stock interpreter (`powershell.exe` on
 Windows; `bash` plus `perl` on macOS/Linux), plus `git` on PATH for `warn-file-size`, nothing to
 install. `hooks/README.md` has the per-OS install, the exact block and allow behavior, and tuning.
 

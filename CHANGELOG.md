@@ -1,5 +1,54 @@
 # Changelog
 
+## v14
+- Added `task-workflows.md` ⛔ Hard Rule 5: the workflow path decides how much review runs, never
+  what loads. On every path, lightweight included, the skill for the language being touched (its
+  `SKILL.md` plus the reference file it names for the work, `testing-guidelines.md` for tests) and
+  the knowledge file for the task's topic (`testing.md` for test work) are read before the first
+  edit, and the handoff names them. Mirrored as item 9 of the repo CLAUDE.md always-in-context
+  block, and the "non-trivial task" gate on reading topical knowledge files there is gone: the
+  trigger is the topic, never the size. Wired into `coding-general.md` as ⛔ Hard Rule 8 (plus a
+  §2 planning step and the §10 handoff walk), `general-problem-solving.md` §1, §3, §5, and its
+  anti-patterns, the lightweight-path and handoff text in `task-workflows.md`, the csharp skill's
+  testing preamble, and the README. Driven by a C# "add some tests" task that went straight to the
+  diff with neither the csharp skill nor `testing.md` loaded because it looked small, then filled
+  the gap with fixed calendar dates and invented literal ids, both of which those files ban.
+- Extended `coding-general.md` ⛔ Hard Rule 6 (and CLAUDE.md item 7) to mechanisms a guideline
+  names by example: `TimeProvider` is the shape for code that must read the clock itself; when the
+  method under test already takes the instant as a parameter, the test passes it, an unused
+  real-clock fallback on that parameter is removed, and no clock is injected. The csharp Hard
+  Rule 14 and the Dates & Times section of its testing guide now say to read the signature first
+  (with a good/bad pair), `testing.md` §Determinism and its anti-pattern table carry the
+  language-agnostic form, and a `review-heuristics.md` §Testing bullet plus the `branch-review`
+  Step 4 mechanism item catch it in review. Same incident: after the correction, the agent read
+  the guide, applied the `TimeProvider` line literally, and added an abstraction beside a `day`
+  parameter the test could have passed.
+- `general-remembering-lessons.md`: a correction that reveals an existing rule went unapplied is a
+  lesson about routing, since the rule is already written. Don't save a per-repo memory restating
+  it; name the trigger that failed (skill never loaded, reference file skipped for size, example
+  mechanism applied literally) and save that, or fix the trigger when the skill set is the repo at
+  hand.
+- `skill-authoring.md` gains failure modes 6 (a rule gated by a size judgment) and 7 (a rule
+  executed literally) with their structural fixes: write triggers as topics, never proportions, and
+  state a rule's intent before its example mechanism, with the check that precedes it.
+- Added a seventh hook, `compact-test-output` (`PostToolUse` on `Bash|PowerShell`, `.ps1` and
+  `.sh`): it rewrites test-runner output through `hookSpecificOutput.updatedToolOutput` before the
+  model reads it. A passing `dotnet test`, `pytest` (default or `-q`), `cargo test`, jest, or
+  vitest run collapses to its summary line(s); a run carrying failure indicators keeps every unrecognized line
+  and drops only positively identified noise; anything else passes through untouched. The
+  replacement is never larger than the original, so Claude Code's Bash output window stays the only
+  size limit, and `#keep-output` on the command skips the hook. Documented in `hooks/README.md`,
+  `install-reference.md`, and the README.
+- The hook harness grew a `rewrite` verdict and an optional sixth TSV field (the payload's
+  `tool_response`), plus the `@CTO_FILLER@` and `@LONG_LINE@` placeholders; rewrite rows match
+  their signature against the decoded `updatedToolOutput`, never raw stdout. `tools/hook-cases.tsv`
+  goes from 60 to 86 rows.
+- `skills/csharp/testing-guidelines.md` gains an xUnit v3 / Microsoft.Testing.Platform section:
+  how to detect the engine, the `dotnet test` MTP forms, exit codes 5 and 8, the xUnit v3 filter
+  switches, coverage through `Microsoft.Testing.Extensions.CodeCoverage` or `coverlet.MTP`, and the
+  package guidance from xunit.net (`coverlet.collector` has no role under MTP;
+  `Microsoft.NET.Test.Sdk` stays optional and recommended). SKILL.md §15 carries the same note.
+
 ## v13
 - Updated Azure Cosmos DB skill.
 

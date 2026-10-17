@@ -57,8 +57,8 @@ to both scripts.
 
 ## test-hooks (`test-hooks.sh` / `test-hooks.ps1` / `hook-cases.tsv`)
 
-Parses and exercises the six hook pairs in `../hooks/` (four `PreToolUse`, plus the `PostToolUse`
-`warn-file-size` and `warn-writing-tells`). Each side runs the way it ships: the `.sh` harness runs the `.sh` hooks under
+Parses and exercises the seven hook pairs in `../hooks/` (four `PreToolUse`, plus the `PostToolUse`
+`warn-file-size`, `warn-writing-tells`, and `compact-test-output`). Each side runs the way it ships: the `.sh` harness runs the `.sh` hooks under
 bash, the `.ps1` harness runs the `.ps1` hooks under Windows PowerShell 5.1, and both grade against
 the same case table, `hook-cases.tsv`, so a behavior divergence inside a hook pair surfaces as one
 platform's CI job failing while the other passes.
@@ -88,18 +88,22 @@ is invisible to every check that looks at only one side; the shared case table c
 | `[syntax]`    | `.sh` harness  | `bash -n` over the hook scripts and `tools/*.sh`                                                                                                                                                                                                       | a script that does not parse                                                        |
 | `[pattern]`   | `.sh` harness  | no command-substitution-wrapped heredoc remains in the hook scripts                                                                                                                                                                                    | the incident class reappearing on a bash new enough to parse it silently            |
 | `[threshold]` | `.sh` harness  | the file-size warn thresholds and size constants declared in five scripts (both `warn-file-size` hooks and the three `*_quality_gate.py` gates) are extracted and cross-compared, with zero matches, multiple matches, or a non-integer each a failure | a hand-sync miss drifting the write-time nudge apart from the diff-scoped gate      |
-| `[behavior]`  | both harnesses | the `hook-cases.tsv` payloads fed to each hook on stdin, asserting verdict, exit status, and (on deny/warn) that the real message came back intact                                                                                                     | a routing or verdict regression, a mangled message, and `.sh`/`.ps1` behavior drift |
+| `[behavior]`  | both harnesses | the `hook-cases.tsv` payloads fed to each hook on stdin, asserting verdict, exit status, and (on deny/warn/rewrite) that the real message or replacement came back intact                                                                                                     | a routing or verdict regression, a mangled message, and `.sh`/`.ps1` behavior drift |
 
 The threshold layer lives in the bash harness only (it is plain text comparison and runs on the
 ubuntu and macOS jobs; a PowerShell duplicate would recreate the sync problem it solves). It
 compares the sources against each other, never against numbers baked into the harness, so a
 deliberate retune that updates all five scripts together stays green.
 
-The case table is five tab-separated fields per row (hook, tool, tool_input JSON, verdict,
-signature) with a `# cases: N` header both readers verify, so a dropped or malformed row is a hard
-error rather than silently shrunk coverage. Payload rows for `warn-file-size` name fixture files the
+The case table is five required tab-separated fields per row (hook, tool, tool_input JSON, verdict,
+signature) plus an optional sixth (a tool_response JSON, required on `rewrite` rows), with a
+`# cases: N` header both readers verify, so a dropped or malformed row is a hard error rather than
+silently shrunk coverage. Verdicts are deny, allow, warn, silent, and rewrite; a rewrite row's
+signature matches against the decoded `hookSpecificOutput.updatedToolOutput` strings, never raw
+stdout. Payload rows for `warn-file-size` name fixture files the
 harnesses generate, including two regression rows that pin the secret-skip anchoring the August 2026
-incident regressed. Every interpreter call in the `.sh` harness uses `$BASH`, the bash running the
+incident regressed; `compact-test-output` rows ride on the `@CTO_FILLER@` and `@LONG_LINE@`
+placeholders both harnesses expand. Every interpreter call in the `.sh` harness uses `$BASH`, the bash running the
 harness, so the macOS CI job runs the hooks under `/bin/bash` 3.2 as a true reproducer. In both
 harnesses, case payloads reach a hook only as bytes on stdin, never through `eval`,
 `Invoke-Expression`, or a field spliced into command position, and signatures are matched as

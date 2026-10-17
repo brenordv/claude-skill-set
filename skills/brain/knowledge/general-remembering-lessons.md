@@ -37,6 +37,16 @@ If it fails either, skip the save. A correction like "use 4 spaces" is real but 
 
 Do NOT save: project-specific trivia already recorded in that repo's code, `CLAUDE.md`, or git history, or one-off facts that only matter to the current conversation.
 
+**A correction that reveals an existing rule went unapplied is a lesson about routing; the rule
+itself is already written.** When the user's correction amounts to "the skill already says this" (a
+fixed date where the testing guide demands a clock offset, a mocking library the language skill
+bans), don't save a memory or lesson restating the rule for the current repo: the per-repo
+restatement hides the real defect and fixes nothing elsewhere. Name the trigger that failed instead
+(a skill never loaded, a reference file skipped because the task looked small, a guideline's example
+mechanism applied over the code in front of you) and save that, generalized, if it passes the
+filter. When the skill set itself is the repo you're working in, fix the trigger there and save
+nothing.
+
 Before saving, `vault_list project: "lessons"` and check for an existing lesson on the same idea. Pick the right write based on what's actually changing:
 
 - **Metadata only: the summary or tags need to be sharper, or the parent link needs to change.** Use `vault_set_meta`. No `content` resend, no new version. This is the cheap way to keep discovery working as you learn what surfaces well in retrieval. Use it freely.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test harness for the six hook pairs in hooks/ (.sh side; tools/test-hooks.ps1 runs the .ps1 side
+# Test harness for the seven hook pairs in hooks/ (.sh side; tools/test-hooks.ps1 runs the .ps1 side
 # against the same case table, so a behavior divergence between the two implementations shows up as
 # one platform's CI job failing while the other passes). Nothing else in the pipeline ever parses or
 # runs these scripts: lint-repo checks markdown prose, and the hooks only execute on an installed
@@ -15,8 +15,8 @@
 #                   warn-file-size hooks and the three quality gates); extract and cross-compare
 #                   them so a hand-sync miss goes red instead of drifting silently.
 #   4. behavior  -- feed the JSON payloads from tools/hook-cases.tsv to each hook on stdin (the
-#                   production path) and assert the verdict, exit status, and (on deny/warn) that
-#                   the real message came back intact.
+#                   production path) and assert the verdict, exit status, and (on deny/warn/rewrite)
+#                   that the real message or replacement came back intact.
 #
 # Every bash invocation uses "$BASH", the interpreter running this harness, not bare `bash` or the
 # hooks' shebang: that is what lets the macOS CI job run this under /bin/bash 3.2 as a true reproducer.
@@ -176,10 +176,10 @@ ts_agree "read byte cap" \
 # Parallel-array case table, loaded from tools/hook-cases.tsv (shared with test-hooks.ps1). Deny
 # signatures pick a phrase unique to the emitted message, and include an apostrophe wherever the
 # message has one, so a body mangled by the 3.2 lexer bug cannot pass.
-C_SCRIPT=(); C_TOOL=(); C_INPUT=(); C_EXPECT=(); C_SIG=(); C_ROW=()
+C_SCRIPT=(); C_TOOL=(); C_INPUT=(); C_EXPECT=(); C_SIG=(); C_RESP=(); C_ROW=()
 add_case() {
-    if [ "$#" -ne 6 ]; then
-        printf 'test-hooks: malformed case row (need 6 fields, got %s): %s\n' "$#" "$*" >&2
+    if [ "$#" -ne 7 ]; then
+        printf 'test-hooks: malformed case row (need 7 fields, got %s): %s\n' "$#" "$*" >&2
         exit 2
     fi
     C_SCRIPT[${#C_SCRIPT[@]}]="$1"
@@ -187,7 +187,8 @@ add_case() {
     C_INPUT[${#C_INPUT[@]}]="$3"
     C_EXPECT[${#C_EXPECT[@]}]="$4"
     C_SIG[${#C_SIG[@]}]="$5"
-    C_ROW[${#C_ROW[@]}]="$6"
+    C_RESP[${#C_RESP[@]}]="$6"
+    C_ROW[${#C_ROW[@]}]="$7"
 }
 
 # warn-file-size reads the file named in the payload, so its rows need real fixtures. The fixture
@@ -217,10 +218,25 @@ gen_lines 900 "$WF_FIXDIR/notes.md"
 gen_lines 801 "$WF_FIXDIR/cfg.sample/secrets.py"
 gen_lines 801 "$WF_FIXDIR/secrets.example.py"
 
+# compact-test-output payloads carry a tool_response in the sixth field. Two placeholders keep the
+# table readable: @CTO_FILLER@ expands to 100 JSON-escaped filler lines (clears the hook's
+# MIN_CHARS floor without matching any runner pattern), and @LONG_LINE@ to one ~300KB line (pins
+# pass-through-grade runtime on pathological input; kept verbatim as an unrecognized line). Both
+# are declared here and again in test-hooks.ps1 on purpose, like the warn-file-size fixtures above.
+CTO_FILLER=""
+_n=1
+while [ "$_n" -le 100 ]; do CTO_FILLER="${CTO_FILLER}filler line $_n\\n"; _n=$((_n + 1)); done
+LONG_LINE="$(perl -e 'print "A" x 300000' 2>/dev/null)"
+if [ "${#LONG_LINE}" -ne 300000 ]; then
+    printf 'test-hooks: could not build the @LONG_LINE@ placeholder (perl missing?)\n' >&2
+    exit 2
+fi
+
 # Load the table. Validation is strict because the runner's deny branch is the fallback and an
-# empty signature would make grep -Fq match anything: exactly five fields, none empty, a known
-# verdict, '-' only on allow/silent rows (normalized to empty), a shape-checked hook name, no
-# unsubstituted placeholder, and a payload that still parses as JSON after substitution.
+# empty signature would make grep -Fq match anything: five required fields plus an optional sixth
+# (a tool_response payload; required on rewrite rows, and a trailing empty one is an error), none
+# empty, a known verdict, '-' only on allow/silent rows (normalized to empty), a shape-checked hook
+# name, no unsubstituted placeholder, and payloads that still parse as JSON after substitution.
 CASES_FILE="$SCRIPT_DIR/hook-cases.tsv"
 [ -f "$CASES_FILE" ] || { printf 'test-hooks: case table not found: %s\n' "$CASES_FILE" >&2; exit 2; }
 TAB="$(printf '\t')"
@@ -235,15 +251,16 @@ while IFS= read -r line || [ -n "$line" ]; do
         "# cases: "*) declared_cases="${line#"# cases: "}"; continue ;;
         '#'*) continue ;;
     esac
-    f1=""; f2=""; f3=""; f4=""; f5=""
-    IFS="$TAB" read -r f1 f2 f3 f4 f5 <<ROW
+    f1=""; f2=""; f3=""; f4=""; f5=""; f6=""
+    IFS="$TAB" read -r f1 f2 f3 f4 f5 f6 <<ROW
 $line
 ROW
     bad=""
     if [ -z "$f1" ] || [ -z "$f2" ] || [ -z "$f3" ] || [ -z "$f4" ] || [ -z "$f5" ]; then
         bad="fewer than 5 fields, or an empty field"
     else
-        case "$f5" in *"$TAB"*) bad="more than 5 fields" ;; esac
+        case "$line" in *"$TAB") bad="trailing empty sixth field" ;; esac
+        case "$f6" in *"$TAB"*) bad="more than 6 fields" ;; esac
     fi
     if [ -z "$bad" ]; then
         case "$f1" in
@@ -254,6 +271,10 @@ ROW
         case "$f4" in
             deny | warn)
                 [ "$f5" != "-" ] || bad="deny/warn rows need a real signature, got '-'"
+                ;;
+            rewrite)
+                [ "$f5" != "-" ] || bad="rewrite rows need a real signature, got '-'"
+                [ -n "$f6" ] || bad="rewrite rows need a tool_response sixth field"
                 ;;
             allow | silent)
                 if [ "$f5" = "-" ]; then f5=""; else bad="allow/silent rows take '-' as the signature"; fi
@@ -267,7 +288,9 @@ ROW
     fi
     input="${f3//@WF_FIXDIR@/$WF_FIXDIR}"
     input="${input//@REPO_ROOT@/$REPO_ROOT}"
-    if printf '%s' "$input" | grep -Eq '@[A-Z_]+@'; then
+    resp="${f6//@CTO_FILLER@/$CTO_FILLER}"
+    resp="${resp//@LONG_LINE@/$LONG_LINE}"
+    if printf '%s%s' "$input" "$resp" | grep -Eq '@[A-Z_]+@'; then
         printf 'test-hooks: hook-cases.tsv row %s: unsubstituted placeholder in payload\n' "$tsv_row" >&2
         exit 2
     fi
@@ -275,7 +298,11 @@ ROW
         printf 'test-hooks: hook-cases.tsv row %s: tool_input is not valid JSON after substitution (or perl JSON::PP is unavailable)\n' "$tsv_row" >&2
         exit 2
     fi
-    add_case "$f1.sh" "$f2" "$input" "$f4" "$f5" "$tsv_row"
+    if [ -n "$resp" ] && ! printf '%s' "$resp" | perl -MJSON::PP -0777 -ne 'exit(eval { decode_json($_); 1 } ? 0 : 1)' 2>/dev/null; then
+        printf 'test-hooks: hook-cases.tsv row %s: tool_response is not valid JSON after substitution\n' "$tsv_row" >&2
+        exit 2
+    fi
+    add_case "$f1.sh" "$f2" "$input" "$f4" "$f5" "$resp" "$tsv_row"
 done < "$CASES_FILE"
 
 declared="${#C_SCRIPT[@]}"
@@ -298,11 +325,24 @@ decode_field() {
     ' 2>/dev/null
 }
 
+decode_updated() {
+    # $1 = raw hook stdout. Prints the decoded hookSpecificOutput.updatedToolOutput for signature
+    # matching: the stdout and stderr strings of an object-shaped replacement (newline-joined), or
+    # the value itself when it is a plain string. Empty output means the field was absent.
+    printf '%s' "$1" | perl -MJSON::PP -0777 -ne '
+        my $d = eval { decode_json($_) }; exit unless $d;
+        my $u = $d->{hookSpecificOutput}{updatedToolOutput}; exit unless defined $u;
+        binmode(STDOUT, ":encoding(UTF-8)");
+        if (ref($u) eq "HASH") { print(($u->{stdout} // ""), "\n", ($u->{stderr} // "")); }
+        elsif (!ref $u) { print $u; }
+    ' 2>/dev/null
+}
+
 executed=0
 i=0
 while [ "$i" -lt "$declared" ]; do
     script="${C_SCRIPT[$i]}"; tool="${C_TOOL[$i]}"; input="${C_INPUT[$i]}"
-    expect="${C_EXPECT[$i]}"; sig="${C_SIG[$i]}"; row="${C_ROW[$i]}"
+    expect="${C_EXPECT[$i]}"; sig="${C_SIG[$i]}"; resp="${C_RESP[$i]}"; row="${C_ROW[$i]}"
     i=$((i + 1))
     disp="$HOOKS_DIR/$script"
     name="row $row: $tool $input"
@@ -311,7 +351,11 @@ while [ "$i" -lt "$declared" ]; do
         report "$disp: [behavior] case \"$name\": script not found at $scriptpath"
         continue
     fi
-    payload="$(printf '{"tool_name":"%s","tool_input":%s}' "$tool" "$input")"
+    if [ -n "$resp" ]; then
+        payload="$(printf '{"tool_name":"%s","tool_input":%s,"tool_response":%s}' "$tool" "$input" "$resp")"
+    else
+        payload="$(printf '{"tool_name":"%s","tool_input":%s}' "$tool" "$input")"
+    fi
     : > "$ERRFILE"
     out="$(printf '%s' "$payload" | "$BASH" "$scriptpath" 2>"$ERRFILE")"
     rc=$?
@@ -362,6 +406,25 @@ while [ "$i" -lt "$declared" ]; do
             problem="expected permissionDecision=deny, got \"${decision:-<none>}\""
         elif ! printf '%s' "$reason" | grep -Fq -- "$sig"; then
             problem="expected reason to contain \"$sig\", got \"$(printf '%s' "$reason" | tr '\n' ' ')\""
+        fi
+        if [ -n "$problem" ]; then
+            report "$disp: [behavior] case \"$name\": $problem"
+            printf '    stdout: %s\n' "$out_oneline"
+            printf '    stderr: %s\n' "$stderr_shown"
+            printf '    exit:   %s\n' "$rc"
+        fi
+        ;;
+    rewrite)
+        updated="$(decode_updated "$out")"
+        problem=""
+        if [ "$rc" -ne 0 ]; then
+            problem="expected exit 0, got $rc"
+        elif [ -s "$ERRFILE" ]; then
+            problem="expected empty stderr, got stderr output"
+        elif [ -z "$updated" ]; then
+            problem="expected stdout JSON carrying hookSpecificOutput.updatedToolOutput"
+        elif ! printf '%s' "$updated" | grep -Fq -- "$sig"; then
+            problem="expected updatedToolOutput to contain \"$sig\""
         fi
         if [ -n "$problem" ]; then
             report "$disp: [behavior] case \"$name\": $problem"

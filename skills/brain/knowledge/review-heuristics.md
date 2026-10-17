@@ -93,7 +93,9 @@ general principle. Distilled from real review findings.
   concretely, where an if/else or a direct call would do, are at minimum Important
   (`coding-general.md` ⛔ Hard Rule 6). The test: delete the mechanism mentally and write the cases
   directly; if that version is shorter and clearer, flag it. Scalability counts as justification only
-  when the ask names the growth.
+  when the ask names the growth, and a guideline naming the mechanism is no justification either:
+  what counts is the rule's intent, met by what the code already offers (the clock case under
+  §Testing).
 - **Extract reusable, dependency-free logic into an independently testable unit.** When a private method
   operates purely on its parameters (no services, no side effects) and the logic could be needed elsewhere,
   pull it out (in C#, an extension method on the parameter's type). It becomes testable without
@@ -175,6 +177,11 @@ general principle. Distilled from real review findings.
   equivalent) or an injected fake clock; accept a fixed literal only when that exact value is the
   behavior under test, and it's extracted to a field whose name says so (csharp Hard Rule 14; the
   principle is language-agnostic).
+- **A clock abstraction injected into code that already takes the instant as a parameter is a
+  finding.** `TimeProvider`, `IClock`, or a fake-clock seam added beside a `day`/`asOf`/`now`
+  parameter the test could simply pass is the oversized mechanism of `coding-general.md` ⛔ Hard
+  Rule 6 (at minimum Important). Expect the test to pass the parameter, and expect a real-clock
+  fallback on it that no production caller reaches to be removed rather than faked around.
 
 ## Architecture
 

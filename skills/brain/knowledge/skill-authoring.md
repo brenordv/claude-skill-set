@@ -1,12 +1,13 @@
 # Skill authoring: writing rules that stick
 
 How to write and maintain the instruction files in this repo so their rules survive contact with real
-sessions. Distilled from two rounds of "the rule was written down and still got ignored" (the csharp
-Hard Rules, then the writing-style em-dash ban). A rule stated once is not a rule enforced.
+sessions. Distilled from three rounds of "the rule was written down and still got ignored" (the csharp
+Hard Rules, the writing-style em-dash ban, then a test task that skipped the testing files because it
+looked small). A rule stated once is not a rule enforced.
 
-## The five failure modes
+## The seven failure modes
 
-Audit all five whenever a rule "didn't stick"; usually more than one is present.
+Audit all seven whenever a rule "didn't stick"; usually more than one is present.
 
 1. **Buried in a reference file** the agent only skims ("see style-guidelines.md for details"). The
    rule exists but never enters context.
@@ -20,10 +21,20 @@ Audit all five whenever a rule "didn't stick"; usually more than one is present.
    in the review skill, don't get checked.
 5. **Never loaded at all.** "Read these N files at session start" gets triaged, so a rule living only
    in a startup-read file is absent exactly when output is generated.
+6. **Gated by a size judgment.** A trigger phrased as "for non-trivial tasks", or left to the agent's
+   sense of proportion, is skipped whenever the task looks small, and "small" gets decided before
+   the rules that would say otherwise are read. A C# "add some tests" task went straight to the
+   diff with neither the csharp skill nor `testing.md` loaded because it looked too small to route;
+   the fixed dates and invented ids that followed were exactly what those files ban.
+7. **Executed literally.** A rule that names its example mechanism ("inject `TimeProvider`") gets
+   applied as an order over code that already met the intent another way. In the same incident the
+   agent read the rule after the correction, reached for the named mechanism, and added an
+   abstraction beside a `day` parameter the test could simply have passed.
 
 Why these bite: agents weight concrete examples and nearby directives over distant prose, precedence
-heuristics resolve conflicts against the absolute rule unless the hierarchy is explicit, and a rule
-outside the context window constrains nothing.
+heuristics resolve conflicts against the absolute rule unless the hierarchy is explicit, a rule
+outside the context window constrains nothing, and a rule whose trigger depends on a judgment the
+agent makes before reading it gets skipped by that judgment.
 
 ## The structural fix (apply all four parts)
 
@@ -41,6 +52,14 @@ When adding a non-negotiable or repairing one that regressed:
 For failure mode 5, one more move: mirror the one or two highest-signal bans into the config that is
 always in context (CLAUDE.md), and keep the full rule file as the detail layer. Don't mirror
 everything; the always-loaded file stays short or it stops being read too.
+
+For failure mode 6, write triggers as topics, never proportions: "any task that adds or changes a
+test reads `testing.md`", not "non-trivial tasks read the relevant files". Size picks the workflow
+path; it never decides whether a domain's rules apply, and the rule should say so in those words.
+
+For failure mode 7, state the intent first and mark the mechanism as one way to meet it, then name
+the check that comes before it ("read the signature; if the instant is already a parameter, pass
+it"). An example that could be mistaken for a mandate needs the sentence that says it isn't.
 
 ## Maintenance notes
 

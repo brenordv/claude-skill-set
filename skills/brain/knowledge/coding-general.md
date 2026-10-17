@@ -61,6 +61,12 @@ Re-read this list before writing code and walk it again at handoff (§10).
    right-sized version passes the two values inside the `if` directly. Scalability
    justifies the mechanism only when the ask names the growth. A helper extracted for testability
    or clarity is not this defect; the defect is the helper whose only argument is future callers.
+   The same test applies when a guideline names the mechanism. `TimeProvider` is the shape for
+   code that must read the clock itself; when the method under test already takes the instant as
+   a parameter, the test passes the parameter, a real-clock fallback on it that no production
+   caller uses gets removed, and no clock abstraction is added. A guideline's example illustrates
+   its intent; it is never an order to add that mechanism to code that already meets the intent
+   another way.
 7. **Acquiring and running software is the machine owner's act, never yours.** When a tool the
    task needs is missing or the wrong version or build, stop, report it, hand the user the exact
    install command, and proceed only on their explicit yes. Never fetch and execute anything new:
@@ -73,6 +79,15 @@ Re-read this list before writing code and walk it again at handoff (§10).
    project's own dependency manager restoring or adding packages inside the project's manifest
    and local environment. A documented install flow the user invoked by name
    (`install-reference.md`) is consent for exactly the steps it defines.
+8. **Read the routed skill and the topic's knowledge file before the first edit.** The skill for
+   the language or framework being touched (its `SKILL.md` and the reference file it names for the
+   work: `testing-guidelines.md` for any test, `style-guidelines.md` where formatting is the task)
+   and the knowledge file for the task's topic (`testing.md` for tests, `security.md` for auth or
+   input handling, `database.md` for schema or queries) are read before any code is written,
+   whatever the task's size or workflow path. A test written from habit because "add some tests"
+   looked too small to route is the defect this rule names: the habits those files replace (fixed
+   calendar dates, invented literal ids, a mocking library the skill bans) are exactly what shows
+   up when they're skipped. Reading them after a correction doesn't count as having loaded them.
 
 ---
 
@@ -129,12 +144,13 @@ Re-read this list before writing code and walk it again at handoff (§10).
 
 Before writing any code:
 
-1. **Understand the requirements**: What problem are we solving? What are the constraints?
-2. **Review existing patterns**: Match the codebase's conventions. Do not introduce new patterns unless required. When an existing convention contradicts this skill set's guidance, the conflict goes to the user (next subsection).
-3. **Identify dependencies**: What does this code interact with?
-4. **Consider edge cases**: But keep it grounded. Extreme edge cases are only worth handling if explicitly requested.
-5. **Plan your approach**: Break the problem into small, testable steps.
-6. **Remember Lessons learned**: Query the lessons vault (`vault_list` with `project: "lessons"`, topic tags from the task) for problems already faced and how they were fixed, per `general-remembering-lessons.md`.
+1. **Load the routed guidance**: the language skill's `SKILL.md` and the reference file it names for this work (`testing-guidelines.md` for tests), plus the knowledge file for the task's topic (`testing.md` for any test work). This happens before step 2 and whatever the task's size (⛔ Hard Rule 8).
+2. **Understand the requirements**: What problem are we solving? What are the constraints?
+3. **Review existing patterns**: Match the codebase's conventions. Do not introduce new patterns unless required. When an existing convention contradicts this skill set's guidance, the conflict goes to the user (next subsection).
+4. **Identify dependencies**: What does this code interact with?
+5. **Consider edge cases**: But keep it grounded. Extreme edge cases are only worth handling if explicitly requested.
+6. **Plan your approach**: Break the problem into small, testable steps.
+7. **Remember Lessons learned**: Query the lessons vault (`vault_list` with `project: "lessons"`, topic tags from the task) for problems already faced and how they were fixed, per `general-remembering-lessons.md`.
 
 ### When the repo and the guidelines disagree
 
@@ -292,13 +308,16 @@ Before delivering work:
    mechanism added for cases that don't exist yet gets named and justified in the summary, or
    removed (Hard Rule 6). Confirm nothing newly fetched was executed and no tool was installed
    mid-task without the user's explicit yes; a tool gap you hit goes in the summary with the
-   suggested install command (Hard Rule 7). Then
+   suggested install command (Hard Rule 7). Name the skill files and knowledge files read for
+   the task; if a language's code changed and its skill file isn't on that list, the handoff
+   isn't ready (Hard Rule 8). Then
    reread every comment the diff adds or edits: any that narrates the change rather than the current
    code gets deleted here, its story moved to the summary (Hard Rule 3).
 3. Ensure new code is covered by tests.
 4. Run the test suite; confirm nothing is broken.
 5. Summarize the change, its rationale, and any caveats or warnings.
-6. Report which skills/tools were used.
+6. Report which skill files and knowledge files were read and which tools were used; the list is
+   the evidence that the routing in Hard Rule 8 happened.
 
 ## 11. Interacting with git
 1. When interacting with git, use the specialized MCP (Read and apply the instructions here: `./git-readonly-operations.md`)
