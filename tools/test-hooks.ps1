@@ -1,5 +1,5 @@
 #requires -Version 5
-# Windows behavior harness for the six hook pairs in hooks/: runs each hooks/*.ps1 against the
+# Windows behavior harness for the seven hook pairs in hooks/: runs each hooks/*.ps1 against the
 # shared case table tools/hook-cases.tsv, the same table tools/test-hooks.sh runs the .sh hooks
 # against, so a behavior divergence between the two implementations shows up as one platform's CI
 # job failing while the other passes. Written for Windows PowerShell 5.1, the interpreter the
@@ -10,7 +10,9 @@
 # test-hooks.sh: deny rows expect exit 0 and a stdout JSON object whose
 # hookSpecificOutput.permissionDecision is 'deny' with the row's signature inside the reason;
 # allow/silent rows expect exit 0 and empty stdout/stderr; warn rows expect exit 2, empty stdout,
-# and the signature on stderr. Signatures are matched as ordinal literals, never as patterns.
+# and the signature on stderr; rewrite rows expect exit 0, empty stderr, and the signature inside
+# the decoded hookSpecificOutput.updatedToolOutput stdout/stderr strings. Signatures are matched
+# as ordinal literals, never as patterns.
 # Payloads stay inert: they reach a hook only as bytes on stdin (a BOM-less temp file redirected
 # via Start-Process), never through Invoke-Expression or a shell-parsed command line.
 #
@@ -76,10 +78,21 @@ try {
     $fixFwd = $fixDir.Replace('\', '/')
     $repoFwd = $repoRoot.Replace('\', '/')
 
-    # Load the table. Validation is strict and mirrors test-hooks.sh: exactly five fields, none
-    # empty, a known verdict, '-' only on allow/silent rows (normalized to empty), a shape-checked
-    # hook name, no unsubstituted placeholder, and a payload that still parses as JSON after
-    # substitution.
+    # compact-test-output payloads carry a tool_response in the sixth field. Two placeholders keep
+    # the table readable: @CTO_FILLER@ expands to 100 JSON-escaped filler lines (clears the hook's
+    # MIN_CHARS floor without matching any runner pattern), and @LONG_LINE@ to one ~300KB line
+    # (pins pathological-input runtime; kept verbatim as an unrecognized line). Both are declared
+    # here and again in test-hooks.sh on purpose, like the fixture set above.
+    $fillerBuilder = New-Object System.Text.StringBuilder
+    for ($n = 1; $n -le 100; $n++) { [void]$fillerBuilder.Append("filler line $n\n") }
+    $ctoFiller = $fillerBuilder.ToString()
+    $longLine = 'A' * 300000
+
+    # Load the table. Validation is strict and mirrors test-hooks.sh: five required fields plus an
+    # optional sixth (a tool_response payload; required on rewrite rows, and a trailing empty one
+    # is an error), none empty, a known verdict, '-' only on allow/silent rows (normalized to
+    # empty), a shape-checked hook name, no unsubstituted placeholder, and payloads that still
+    # parse as JSON after substitution.
     $casesFile = Join-Path $scriptDir 'hook-cases.tsv'
     if (-not (Test-Path -LiteralPath $casesFile)) { Fail-Setup "case table not found: $casesFile" }
     $cases = New-Object System.Collections.ArrayList
@@ -92,16 +105,20 @@ try {
         if ($line.StartsWith('# cases: ')) { $declaredHeader = $line.Substring('# cases: '.Length); continue }
         if ($line.StartsWith('#')) { continue }
         $fields = $line.Split("`t")
-        if ($fields.Count -ne 5) { Fail-Setup "hook-cases.tsv row ${rowNum}: expected 5 fields, found $($fields.Count)" }
+        if ($fields.Count -lt 5 -or $fields.Count -gt 6) { Fail-Setup "hook-cases.tsv row ${rowNum}: expected 5 or 6 fields, found $($fields.Count)" }
         foreach ($f in $fields) {
             if ($f -eq '') { Fail-Setup "hook-cases.tsv row ${rowNum}: empty field" }
         }
         $hookName = $fields[0]
         $verdict = $fields[3]
         $sig = $fields[4]
+        $respJson = if ($fields.Count -eq 6) { $fields[5] } else { '' }
         if ($hookName -cnotmatch '^[a-z0-9-]+$') { Fail-Setup "hook-cases.tsv row ${rowNum}: hook name must be [a-z0-9-] only: `"$hookName`"" }
         if ($verdict -eq 'deny' -or $verdict -eq 'warn') {
             if ($sig -eq '-') { Fail-Setup "hook-cases.tsv row ${rowNum}: deny/warn rows need a real signature, got '-'" }
+        } elseif ($verdict -eq 'rewrite') {
+            if ($sig -eq '-') { Fail-Setup "hook-cases.tsv row ${rowNum}: rewrite rows need a real signature, got '-'" }
+            if ($respJson -eq '') { Fail-Setup "hook-cases.tsv row ${rowNum}: rewrite rows need a tool_response sixth field" }
         } elseif ($verdict -eq 'allow' -or $verdict -eq 'silent') {
             if ($sig -ne '-') { Fail-Setup "hook-cases.tsv row ${rowNum}: allow/silent rows take '-' as the signature" }
             $sig = ''
@@ -109,13 +126,19 @@ try {
             Fail-Setup "hook-cases.tsv row ${rowNum}: unknown verdict `"$verdict`""
         }
         $inputJson = $fields[2].Replace('@WF_FIXDIR@', $fixFwd).Replace('@REPO_ROOT@', $repoFwd)
-        if ($inputJson -cmatch '@[A-Z_]+@') { Fail-Setup "hook-cases.tsv row ${rowNum}: unsubstituted placeholder in payload" }
+        if ($respJson -ne '') { $respJson = $respJson.Replace('@CTO_FILLER@', $ctoFiller).Replace('@LONG_LINE@', $longLine) }
+        if (($inputJson + $respJson) -cmatch '@[A-Z_]+@') { Fail-Setup "hook-cases.tsv row ${rowNum}: unsubstituted placeholder in payload" }
         try { $null = ConvertFrom-Json -InputObject $inputJson } catch {
             Fail-Setup "hook-cases.tsv row ${rowNum}: tool_input is not valid JSON after substitution"
         }
+        if ($respJson -ne '') {
+            try { $null = ConvertFrom-Json -InputObject $respJson } catch {
+                Fail-Setup "hook-cases.tsv row ${rowNum}: tool_response is not valid JSON after substitution"
+            }
+        }
         [void]$cases.Add(@{
             Row = $rowNum; Hook = $hookName; Tool = $fields[1]
-            Input = $inputJson; Expect = $verdict; Sig = $sig
+            Input = $inputJson; Expect = $verdict; Sig = $sig; Resp = $respJson
         })
     }
     if ($declaredHeader -eq '') { Fail-Setup 'hook-cases.tsv has no "# cases: N" header' }
@@ -141,7 +164,11 @@ try {
         $out = ''
         $err = ''
         try {
-            $payload = '{"tool_name":"' + $case['Tool'] + '","tool_input":' + $case['Input'] + '}'
+            if ($case['Resp'] -ne '') {
+                $payload = '{"tool_name":"' + $case['Tool'] + '","tool_input":' + $case['Input'] + ',"tool_response":' + $case['Resp'] + '}'
+            } else {
+                $payload = '{"tool_name":"' + $case['Tool'] + '","tool_input":' + $case['Input'] + '}'
+            }
             [System.IO.File]::WriteAllText($inFile, $payload, $utf8NoBom)
             [System.IO.File]::WriteAllText($outFile, '', $utf8NoBom)
             [System.IO.File]::WriteAllText($errFile, '', $utf8NoBom)
@@ -169,6 +196,24 @@ try {
             if ($rc -ne 2) { $problem = "expected exit 2, got $rc" }
             elseif ($outTrim -ne '') { $problem = 'expected empty stdout, got output' }
             elseif ($err.IndexOf($case['Sig'], [StringComparison]::Ordinal) -lt 0) { $problem = 'expected stderr to contain "' + $case['Sig'] + '"' }
+        } elseif ($case['Expect'] -eq 'rewrite') {
+            # Any parse or member-access throw means the hook's stdout was not the expected JSON;
+            # that is a case failure, never a harness abort. Signatures match against the DECODED
+            # updatedToolOutput strings only, never raw stdout: 5.1's ConvertTo-Json \u-escapes
+            # characters pwsh 7 leaves literal, so raw assertions would diverge across platforms.
+            $updated = ''
+            try {
+                $json = ConvertFrom-Json -InputObject $out
+                $u = $json.hookSpecificOutput.updatedToolOutput
+                if ($u -is [string]) { $updated = $u }
+                else { $updated = [string]$u.stdout + "`n" + [string]$u.stderr }
+            } catch {
+                $updated = ''
+            }
+            if ($rc -ne 0) { $problem = "expected exit 0, got $rc" }
+            elseif ($err.Length -gt 0) { $problem = 'expected empty stderr, got stderr output' }
+            elseif ($updated -eq '' -or $updated -eq "`n") { $problem = 'expected stdout JSON carrying hookSpecificOutput.updatedToolOutput' }
+            elseif ($updated.IndexOf($case['Sig'], [StringComparison]::Ordinal) -lt 0) { $problem = 'expected updatedToolOutput to contain "' + $case['Sig'] + '"' }
         } else {
             # deny: any parse or member-access throw below means the hook's stdout was not the
             # expected JSON; that is a case failure, never a harness abort.

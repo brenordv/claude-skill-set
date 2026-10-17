@@ -139,11 +139,26 @@ var issuedAt = DateTime.UtcNow.AddDays(-30);
 var issuedAt = new DateTime(2024, 1, 15);
 ```
 
-When the code under test reads the clock itself, inject the time (`TimeProvider` or the repo's
-clock abstraction) and fake it in the test; asserting against the real `DateTime.UtcNow` from both
-sides is a race. A fixed literal date is right only when that exact value is the behavior under
-test (a leap-day boundary, the precise input from a regression); extract it to a `static readonly`
-field whose name states the reason:
+Read the signature before deciding how the test controls time. When the method already takes the
+instant as a parameter (`DateOnly day`, `DateTime asOf`), the test passes it and nothing is
+injected. A `day ?? DateOnly.FromDateTime(DateTime.UtcNow)` fallback that every production caller
+bypasses is the thing to remove (make the parameter required, and let the test that covered the
+fallback go with it), never a reason to add a clock beside the parameter:
+
+```csharp
+// Good: the method takes the instant; the test passes it
+var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+var report = sut.Create(items, yesterday);
+
+// Bad: a clock abstraction added beside a parameter that already carries the instant
+var sut = new ReportBuilder(new FakeTimeProvider(DateTimeOffset.UtcNow.AddDays(-1)));
+```
+
+`TimeProvider` (or the repo's clock abstraction) is for code that must read the clock itself and has
+no caller to hand it the instant; there, inject it and fake it in the test, because asserting
+against the real `DateTime.UtcNow` from both sides is a race. A fixed literal date is right only
+when that exact value is the behavior under test (a leap-day boundary, the precise input from a
+regression); extract it to a `static readonly` field whose name states the reason:
 
 ```csharp
 private static readonly DateTime LeapDayBoundary = new(2024, 2, 29);
@@ -190,6 +205,62 @@ Fakes stay minimal: implement only what the tests exercise, expose captured stat
 - Target **90%+** code coverage (but consider ROI -- don't test trivial getters/setters)
 - Always run `dotnet test` before handoff to verify all tests pass
 - Every new feature or bug fix must include corresponding tests
+
+## xUnit v3 and Microsoft.Testing.Platform repos
+
+xUnit v2 projects run on VSTest, the long-time default `dotnet test` engine. xUnit v3 projects build
+self-executing test hosts on Microsoft.Testing.Platform (MTP), and the two engines share the
+`dotnet test` command without sharing its argument surface. Detect the engine before choosing flags:
+an MTP repo references `xunit.v3` packages and usually opts into the .NET 10 SDK's MTP mode of
+`dotnet test` via `global.json`:
+
+```json
+{
+  "test": {
+    "runner": "Microsoft.Testing.Platform"
+  }
+}
+```
+
+On an MTP repo:
+
+- Run tests with plain `dotnet test`, one project or solution per invocation. The documented forms
+  are `dotnet test --project <csproj>`, `--solution <sln>`, and `--test-modules <dll glob>`;
+  arguments for the test host itself go after `--`. Unrecognized tokens interleaved with recognized
+  options can change meaning (a documented parser quirk), so one stray flag can break an otherwise
+  working run.
+- Read the exit code before diagnosing: exit 5 means the command-line arguments were invalid; exit 8
+  means zero tests were discovered. The console can print a "zero tests ran" banner on an exit-5
+  run, so the banner alone proves nothing. Treat exit 5 as an invocation bug: strip every flag,
+  retry bare `dotnet test` on one project, then add flags back one at a time. Never conclude the
+  runner or the v3 migration is broken from a single failing invocation, and never bypass
+  `dotnet test` by running the built host with `dotnet exec <dll>`: that skips restore and build and
+  can execute stale code.
+- VSTest-era flags don't carry over: no `--collect:"XPlat Code Coverage"`, no `--settings`, no
+  VSTest `--filter` syntax. xUnit v3 filters with its own switches: `--filter-class`,
+  `--filter-method`, `--filter-namespace`, `--filter-trait` (each with a `--filter-not-*` twin),
+  and `--filter-query` for the v3 query language, as in
+  `dotnet test -- --filter-query /[category=fast]`.
+- Coverage under MTP comes from an MTP extension, never the coverlet data collector. Two are
+  documented: `Microsoft.Testing.Extensions.CodeCoverage`
+  (`dotnet test -- --coverage --coverage-output-format cobertura`; formats `coverage`, `xml`,
+  `cobertura`) and `coverlet.MTP` (`dotnet test -- --coverlet --coverlet-output-format lcov`;
+  formats `json`, `lcov`, `opencover`, `cobertura`, `teamcity`).
+- `coverlet.collector` (SKILL.md §15) is a VSTest data collector with no role under MTP.
+  `Microsoft.NET.Test.Sdk` and `xunit.runner.visualstudio` are optional on an MTP-only project,
+  and xUnit.net recommends leaving them in place because VSTest mode and IDE test runners still
+  need them. Removing them is its own decision, never a side effect of other work.
+- The new-code quality gate below assumes the VSTest collector; on an MTP repo, produce the lcov
+  file with `coverlet.MTP` (`--coverlet-output-format lcov`) and hand it to the gate via
+  `--lcov-file`.
+
+Reference: the two `dotnet test` modes and the migration list at
+<https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-with-dotnet-test>, exit codes at
+<https://learn.microsoft.com/en-us/dotnet/core/testing/microsoft-testing-platform-troubleshooting>,
+xUnit v3 switches and package guidance at
+<https://xunit.net/docs/getting-started/v3/microsoft-testing-platform>, the query filter language at
+<https://xunit.net/docs/query-filter-language>, and the coverage extensions at
+<https://learn.microsoft.com/en-us/dotnet/core/testing/microsoft-testing-platform-code-coverage>.
 
 ## New-code quality gate
 
@@ -285,7 +356,7 @@ paths separate.
   `--since`. Iterate with `--skip-mutants`; the full gate waits for the user's opt-in and commit.
 - The gate assumes the VSTest runner, the current `dotnet test` default; the coverlet collector is
   a VSTest data collector, so a repo switched to Microsoft.Testing.Platform via `global.json`
-  needs the `--lcov-file` escape hatch.
+  needs the `--lcov-file` escape hatch (see "xUnit v3 and Microsoft.Testing.Platform repos" above).
 - The collector writes `coverage.info` into a per-run subfolder of the results directory with
   absolute source paths; the gate finds it by lcov grammar, not by name, and normalizes the paths.
 - A changed `.cs` file with no coverage record at all counts as fully uncovered rather than being

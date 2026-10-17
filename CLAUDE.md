@@ -44,8 +44,10 @@ yet. They bind in every context, main conversation and subagents alike, and beat
    as run only when its vault artifact exists and is named in the handoff; if the stage steps
    aren't quotable from context, re-read the workflow file before acting or claiming anything ran.
 7. **Simplest mechanism that handles the actual cases.** When an if/else or a direct call covers
-   the real inputs, use it; scaffolding for hypothetical future entries is a defect. Full rule in
-   `skills/brain/knowledge/coding-general.md` ⛔ Hard Rules.
+   the real inputs, use it; scaffolding for hypothetical future entries is a defect. A mechanism a
+   guideline names by example (`TimeProvider` for code that reads the clock) is no exception: when
+   the code already takes the value as a parameter, the parameter is the mechanism, and the test
+   passes it. Full rule in `skills/brain/knowledge/coding-general.md` ⛔ Hard Rules.
 8. **Never download and run software on your own.** A tool that is missing or the wrong version
    is a blocker to report with the exact install command for the user to run, never something to
    fix by fetching an installer, release binary, or script and executing it; global tool installs
@@ -53,10 +55,20 @@ yet. They bind in every context, main conversation and subagents alike, and beat
    Official source, temp directory, and "it unblocks the task" change nothing; consent is the
    user's explicit yes or a documented install flow they invoked by name. Full rule in
    `skills/brain/knowledge/coding-general.md` ⛔ Hard Rules.
+9. **The language skill and the topic's knowledge file load before the first edit, on every
+   path.** Writing or changing code in a language means its skill is read first (its `SKILL.md`
+   and the reference file it names for the work, `testing-guidelines.md` for tests), and any test
+   work also reads `skills/brain/knowledge/testing.md`. Task size never gates this: "add some
+   tests" is a C# task and a testing task, and "it looked small" is the rationalization this rule
+   exists for. If you can't name the skill file you read, you haven't loaded it. Full rule in
+   `skills/brain/knowledge/task-workflows.md` ⛔ Hard Rules.
 
-Additional knowledge files live in `skills/brain/knowledge/`. When starting a
-non-trivial task, list that folder and read any file whose topic relates
-to the task. Skills are surfaced separately by the agent runtime; follow
-their instructions when they apply.
+Additional knowledge files live in `skills/brain/knowledge/`. Before starting
+work on a task, list that folder and read every file whose topic the task
+touches (`testing.md` for tests, `security.md` for auth or input handling,
+`database.md` for schema or queries, and so on). The trigger is the topic,
+never the size of the task. Skills are surfaced separately by the agent
+runtime; the one for the language or framework being edited is read before
+the first edit, whatever the task looks like (item 9 above).
 
 Paths for those files are relative to this file's path. If any of the numbered files above is missing, tell the user before proceeding.

@@ -13,6 +13,11 @@ Before touching any code:
 - **Understand the context**: Why is this being done? What business or technical problem does it solve?
 - **Check constraints**: Are there performance targets, compatibility requirements, or deadlines?
 - **Read before writing**: Review the relevant code, understand existing patterns, and identify dependencies.
+- **Route before touching code**: name the skill for the language or framework the task touches and
+  the knowledge file for its topic (`testing.md` for anything that adds or changes a test,
+  `security.md` for auth or input handling, `database.md` for schema or queries), and read them now,
+  before the first edit. Size doesn't gate this: "add some tests" routes to the language skill plus
+  `testing.md` exactly as a feature would (`task-workflows.md` ⛔ Hard Rules item 5).
 
 **If anything is unclear, ask the user before proceeding.**
 
@@ -60,7 +65,13 @@ With a plan in hand:
 
 - **Work incrementally**: Complete one step at a time. Verify each step before moving to the next.
 - **Follow the knowledge guidelines**: Apply the relevant shared knowledge (coding-general, testing, security, etc.).
-- **Use the right skill**: If the task involves a specific language/framework, use its dedicated skill.
+- **Use the right skill**: the language or framework skill was read in §1, before the first edit;
+  apply it throughout, including the reference file it names for the work (`testing-guidelines.md`
+  for tests). Consulting it after a correction is not the same as having loaded it.
+- **A guideline's example is not an order**: when a rule names a mechanism (`TimeProvider` for code
+  that reads the clock), check what the code already offers first. If the method already takes the
+  value as a parameter, pass the parameter; adding the named mechanism beside it is the oversized
+  mechanism `coding-general.md` ⛔ Hard Rule 6 bans.
 - **Keep changes minimal**: Solve only what was asked. Resist scope creep.
 - **Write tests alongside code**: Don't defer testing until the end.
 
@@ -91,7 +102,7 @@ After implementation:
 Before handing off to the user:
 
 - **Summarize what was done**: Brief description of the changes and their purpose.
-- **List skills used**: Report which skills contributed to the solution (e.g., "Used: python, security, system-architect").
+- **List skills and knowledge files used**: Report the skill files and knowledge files actually read for the task (e.g., "Used: csharp (SKILL.md, testing-guidelines.md), brain/knowledge/testing.md, security"). Code written in a language whose skill is missing from this list is the gap it looks like.
 - **Report caveats**: Any limitations, trade-offs, assumptions, or potential issues the user should be aware of.
 - **Suggest follow-ups**: If there's related work that was out of scope but worth considering.
 
@@ -112,6 +123,10 @@ Before handing off to the user:
 ## Anti-Patterns
 
 - **Jumping straight to code** without understanding the problem.
+- **Skipping the language skill or a topical knowledge file** because the task looked small, then
+  filling the gap with habit.
+- **Applying a guideline's named mechanism literally** to code that already meets the rule's intent
+  through a parameter or an existing hook.
 - **Over-planning** for a trivial task; match effort to complexity.
 - **Ignoring existing patterns** in the codebase.
 - **Not testing**: every change should be verifiable.

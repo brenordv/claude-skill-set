@@ -1,16 +1,21 @@
 # Behavior case table shared by tools/test-hooks.sh (runs hooks/*.sh) and tools/test-hooks.ps1
-# (runs hooks/*.ps1). One row per case, five TAB-separated fields:
-#   hook<TAB>tool_name<TAB>tool_input JSON<TAB>verdict<TAB>signature
+# (runs hooks/*.ps1). One row per case, five required TAB-separated fields plus an optional sixth:
+#   hook<TAB>tool_name<TAB>tool_input JSON<TAB>verdict<TAB>signature[<TAB>tool_response JSON]
 # hook is the script base name, [a-z0-9-] only; each harness appends its own extension.
-# verdict is one of deny|allow|warn|silent. signature is the substring the deny reason (deny rows)
-# or stderr (warn rows) must contain, matched as a literal string; '-' means no signature and is
-# required on allow/silent rows, forbidden on deny/warn rows.
-# ASCII only, LF endings (pinned in .gitattributes), no TAB inside a field.
+# verdict is one of deny|allow|warn|silent|rewrite. signature is the substring the deny reason
+# (deny rows), stderr (warn rows), or decoded hookSpecificOutput.updatedToolOutput stdout/stderr
+# (rewrite rows) must contain, matched as a literal string; '-' means no signature and is required
+# on allow/silent rows, forbidden on deny/warn/rewrite rows. The sixth field becomes the payload's
+# tool_response; rewrite rows require it, and a trailing empty one is an error.
+# ASCII only, LF endings (pinned in .gitattributes), no TAB inside a field; non-ASCII content rides
+# as JSON \uXXXX escapes.
 # Placeholders each harness substitutes before dispatch, in forward-slash form: @WF_FIXDIR@ (that
-# run's warn-file-size fixture directory) and @REPO_ROOT@ (the checkout root).
+# run's warn-file-size fixture directory), @REPO_ROOT@ (the checkout root), @CTO_FILLER@ (100
+# JSON-escaped filler lines that clear compact-test-output's MIN_CHARS floor), and @LONG_LINE@
+# (one ~300KB line pinning pathological-input runtime).
 # Both harnesses verify the declared count below against the rows they parse; update it when
 # adding or removing rows.
-# cases: 60
+# cases: 86
 #
 # route-to-text-tools: file-probing, in-place-edit, and read-only-git shell commands
 route-to-text-tools	Bash	{"command":"grep -r foo ."}	deny	command's OWN output
@@ -88,3 +93,37 @@ warn-writing-tells	Edit	{"file_path":"src/app.py","old_string":"x","new_string":
 warn-writing-tells	Write	{"file_path":"docs/notes.md","content":"plain text, no tells"}	silent	-
 warn-writing-tells	Write	{"file_path":"skills/brain/knowledge/writing-style.md","content":"quotes \u2014 the banned character"}	silent	-
 warn-writing-tells	Edit	{"file_path":"docs/notes.md","old_string":"a \u2014 b","new_string":"a, b"}	silent	-
+#
+# compact-test-output (PostToolUse): a passing run collapses to its summary, a run carrying failure
+# indicators keeps every unrecognized line and drops only known noise, and anything the hook cannot
+# positively classify passes through silently. The sixth field is the payload's tool_response.
+compact-test-output	Bash	{"command":"dotnet test"}	rewrite	dotnet test passed;	{"stdout":"  Determining projects to restore...\n  Passed Demo.Tests.MathTests.Adds_TwoNumbers [1 ms]\n@CTO_FILLER@Passed!  - Failed:     0, Passed:    14, Skipped:     0, Total:    14, Duration: 51 ms - Demo.Tests.dll (net8.0)","stderr":"","interrupted":false,"isImage":false}
+compact-test-output	Bash	{"command":"dotnet test; echo done"}	rewrite	Assert.Throws() Failure	{"stdout":"  Determining projects to restore...\n  Passed Demo.Tests.MathTests.Adds_TwoNumbers [1 ms]\n  Failed Demo.Tests.MathTests.Divides_ByZero_Throws [8 ms]\n  Error Message:\n   Assert.Throws() Failure: No exception was thrown\n  Stack Trace:\n     at Demo.Tests.MathTests.Divides_ByZero_Throws() in /work/demo/MathTests.cs:line 42\n@CTO_FILLER@Failed!  - Failed:     1, Passed:    1, Skipped:     0, Total:    2, Duration: 9 ms - Demo.Tests.dll (net8.0)\ndone","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test; echo done"}	rewrite	dotnet test: dropped	{"stdout":"  Determining projects to restore...\n  Passed Demo.Tests.MathTests.Adds_TwoNumbers [1 ms]\n  Failed Demo.Tests.MathTests.Divides_ByZero_Throws [8 ms]\n  Error Message:\n   Assert.Throws() Failure: No exception was thrown\n  Stack Trace:\n     at Demo.Tests.MathTests.Divides_ByZero_Throws() in /work/demo/MathTests.cs:line 42\n@CTO_FILLER@Failed!  - Failed:     1, Passed:    1, Skipped:     0, Total:    2, Duration: 9 ms - Demo.Tests.dll (net8.0)\ndone","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test"}	rewrite	Test summary: total: 14, failed: 0	{"stdout":"@CTO_FILLER@Test summary: total: 14, failed: 0, succeeded: 14, skipped: 0, duration: 1.2s","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test"}	rewrite	warning CS0618	{"stdout":"src/Demo/Program.cs(10,5): warning CS0618: Foo is obsolete\n@CTO_FILLER@  Passed Demo.Tests.MathTests.Adds_TwoNumbers [1 ms]\nPassed!  - Failed:     0, Passed:    1, Skipped:     0, Total:    1, Duration: 5 ms - Demo.Tests.dll (net8.0)","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test && echo done"}	rewrite	done	{"stdout":"@CTO_FILLER@  Passed Demo.Tests.MathTests.Adds_TwoNumbers [1 ms]\nPassed!  - Failed:     0, Passed:    1, Skipped:     0, Total:    1, Duration: 4 ms - Demo.Tests.dll (net8.0)\ndone","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"ls -la"}	silent	-	{"stdout":"@CTO_FILLER@","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test"}	silent	-	{"stdout":"Passed!  - Failed:     0, Passed:    2, Skipped:     0, Total:    2, Duration: 5 ms - Demo.Tests.dll (net8.0)","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test #keep-output"}	silent	-	{"stdout":"@CTO_FILLER@Passed!  - Failed:     0, Passed:    14, Skipped:     0, Total:    14, Duration: 51 ms - Demo.Tests.dll (net8.0)","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test | tail -5"}	silent	-	{"stdout":"@CTO_FILLER@","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test"}	silent	-	{"stdout":"@CTO_FILLER@Passed!  - Failed:     0, Passed:    14, Skipped:     0, Total:    14, Duration: 51 ms - Demo.Tests.dll (net8.0)","stderr":"","interrupted":true}
+compact-test-output	Bash	{"command":"pytest"}	rewrite	14 passed in 0.12s	{"stdout":"@CTO_FILLER@============= 14 passed in 0.12s =============","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"pytest || true"}	rewrite	test_divide_by_zero FAILED	{"stdout":"platform darwin -- Python 3.12.1, pytest-8.3.2\nrootdir: /work/demo\ncollected 14 items\ntests/test_app.py::test_ok PASSED [  7%]\n@CTO_FILLER@=================================== FAILURES ===================================\n_______________________________ test_divide_by_zero _______________________________\nE       assert 0\ntests/test_app.py::test_divide_by_zero FAILED [ 50%]\n========================= 1 failed, 13 passed in 1.20s =========================","stderr":"","interrupted":false}
+# pytest -q prints its summary without the = bars; the quiet shape collapses, and the sneg guard
+# still blocks a collapse when that summary carries an error count.
+compact-test-output	Bash	{"command":"pytest -q"}	rewrite	pytest passed;	{"stdout":"@CTO_FILLER@..............                                                           [100%]\n14 passed in 0.12s","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"pytest -q"}	silent	-	{"stdout":"@CTO_FILLER@..E                                                                      [100%]\n2 passed, 1 error in 0.10s","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"cargo test"}	rewrite	test result: ok. 24 passed; 0 failed	{"stdout":"@CTO_FILLER@test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"npx jest"}	rewrite	Tests:       42 passed, 42 total	{"stdout":"","stderr":"PASS src/app.test.ts\n  \u2713 adds numbers (3 ms)\n@CTO_FILLER@Tests:       42 passed, 42 total\nTest Suites: 5 passed, 5 total","interrupted":false}
+compact-test-output	Bash	{"command":"npm test || true"}	rewrite	Expected: 4	{"stdout":"","stderr":"FAIL src/math.test.ts\n  \u2713 adds numbers (3 ms)\n  \u2715 multiplies numbers (5 ms)\n  \u25cf multiplies numbers\n    Expected: 4\n    Received: 5\n@CTO_FILLER@Tests:       1 failed, 41 passed, 42 total\nTest Suites: 1 failed, 4 passed, 5 total","interrupted":false}
+# vitest's default reporter has no colons: "Tests  5 passed (5)" is the success line, "Test Files" /
+# "Start at" / "Duration" ride along, and a failed file is marked with U+276F.
+compact-test-output	Bash	{"command":"npx vitest run"}	rewrite	jest/vitest passed;	{"stdout":" RUN  v3.0.5 /work/demo\n\n ✓ src/app.test.ts (3 tests) 5ms\n ✓ src/math.test.ts (2 tests) 3ms\n@CTO_FILLER@ Test Files  2 passed (2)\n      Tests  5 passed (5)\n   Start at  12:34:32\n   Duration  1.26s (transform 35ms, setup 1ms, collect 90ms, tests 8ms, environment 0ms, prepare 267ms)","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"npx vitest run"}	rewrite	Tests  5 passed (5)	{"stdout":" RUN  v3.0.5 /work/demo\n\n ✓ src/app.test.ts (3 tests) 5ms\n ✓ src/math.test.ts (2 tests) 3ms\n@CTO_FILLER@ Test Files  2 passed (2)\n      Tests  5 passed (5)\n   Start at  12:34:32\n   Duration  1.26s (transform 35ms, setup 1ms, collect 90ms, tests 8ms, environment 0ms, prepare 267ms)","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"npx vitest run || true"}	rewrite	AssertionError: expected 5 to be 4	{"stdout":" RUN  v3.0.5 /work/demo\n\n ✓ src/app.test.ts (3 tests) 5ms\n ❯ src/math.test.ts (2 tests | 1 failed) 8ms\n   × multiplies numbers 5ms\n     → expected 5 to be 4\n@CTO_FILLER@⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  src/math.test.ts > multiplies numbers\nAssertionError: expected 5 to be 4\n\n Test Files  1 failed | 1 passed (2)\n      Tests  1 failed | 4 passed (5)\n   Start at  12:34:32\n   Duration  1.30s","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test"}	silent	-	"Exit code 0\n@CTO_FILLER@Passed!  - Failed:     0, Passed:    14, Skipped:     0, Total:    14, Duration: 51 ms - Demo.Tests.dll (net8.0)"
+compact-test-output	Bash	{"command":"dotnet test"}	silent	-	42
+compact-test-output	Bash	{"command":"dotnet test"}	silent	-	{"stdout":"@CTO_FILLER@","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test"}	rewrite	Passed!  - Failed:     0,	{"stdout":"@LONG_LINE@\nPassed!  - Failed:     0, Passed:    2, Skipped:     0, Total:    2, Duration: 5 ms - Demo.Tests.dll (net8.0)","stderr":"","interrupted":false}
+compact-test-output	Bash	{"command":"dotnet test; echo x"}	rewrite	boom	{"stdout":"  Passed Demo.Tests.MathTests.Adds_TwoNumbers [1 ms]\n  Failed Demo.Tests.MathTests.Divides_ByZero_Throws [1 ms]\n  Error Message:\n   boom\n@LONG_LINE@\nFailed!  - Failed:     1, Passed:    1, Skipped:     0, Total:    2, Duration: 9 ms - Demo.Tests.dll (net8.0)\nx","stderr":"","interrupted":false}

@@ -6,10 +6,10 @@ strongest exactly where recall is weakest (fresh chat, long context, deep in a t
 depend on recall. It intercepts the tool call after the model emits it and before it runs, and its
 denial message lands in context at the one moment it steers the next attempt.
 
-This folder holds six independent hooks, each shipped as a Windows `.ps1` and a POSIX `.sh` with
+This folder holds seven independent hooks, each shipped as a Windows `.ps1` and a POSIX `.sh` with
 identical behavior, each failing open. Four are `PreToolUse`: three match the shell tools
-(`Bash|PowerShell`), one matches the native file tools (`Glob|Grep|Read`). The other two are
-`PostToolUse`, matching the write tools (`Write|Edit`):
+(`Bash|PowerShell`), one matches the native file tools (`Glob|Grep|Read`). The other three are
+`PostToolUse`: two match the write tools (`Write|Edit`), one matches the shell tools:
 - **route-to-text-tools** routes file-probing, in-place-edit, and read-only-git shell commands to the
   `text-search`, `text-edit`, and `git-ops` MCPs.
 - **block-secrets** hard-blocks shell commands that read, write, or copy secret-looking files.
@@ -23,6 +23,10 @@ identical behavior, each failing open. Four are `PreToolUse`: three match the sh
 - **warn-writing-tells** (PostToolUse) warns when the text a `Write`/`Edit` just added carries a
   hard-banned writing tell (an em-dash or a curly quote/apostrophe, per `writing-style.md`). It
   scans only the added text and never blocks.
+- **compact-test-output** (PostToolUse) rewrites noisy test-runner output (`dotnet test`,
+  `pytest`, `cargo test`, jest/vitest) before the model reads it: a passing run collapses to its
+  summary line(s), and when failure indicators are present only positively identified noise is
+  dropped. An unrecognized line is never dropped, so errors survive by construction.
 
 > [!IMPORTANT]
 > It is crucial to know that those hooks are not a foolproof, be-all, end-all security solution. 
@@ -159,7 +163,7 @@ behavior; keep them in sync when you tune one.
 
 ### Verify
 
-All six hooks run together from the repo root with `bash tools/test-hooks.sh`: it parses every
+All seven hooks run together from the repo root with `bash tools/test-hooks.sh`: it parses every
 script, guards against the command-substitution heredoc that broke them on macOS bash 3.2, checks the
 file-size thresholds stay in sync across hooks and gates, and checks every verdict in the tables
 above. On Windows, `tools\test-hooks.ps1` runs the `.ps1` hooks against the same case table (see
@@ -263,7 +267,7 @@ open.
 
 ### Verify
 
-The full harness for all six hooks runs from the repo root with `bash tools/test-hooks.sh` (on
+The full harness for all seven hooks runs from the repo root with `bash tools/test-hooks.sh` (on
 Windows, `tools\test-hooks.ps1` runs the `.ps1` side against the same case table); the hand checks
 below exercise just this one.
 
@@ -333,7 +337,7 @@ open.
 
 ### Verify
 
-The full harness for all six hooks runs from the repo root with `bash tools/test-hooks.sh` (on
+The full harness for all seven hooks runs from the repo root with `bash tools/test-hooks.sh` (on
 Windows, `tools\test-hooks.ps1` runs the `.ps1` side against the same case table); the hand checks
 below exercise just this one.
 
@@ -447,7 +451,7 @@ picked up until then).
 
 ### Verify
 
-The full harness for all six hooks runs from the repo root with `bash tools/test-hooks.sh` (on
+The full harness for all seven hooks runs from the repo root with `bash tools/test-hooks.sh` (on
 Windows, `tools\test-hooks.ps1` runs the `.ps1` side against the same case table); the hand checks
 below exercise just this one.
 
@@ -631,7 +635,7 @@ needed, and it fails open.
 
 ### Verify
 
-The full harness for all six hooks covers it (`bash tools/test-hooks.sh`; on Windows,
+The full harness for all seven hooks covers it (`bash tools/test-hooks.sh`; on Windows,
 `tools\test-hooks.ps1`). The `.sh` also has a `--text` self-test that classifies a raw string with
 neither JSON nor Claude Code:
 
@@ -651,6 +655,140 @@ either script warns with exit 2 and `[warn-writing-tells]` lines on stderr, or e
 - **Skip list:** the `SKIP` regex (`.sh`) or `$skip` (`.ps1`); extend it when a file legitimately
   quotes the banned characters. Keep both scripts in sync.
 
+## compact-test-output
+
+The seventh hook, and the first `PostToolUse` one on the shell tools: matcher `Bash|PowerShell`,
+shipped as `compact-test-output.ps1` / `compact-test-output.sh`. It rewrites a test run's result
+before the model reads it, through `hookSpecificOutput.updatedToolOutput`: a passing run collapses
+to its summary line(s), and a run whose output carries failure indicators keeps every unrecognized
+line verbatim while dropping positively identified noise (per-test pass lines, restore and build
+chatter). Claude Code's own control for oversized output is `BASH_MAX_OUTPUT_LENGTH`, a size
+truncation with no understanding of content: a huge passing run still spends its whole budget on
+noise, and the cut is positional, so it can land on the one part that mattered. This hook cuts by
+meaning instead, under one invariant: only known noise is ever dropped, so errors survive by
+construction, and anything the hook cannot positively classify passes through untouched.
+
+The replacement is an object mirroring the Bash `tool_response` shape with only `stdout` and
+`stderr` rewritten; Claude Code validates that shape and uses the original output on any mismatch.
+Both modes prepend a `[compact-test-output]` header naming the runner, the line counts, and the
+`#keep-output` escape hatch. `PostToolUse` fires only for commands that exited 0; a nonzero exit
+routes to `PostToolUseFailure`, which cannot rewrite what the model sees (the open upstream
+request is anthropics/claude-code#97278), so a plain failing run passes through untouched. The
+failure-shaped output this hook does filter arrives when a compound command masks the exit
+(`dotnet test; echo done`, `pytest || true`) or a diagnostic rides a passing run.
+
+Runners covered: `dotnet test` (VSTest and MTP summary shapes), `pytest` (default and `-q`
+summary shapes), `cargo test` / `cargo nextest run`, and jest/vitest (via `npm`, `yarn`, or
+`pnpm test`, `npx jest`, `npx vitest`).
+The console line shapes are empirical, pinned by the harness's case table; a drifted pattern
+degrades to pass-through, never to dropped errors.
+
+### What it rewrites, and what it does not
+
+| Run | Result |
+|---|---|
+| `dotnet test`, all passing, 200 lines of restore/build/per-test noise | rewrite: header + the `Passed!` / `Test summary:` line(s) |
+| `pytest -q` / `cargo test` / `npx jest` / `npx vitest run`, all passing | rewrite: header + the summary line(s) |
+| `dotnet test; echo done` where a test failed (exit masked by the `;`) | rewrite: noise dropped; failure block, summary, and `done` kept verbatim |
+| a passing run with `: warning CS0618:` in the build output | rewrite: noise dropped, the warning kept (a diagnostic blocks the collapse) |
+| plain failing `dotnet test` (exit 1) | **untouched** (routes to PostToolUseFailure, which cannot rewrite) |
+| `dotnet test \| tail -20`, `dotnet test #keep-output`, output under 1,500 chars | **untouched** (already trimmed / escape hatch / too small to matter) |
+| `go test`, `rspec`, other runners; interrupted runs; unexpected payload shapes | **untouched** (outside the runner table / fail open) |
+
+The replacement is never larger than the original: it is a subset of the original lines plus one
+header line, so the only size limit in play is Claude Code's own Bash output window
+(`BASH_MAX_OUTPUT_LENGTH`, 30,000 characters by default), applied before the hook sees the output.
+A failing run with a lot to say keeps all of it. A payload past 2 MB passes through unparsed
+(`CTO_BYTE_CAP`): on exactly the runs where size hurts most the hook steps aside rather than
+regex-churn megabytes, so if a giant run comes back unfiltered, that cap is why; raise it or pipe
+the command to `tail` yourself.
+
+### Install
+
+Same mechanics as the other hooks, registered under `hooks.PostToolUse` with matcher
+`Bash|PowerShell`. Copy the script for your OS (`compact-test-output.ps1` on Windows,
+`compact-test-output.sh` on macOS/Linux) to `~/.claude/hooks/` and add the group:
+
+**Windows**:
+
+```jsonc
+{
+  "hooks": {
+    "PostToolUse": [
+      // ...existing hook groups stay as they are...
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\compact-test-output.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**macOS / Linux**:
+
+```jsonc
+{
+  "hooks": {
+    "PostToolUse": [
+      // ...existing hook groups stay as they are...
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/compact-test-output.sh\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Requirements match the other shell hooks (Windows `powershell.exe`; macOS/Linux `bash` + `perl`
+with `JSON::PP` core), and it fails open. Reload with `/hooks` or a restart.
+
+### Verify
+
+The full harness for all seven hooks covers it (`bash tools/test-hooks.sh`; on Windows,
+`tools\test-hooks.ps1`). The `.sh` also has a `--filter` self-test that runs the whole pipeline on
+raw text from stdin, with no JSON and no Claude Code:
+
+```bash
+s=~/.claude/hooks/compact-test-output.sh
+dotnet test 2>&1 | bash "$s" --filter 'dotnet test'   # -> the replacement text
+bash "$s" --filter 'dotnet test | tail -5' </dev/null # -> skip:piped
+bash "$s" --filter 'dotnet test #keep-output' </dev/null  # -> skip:keep-output
+bash "$s" --filter 'ls -la' </dev/null                # -> skip:no-runner
+printf 'tiny\n' | bash "$s" --filter 'dotnet test'    # -> passthrough:short
+```
+
+The reason codes answer "why didn't it filter": `skip:keep-output` / `skip:piped` /
+`skip:no-runner` for the command, `passthrough:short` / `passthrough:byte-cap` /
+`passthrough:nothing-dropped` for the output. If collapses stop appearing after a runner upgrade,
+capture one raw run and feed it to `--filter`: the reason code or unchanged text shows which
+pattern no longer matches.
+
+### Tuning
+
+- **Runner table:** `@RUNNERS` (`.sh`) / `$runners` (`.ps1`), one entry per runner with `match`
+  (the invoking statement), `spos`/`sneg` (a line proving a zero-failure run), `keep` (summary
+  lines a collapse retains), `noise` (lines noise-drop removes), and `fail` (indicators that block
+  a collapse). Add a runner by adding one entry to both scripts; keep every pattern line-anchored
+  and free of nested quantifiers, and pin it with rows in `tools/hook-cases.tsv`.
+- **Thresholds:** `CTO_MIN_CHARS` / `CTO_BYTE_CAP` (`.sh`) and `$minChars` / `$byteCap` (`.ps1`);
+  keep the pairs in sync.
+- **Escape hatch:** the `#keep-output` marker is a plain contains-check on the command; reword it
+  in both scripts if your shell aliases collide with it.
+
 ## Protected MCP stores (guard-file-targets + block-secrets)
 
 `guard-file-targets` and `block-secrets` each carry a `PROTECTED_STORES` tunable (`$protectedStores`
@@ -663,13 +801,14 @@ shell command naming one has no legitimate use. Set the same regex in all four s
 portable enforcement; for a hard wall, put the store under filesystem permissions the agent's
 process cannot read.
 
-## Full install: all six hooks at once
+## Full install: all seven hooks at once
 
-For a fresh machine, copy the six scripts for your OS into `~/.claude/hooks/`, then paste the
+For a fresh machine, copy the seven scripts for your OS into `~/.claude/hooks/`, then paste the
 whole `hooks` block below into `~/.claude/settings.json` (merge it if the file already has other
 keys). Each hook is its own group; every group runs on each matching tool call, a deny from any
-`PreToolUse` group blocks the call, and the two `PostToolUse` groups only warn after the
-write. Reload with `/hooks` or a restart when done.
+`PreToolUse` group blocks the call, and the three `PostToolUse` groups act only after the tool
+ran: two warn, one rewrites the test output the model reads. Reload with `/hooks` or a restart
+when done.
 
 **Windows**:
 
@@ -762,6 +901,20 @@ write. Reload with `/hooks` or a restart when done.
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+              "-File", "C:\\Users\\<you>\\.claude\\hooks\\compact-test-output.ps1"
+            ],
+            "timeout": 10
+          }
+        ]
       }
     ]
   }
@@ -810,6 +963,12 @@ write. Reload with `/hooks` or a restart when done.
         "matcher": "Write|Edit",
         "hooks": [
           { "type": "command", "command": "bash \"$HOME/.claude/hooks/warn-writing-tells.sh\"", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/compact-test-output.sh\"", "timeout": 10 }
         ]
       }
     ]

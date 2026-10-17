@@ -52,9 +52,22 @@ runtime surfaces mid-session:
    the drift-risk window stays visible in the audit trail.
 4. **Precedence**: the runtime listing a similarly-named skill, a session hint recommending one, or
    an earlier turn that used one is a bug to flag, not permission.
+5. **The path decides how much review runs, never what loads.** On every path, lightweight
+   included, two reads precede the first edit: the skill for the language or framework being
+   touched (its `SKILL.md` plus the reference file it names for the work at hand,
+   `testing-guidelines.md` for anything that adds or changes a test) and the knowledge file for
+   the task's topic (`brain/knowledge/testing.md` for test work, `brain/knowledge/security.md`
+   for auth or input handling, `brain/knowledge/database.md` for schema or queries). Task size
+   picks the path; it never decides whether the rules for the task's language and topic apply.
+   "Add some tests" is a C# task and a testing task however small the diff, and "it looked small,
+   so I went straight to the diff" is the exact rationalization this rule exists to block. A
+   handoff for code written without naming the skill file that was read is a violation on its
+   face.
 
 **Self-check**: before invoking any planning or review skill, ask "is this the skill set's own
-skill?" Before writing "I ran X", ask "can I name X's artifact?"
+skill?" Before writing "I ran X", ask "can I name X's artifact?" Before the first edit, ask "which
+skill file and which knowledge file did I read for this task?" If the answer is none, stop and read
+them.
 
 ### Choosing a workflow
 
@@ -68,14 +81,17 @@ Pick the path by the task in front of you, before starting:
 - **Lightweight path**: a small, low-risk, mechanical change: a one-liner, a typo or copy fix, a config
   tweak, a doc edit, a rename. Skip the review panel entirely: make the change, run the verify gate (below),
   and give it one focused self-review. Don't spin up system-architect, security, or observability for this.
+  The language skill and the topic's knowledge file are not on that skip list: they load on this path
+  as on every other (⛔ Hard Rules item 5).
 - **Neither**: a read-only question or a conversational answer runs no workflow.
 
 If a task looks lightweight but the change turns out to touch behavior, security, or multiple systems,
 stop and escalate to full-work rather than pushing a large change through the light path.
 
 Whatever the choice, the final handoff names the path that ran (full-work, lightweight, planning-only,
-or none), so a report with no vault artifacts is legitimate only under a declared non-full-work path
-(⛔ Hard Rules item 2).
+or none) and the skill and knowledge files read for it, so a report with no vault artifacts is
+legitimate only under a declared non-full-work path (⛔ Hard Rules item 2), and a report of code
+written with no skill file named shows the Hard Rules item 5 gap in plain sight.
 
 ### Full-work workflow
 
@@ -166,8 +182,8 @@ and the workflow proceeds directly to Stage 2 without pausing.
 
 On completion, the review is saved to the vault, and the workflow returns to the user with a summary of the
 work plus the compliance ledger: the workflow path that ran (full-work, lightweight, or planning-only), the
-exact vault note names for the plan, the checkpoint, and the review, the per-command verify results (build,
-lint, tests), and the review outcome. The ledger is what makes the report checkable: one `vault_get` on a
+skill and knowledge files loaded for the work, the exact vault note names for the plan, the checkpoint,
+and the review, the per-command verify results (build, lint, tests), and the review outcome. The ledger is what makes the report checkable: one `vault_get` on a
 named note confirms a stage ran (⛔ Hard Rules item 2).
 
 #### Progress checkpoints (crash recovery)

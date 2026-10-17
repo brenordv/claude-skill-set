@@ -1,6 +1,6 @@
 # Testing Best Practices
 
-These guidelines apply to all coding and game development skills regardless of language or framework. They define the quality bar for test code.
+These guidelines apply to all coding and game development skills regardless of language or framework. They define the quality bar for test code. Read this file before adding or changing any test, whatever the size of the task, together with the routed language skill's `testing-guidelines.md`.
 
 ---
 
@@ -70,7 +70,11 @@ Keep each section clearly separated. One logical assertion per test (multiple `a
 ### Determinism
 
 - No test should fail randomly (flaky tests erode trust).
-- Mock time, random values, and external services.
+- Mock time, random values, and external services. For time, read the signature before reaching for
+  a clock abstraction: when the code under test already takes the instant as a parameter, the test
+  passes it, and a real-clock fallback on that parameter that no production caller uses is removed
+  rather than faked around. Inject a clock only for code that must read the clock itself and has no
+  caller to hand it the instant.
 - Avoid dependencies on system state (file system, network, environment).
 - **Hard-coded calendar dates rot.** Arrangement data that means "recent", "last month", or
   "expired" derives from the current clock (offsets from now) or the test's fake clock, never a
@@ -170,3 +174,4 @@ When multiple test cases share the same logic but differ in input/output:
 | Slow test suites | Developers skip running them | Isolate slow tests |
 | No tests at all | Refactoring is terrifying | Start with critical paths |
 | Reverting code to satisfy a stale test | Locks in behavior the change meant to replace | Update or delete the test to match the intended behavior |
+| A clock abstraction added beside a parameter that already carries the instant | Two ways to set the time; a mechanism heavier than the case | Pass the instant through the existing parameter; drop the unused real-clock fallback |
