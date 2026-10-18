@@ -1,5 +1,31 @@
 # Changelog
 
+## v15
+- Aligned the MCP knowledge files with mcp-toolset v22. `git-readonly-operations.md` maps
+  `git show <ref>:<path>` to the new `git_file_at_ref` and `git ls-files --stage` to `git_ls_files`
+  with `stage: true` (git-ops v2.2.0), notes that `git_show` now rejects a `<rev>:<path>` ref, and
+  says the secret-file ban is the only guard on `git_file_at_ref`, since git-ops has no denylist.
+  `text-search-operations.md` covers tier specificity beating directory depth (v1.4.4), the
+  `build/**` `include_ignored` example and the pre-v1.4.5 short-or-empty `truncated: true` result
+  on scoped selections (v1.4.5), and `PatternInvalid` for an uncompilable glob plus the
+  `InternalError` cases (v1.4.2, v1.4.6). `text-edit-operations.md` covers the `ignore_file`
+  refusal and undo skip (v1.4.0), `truncated` and `skipped_symlinks` on sweeps (v1.5.0, and
+  Hard Rule 4's dry-run review now checks `truncated`), the unreadable-ignore-file `InternalError`,
+  writable agent config inside the base root, and corrects the denylisted-`paths` note: those files
+  are dropped without a report, not refused.
+- `security-hardening.md`: `mcp__skill-stats` joins the suggested `allow` list, and the notes show
+  how to make agent config unwritable to `text-edit` with `MCP_TEXTEDIT_EXTRA_DENY`.
+  `install-reference.md` asks about that opt-out during `text-edit` configuration.
+- `install-reference.md` now installs `skill-stats` with its `skill-stats-cli` hook. Before, the
+  hook was left to the CLI's README, which ground rule 3 forbids the installing agent from acting
+  on, so the store was never created and the `usage_summary` smoke call failed Step 4 with
+  `StoreUnavailable`, blocking the manifest. The new "The skill-stats hook" section carries the
+  `PostToolUse` registration per OS (`cmd.exe /c` on Windows, which doesn't start a bare `.exe`),
+  Step 4 runs one skill before checking `total_records`, and the manifest records `hookPath`.
+- `route-to-text-tools` (`.sh` and `.ps1`) and the `hooks/README.md` table: the git-ops redirect
+  hint now sends `git show <ref>:<path>` to `git_file_at_ref` and `git ls-files --stage` to
+  `git_ls_files` with `stage: true`, so a denied shell call lands on a tool that accepts it.
+
 ## v14
 - Added `task-workflows.md` ⛔ Hard Rule 5: the workflow path decides how much review runs, never
   what loads. On every path, lightweight included, the skill for the language being touched (its

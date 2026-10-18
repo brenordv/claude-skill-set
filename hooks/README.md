@@ -66,7 +66,7 @@ rail. The hook removes the dependency on the rule being remembered.
 | `jq '.key' file` leading a stage, `jq . < file`, `jq -n` with `--slurpfile`/`--argfile`/`-f`/`inputs`                  | deny      | `read_json`                            |
 | `python -c`/`node -e` one-liners that open a file (`open(`, `read_text`, `readFile*`)                                  | deny      | `read_json` / `read_lines`             |
 | `sed -i`, `perl -pi -e`, `Set-Content`/`Add-Content`/`Out-File`                                                        | deny      | `replace_text` / `normalize_files`     |
-| `git grep`/`log`/`diff`/`show`/`status`/`blame`/`ls-files`, `git branch` (list), `git reflog`, `git stash list`/`show` | deny      | `git-ops` (`git_grep`, `git_log`, ...) |
+| `git grep`/`log`/`diff`/`show`/`status`/`blame`/`ls-files`, `git branch` (list), `git reflog`, `git stash list`/`show` | deny      | `git-ops` (`git_grep`, `git_log`, ...; `git show <ref>:<path>` -> `git_file_at_ref`) |
 | `git commit`/`add`/`push`/`checkout`/`reset`/`merge`, `git branch -d`, `git stash pop`, `git tag <name>`               | **allow** | shell git is fine for writes           |
 | `dotnet test \| tail -20`, `curl ... \| jq '.x'` (downstream of a pipe)                                                | **allow** | output trimming, not probing           |
 | `jq -n '{...}'` (null input, no file flags), `python3 -c "print(1+2)"` (no file-open token)                            | **allow** | constructs JSON / computes, no read    |

@@ -49,7 +49,7 @@ Walk these with the user before touching anything. Every default is changeable.
 | 1 | Deploy mode: copy `skills/` and the global `CLAUDE.md` into `~/.claude/`, or point Claude Code at the repo clone per project?                                 | Copy to `~/.claude/` (runtime-surfaced skills need it; repo mode only loads the knowledge base inside the repo)                                     |
 | 2 | Which of the seven hooks to install (`route-to-text-tools`, `block-secrets`, `guard-file-targets`, `block-vcs-writes`, `warn-file-size`, `warn-writing-tells`, `compact-test-output`)? | All seven                                                                                                                                             |
 | 3 | Copy `tools/` (the hook test harness and repo lint) next to the hooks? Only asked in copy mode; in repo mode they ride along with the clone.                  | Yes when any hook is installed, so the hooks can be re-verified later without the clone                                                             |
-| 4 | Which MCP servers? `vault`, `git-ops`, `text-search`, `text-edit`, `skill-stats` (cross-platform), `os-doctor` (Windows only).                                | All that fit the OS. `vault` is required for the workflow precedent archives; the skills degrade gracefully without the others. None at all is fine |
+| 4 | Which MCP servers? `vault`, `git-ops`, `text-search`, `text-edit`, `skill-stats` (cross-platform), `os-doctor` (Windows only).                                | All that fit the OS. `vault` is required for the workflow precedent archives; the skills degrade gracefully without the others. None at all is fine. Choosing `skill-stats` also installs its `skill-stats-cli` hook, the only thing that feeds it data |
 | 5 | Per server: download the latest GitHub release, or clone and build from source?                                                                               | Release for the mcp-toolset servers. For os-doctor, check its releases page; build from source if there are no assets                               |
 | 6 | Where do the server binaries live?                                                                                                                            | `~/.claude/mcp-servers/<server>/`                                                                                                                   |
 
@@ -85,7 +85,7 @@ Fetch only from these two repositories, by these exact slugs. Never resolve a se
 | `git-ops`     | `github.com/brenordv/mcp-toolset`   | Read-only git inspection                                                                |
 | `text-search` | `github.com/brenordv/mcp-toolset`   | Root-confined search; needs a base root configured                                      |
 | `text-edit`   | `github.com/brenordv/mcp-toolset`   | Root-confined edits; needs a base root configured                                       |
-| `skill-stats` | `github.com/brenordv/mcp-toolset`   | Usage stats; the repo also ships a `skill-stats-cli` hook binary, covered by its README |
+| `skill-stats` | `github.com/brenordv/mcp-toolset`   | Usage stats; installed with its `skill-stats-cli` hook (see "The skill-stats hook")     |
 | `os-doctor`   | `github.com/brenordv/mcp-os-doctor` | Windows only                                                                            |
 
 The names in the first column matter: the knowledge files and hooks address the servers by exactly
@@ -99,7 +99,9 @@ mcp-toolset publishes self-contained single-file executables per platform, from 
 latest. Download with `gh release download` against the pinned slug into a temp directory, extract
 the per-platform archive there, then move each server's binary into `<install-root>/<server>/` as
 its own step, so a failed download never leaves a half-replaced install. Match the asset to the OS
-and architecture; the release page names them per platform.
+and architecture; the release page names them per platform. `skill-stats` is two binaries, the
+`skill-stats-mcp` server and the `skill-stats-cli` hook, each in its own archive; both go into
+`<install-root>/skill-stats/`.
 
 ### Source path
 
@@ -134,7 +136,15 @@ applies to everything else it says. What each server needs, at the intent level:
 
 - `vault`: where the note store lives.
 - `text-search` and `text-edit`: the base root, the directory that holds the user's projects.
-- `skill-stats`: optionally, where its data lives.
+- `text-edit`, optionally: whether agent and client config inside the base root (`.mcp.json`,
+  `.claude/settings*.json`, a `.claude.json`) should be unwritable to it. Off by default, since
+  approving each write is the usual control; `security-hardening.md` has the setting and the
+  README its matching rules. The opt-out closes only text-edit's bulk path: the native Edit and
+  Write tools still change those files one approved edit at a time, which is how
+  `text-edit-operations.md` says to edit them anyway, so either answer costs little.
+- `skill-stats`: optionally, where its data lives. Recommend the default, which needs no setting: a
+  custom location has to reach both the server and the `skill-stats-cli` hook, or the two use
+  different databases. Wherever it lives, it belongs on a local disk.
 - `git-ops` and `os-doctor`: typically nothing.
 
 The values come from the user, not from guesses. For each setting the README documents, ask,
@@ -146,6 +156,43 @@ point somewhere else, or tell the agent to create the directory); repeat until a
 back, and never silently substitute a guess. When the README does not answer what one of the
 expected settings is called, stop and ask the user rather than inventing a parameter name.
 
+### The skill-stats hook
+
+The `skill-stats` server only reads the usage store. The `skill-stats-cli` hook writes it, one row
+per `Skill` call, and the store doesn't exist until its first write, so installing `skill-stats`
+means registering the hook too. This file directs that registration, so rule 3 doesn't block it;
+take nothing else from the CLI's README.
+
+Register it under `hooks.PostToolUse` in `~/.claude/settings.json`. It is a settings write, so
+rule 1 applies in full: backup, diff, confirm, append. The `matcher` is exactly `Skill`, and the
+path is absolute. On macOS/Linux, `command` names the binary directly:
+
+```json
+{
+  "matcher": "Skill",
+  "hooks": [
+    { "type": "command", "command": "<install-root>/skill-stats/skill-stats-cli", "timeout": 30 }
+  ]
+}
+```
+
+On Windows, go through `cmd.exe /c`. Claude Code doesn't reliably start a bare `.exe` given as
+`command`, and when it doesn't, nothing runs at all: no row, and no line in the error log either.
+
+```json
+{
+  "matcher": "Skill",
+  "hooks": [
+    { "type": "command", "command": "cmd.exe",
+      "args": ["/c", "<install-root>\\skill-stats\\skill-stats-cli.exe"],
+      "timeout": 30 }
+  ]
+}
+```
+
+The hook only observes; it can't block a tool call. A failure goes to `ingest-errors.log` in the
+store's directory and surfaces as one stderr line in the session.
+
 ## Step 4: verify
 
 Run all of this before writing the manifest.
@@ -155,9 +202,18 @@ Run all of this before writing the manifest.
 2. `claude mcp list` shows every registered server as healthy.
 3. One read-only smoke call per registered server, because a misconfigured server can pass the
    handshake and still fail every real call: `git-ops` `git_status` (in any repo), `text-search`
-   `describe_scope`, `text-edit` `describe_scope`, `vault` `vault_list`, `skill-stats`
-   `usage_summary`, `os-doctor` `get_capabilities`.
-4. When hooks were installed, grade the installed copies with the harness from the clone:
+   `describe_scope`, `text-edit` `describe_scope`, `vault` `vault_list`, `os-doctor`
+   `get_capabilities`.
+4. `skill-stats` needs one skill call first. Its store doesn't exist until the hook writes the
+   first row, so on a fresh install `usage_summary` returns `StoreUnavailable`. Invoke any skill
+   once after the restart, then call `usage_summary`: `total_records` above 0 proves the hook
+   fires and the server reads the same store. Still `StoreUnavailable` after a skill ran: a hook
+   stderr line in the session means it started and failed before the store existed, so read
+   `ingest-errors.log` in the store's directory; no line means it never started (check the `Skill`
+   matcher, the absolute path, and on Windows the `cmd.exe /c` wrapper). Once the store exists, a
+   nonzero `error_log_size_bytes` in `usage_summary` means a later write failed; the error log
+   says why.
+5. When hooks were installed, grade the installed copies with the harness from the clone:
    `bash tools/test-hooks.sh --hooks-dir ~/.claude/hooks`, or on Windows
    `powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-hooks.ps1 -HooksDir "$env:USERPROFILE\.claude\hooks"`.
    The hooks fail open by design, so a mis-copied script enforces nothing silently; the harness is
@@ -195,6 +251,13 @@ durable. It must never contain secrets or env values (rule 4).
       "installPath": "<install-root>/vault",
       "repoPath": null
     },
+    "skill-stats": {
+      "source": "release",
+      "releaseTag": "release/v17",
+      "installPath": "<install-root>/skill-stats",
+      "hookPath": "<install-root>/skill-stats/skill-stats-cli",
+      "repoPath": null
+    },
     "os-doctor": {
       "source": "source",
       "sourceCommit": "<sha>",
@@ -208,21 +271,23 @@ durable. It must never contain secrets or env values (rule 4).
 Release-installed servers record `releaseTag`; source-built servers record `sourceCommit` and the
 clone they were built from. That distinction is what lets an update run decide whether a rebuild
 is needed. `installRoot` is the binaries root chosen in question 6, and every server's
-`installPath` must sit under it. `deployMode` is `"global-copy"` or `"repo"`; `tools.copied` is
-`false` (and `dir` absent) in repo mode.
+`installPath` must sit under it. `skill-stats` also records `hookPath`, the `skill-stats-cli`
+binary its hook registration points at (`.exe` on Windows), under the same root. `deployMode` is
+`"global-copy"` or `"repo"`; `tools.copied` is `false` (and `dir` absent) in repo mode.
 
 ## Updating an existing install
 
 At the start of an update, read the manifest. Validate it before acting on it: every
-`installPath` must sit under the install root the manifest itself records; treat anything else as
-a corrupted manifest and stop. Then:
+`installPath` and `hookPath` must sit under the install root the manifest itself records; treat
+anything else as a corrupted manifest and stop. Then:
 
 1. Ask the user to update the skill-set clone (rule 2). Compare the clone's commit with
    `skillset.commit`: when they differ, redeploy the skills, hooks, and tools that were installed,
    idempotently, and re-register nothing that hasn't changed shape.
 2. For each release-installed server, resolve the current release tag and compare it with
    `releaseTag`. Show the user old and new before swapping binaries; swap the same
-   temp-then-move way as the install.
+   temp-then-move way as the install. For `skill-stats` the swap covers both binaries; the hook
+   registration stays as it is while `hookPath` doesn't move.
 3. For each source-built server, ask the user to update that clone and rebuild when the commit
    moved past `sourceCommit`.
 4. Re-run Step 4, then update `updatedAt`, `lastVerified`, and the changed versions.
