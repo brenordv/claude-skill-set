@@ -33,9 +33,9 @@ EDIT_MSG=${EDIT_MSG%$'\n'}
 IFS= read -r -d '' GIT_MSG <<'MSG'
 Blocked: read-only git inspection goes through the git-ops MCP, not the shell (a shell `git log` / `git grep` is exactly the case the rule targets). Use these with cwd = the repo's absolute path:
   git grep -> git_grep (fixedString:false for regex)    git log -> git_log
-  git diff -> git_diff    git show -> git_show    git status -> git_status    git blame -> git_blame
-  git ls-files -> git_ls_files    git branch -> git_branch_list    git reflog -> git_reflog
-  git stash list/show -> git_stash_list / git_stash_show
+  git diff -> git_diff    git show <commit> -> git_show    git show <ref>:<path> -> git_file_at_ref
+  git status -> git_status    git blame -> git_blame    git ls-files -> git_ls_files (--stage -> stage:true)
+  git branch -> git_branch_list    git reflog -> git_reflog    git stash list/show -> git_stash_list / git_stash_show
 Shell git stays fine for WRITES (commit, add, push, checkout, reset, merge, rebase, tag, fetch, pull). See brain/knowledge/git-readonly-operations.md.
 MSG
 GIT_MSG=${GIT_MSG%$'\n'}

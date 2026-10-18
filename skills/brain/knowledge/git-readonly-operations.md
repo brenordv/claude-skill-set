@@ -50,9 +50,11 @@ holds even when you can't ask), file the ticket, and note the limitation in the 
 | `git diff`, `git diff --cached`, `git diff <a>..<b>`, `git diff <a>...<b>`, `git diff --stat` | `git_diff` (mode picked by params: `staged`, `fromRef`/`toRef`, `statOnly`; `fromRef` also takes a range `A..B` / `A...B`, where three-dot is the merge-base diff) |
 | `git log ...`                                                           | `git_log` (filters: `author`, `since`, `until`, `grep`, `pickaxe`, `paths`, `ref`, `follow`, `maxCount`) |
 | `git show <ref>`                                                        | `git_show`                                                                                     |
+| `git show <ref>:<path>`                                                 | `git_file_at_ref` (server v2.2.0+; `path` and `ref` are separate arguments, `ref` defaults to `HEAD`) |
 | `git blame <file>`                                                      | `git_blame` (supports `lineStart`/`lineEnd` and `ref`)                                         |
 | `git grep <pattern>`                                                    | `git_grep` (set `fixedString: false` for regex)                                                |
 | `git ls-files`                                                          | `git_ls_files`                                                                                 |
+| `git ls-files --stage`                                                  | `git_ls_files` with `stage: true` (server v2.2.0+)                                             |
 | `git branch`, `git branch -a`                                           | `git_branch_list` (set `includeRemote: true` for remotes)                                      |
 | `git reflog`                                                            | `git_reflog`                                                                                   |
 | `git stash list`                                                        | `git_stash_list`                                                                               |
@@ -63,12 +65,15 @@ holds even when you can't ask), file the ticket, and note the limitation in the 
 - Pass `cwd` as an absolute path. The server resolves the repo root itself; you don't need to be inside the repo or know its layout.
 - Never `cd` and then run a git command for anything in the table above. The MCP call is the same regardless of the shell's current directory, and chaining `cd && git ...` defeats the point of having structured tools.
 - The structured output saves a parse step and the error codes are machine-readable; that's why even one-liners go through the MCP.
+- `git_file_at_ref` returns committed content as-is. git-ops has no secret denylist and no content
+  scan, so the secret-file ban in `text-search-operations.md` ⛔ Hard Rules item 8 is the only guard:
+  never point `path` at a file that looks like a secret, at any ref.
 
 ### Reading the result envelope
 
 Collection-returning tools wrap their payload in `{ results, count, filters_applied, truncated, repo_root, error }`.
 
-- Check `error` first. If it's `null`, work with `results`. If not, branch on `error.code` (stable values like `RefNotFound`, `PathOutsideRepo`, `RejectedArgument`, `InvalidArgument`, `GitTimeout`, `PcreUnavailable`), not on the message text.
+- Check `error` first. If it's `null`, work with `results`. If not, branch on `error.code` (stable values like `RefNotFound`, `PathNotFound`, `PathOutsideRepo`, `RejectedArgument`, `InvalidArgument`, `GitTimeout`, `PcreUnavailable`), not on the message text.
 - Argument-shape mistakes are rejected before the tool runs (server v2.1.0+), as `InvalidArgument`: an
   unknown argument name now fails the call instead of being silently ignored by the SDK, with
   `detail.unknown_arguments` naming each one (plus a `did_you_mean` when a schema name is close),
@@ -86,6 +91,16 @@ Collection-returning tools wrap their payload in `{ results, count, filters_appl
 - "When was this string added or removed?": `git_log` with `pickaxe: "<string>"`.
 - "Find usages of X in the repo": `git_grep` with `pattern: "X"` (set `fixedString: false` if X is a regex). An empty `pattern`, or one that begins with `-`, is rejected (`RejectedArgument`, `param: "pattern"`); to match a leading-dash literal, use regex mode with the dash escaped, e.g. `pattern: "\\-flag", fixedString: false`. `git_grep` searches **tracked content only**; for untracked, ignored, or generated files, or dependency sources, use the text-search server per `brain/knowledge/text-search-operations.md`.
 - "Find usages of X as of commit Y": `git_grep` with `pattern: "X"` and `ref: "Y"`.
-- "What did commit X change?": `git_show` with `ref: "X"`.
+- "What did commit X change?": `git_show` with `ref: "X"`. A `<rev>:<path>` ref (`HEAD:README.md`)
+  names a file, not a commit: server v2.2.0+ rejects it with `RejectedArgument` pointing at
+  `git_file_at_ref`, and older builds returned an empty success (`commit: null`, `files: []`)
+  that looks like "no changes" and isn't.
+- "What did file F look like at commit X?", including a file deleted since: `git_file_at_ref` with
+  `path: "F"` and `ref: "X"`. The result carries `content`, `mode`, `object_id`, and `size`; a
+  binary blob comes back `is_binary: true` with `content: null`. A path missing at that ref is
+  `PathNotFound`; a directory or the repo root is `RejectedArgument`.
+- "Is this script committed as executable?": `git_ls_files` with `stage: true` and `paths` set to
+  the script. Each entry is `{path, mode, object_id, stage}`; `100755` is executable, `100644` is
+  not. Check this before telling the user to run `./script.sh`.
 - "What's on this branch that isn't on main?": `git_log` with `ref: "main..feature-branch"` (a two-dot range; each side is verified to a SHA before use, so an omitted side defaults to `HEAD`).
 - "How does this branch differ from its fork point?": `git_diff` with `fromRef: "main...feature-branch"` (three-dot: the diff from the merge base of the two, not between the endpoints). A range must be the sole ref; don't also pass `toRef`.

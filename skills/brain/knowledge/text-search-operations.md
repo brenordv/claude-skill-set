@@ -125,12 +125,18 @@ the path) instead of filing a ticket.
   `.cursorignore`, `.aiexclude`, `.aiignore`, `.codeiumignore`, `.continueignore`, `.aiderignore`,
   `.geminiignore`); (4) `.mcpignore`, the most specific, overriding the rest. `describe_scope` reports
   the exact default set and the honored ignore-file names.
+- **The more specific tier wins regardless of directory depth (server v1.4.4+).** A `!` line in a
+  nested `.gitignore` cannot re-include a path a shallower agent-ignore file or `.mcpignore` hides,
+  and a `!` line in a `.mcpignore` re-includes a path a nested `.gitignore` or agent-ignore file
+  hides, so a base-root `.mcpignore` re-include reaches every project under the base. Within one
+  tier, a deeper file overrides a shallower one, as in git.
 - **`include_ignored` takes globs, not a boolean, and re-includes only the default tier.** Pass globs
-  (for example `["node_modules/**"]`) to re-surface otherwise default-ignored paths for one call; omit or
+  (for example `["build/**"]`) to re-surface otherwise default-ignored paths for one call; omit or
   pass an empty list to keep it in force. The `.gitignore`, agent-ignore, and `.mcpignore` tiers are a
   hard boundary it can never cross, and it never reaches the secret denylist or content scan. So it only
   ever brings back heavy build or generated output, never a `.gitignore`'d file; reach for it only when
-  that generated content is the point.
+  that generated content is the point. A `node_modules/` that `.gitignore` also lists, which is most of
+  them, stays hidden whatever you pass.
 - **Only the default tier is skipped above a scoped `cwd`.** The project-ignore tiers (`.gitignore`,
   agent-ignore, `.mcpignore`) are anchored at the base root and evaluated root-down with ancestor rules
   included, so a scoped call still honors an ancestor `.gitignore` above the `cwd` and never surfaces a
@@ -166,7 +172,12 @@ Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filte
   resolved prefix plus the property names (capped) or array length at that point; `ValueTooLarge`
   carries `value_bytes`, `limit`, and the same navigation hint, so narrow the `json_path` and retry.
   `PatternInvalid` covers a regex, or an `include_ignored` glob, that is too long, over the repetition
-  cap, or invalid.
+  cap, or invalid, and (server v1.4.2+) a selector glob that cannot compile, such as the reversed
+  range `[z-a]`. Older builds returned `InternalError` with `detail.type: RegexParseException` for
+  that glob, and for every content call when any ignore-file line between the base root and the
+  file failed to translate; v1.4.2+ skips such a line and applies the rest. An `InternalError` can
+  also mean an ignore file exists but couldn't be read (another process holds it locked): the
+  server never treats it as empty, so retry once the lock clears.
   `InvalidArgument` also covers a malformed cursor and every bad `cwd`: one that escapes its root, is not
   a directory, is denylisted, names an unknown package root, or carries a subpath escaping its cache.
 - Argument-shape mistakes are rejected before the tool runs (server v1.4.0+), as `InvalidArgument`: an
@@ -177,7 +188,10 @@ Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filte
   caller error, never a capability gap, so no `textsearch-gap` ticket in those cases.
 - `truncated: true` with a `cursor` means more pages: pass the cursor back, keeping `cwd` and
   `files_only` stable across pages. `truncated: true` with a null cursor means a ceiling was hit:
-  narrow the selector instead of guessing what got cut.
+  narrow the selector instead of guessing what got cut. On builds before v1.4.5, a `cwd`-scoped or
+  `include_ignored` selection filled that window with files the project ignore tiers then dropped,
+  so it came back short, or empty, with `truncated: true`; v1.4.5+ drops ignored files before the
+  cap applies, so the count is real.
 - `OperationBudgetExceeded` means the call ran past its wall-clock budget. Same fix: narrow, starting
   with a tighter `cwd`.
 

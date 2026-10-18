@@ -42,6 +42,7 @@ a clean install (settings.json is strict JSON, so no comments in the real file):
       "mcp__git-ops",
       "mcp__vault",
       "mcp__text-search",
+      "mcp__skill-stats",
       "mcp__os-doctor",
       "Read(~/.claude/skills/**)"
     ],
@@ -110,6 +111,18 @@ a clean install (settings.json is strict JSON, so no comments in the real file):
 
 Notes:
 - `text-edit` is deliberately absent from `allow`; keep write tools on prompt.
+- `skill-stats` is on the list because it only reads: every connection to its usage store opens
+  read-only, and it never creates or migrates the store.
+- `text-edit` can write agent and client config that sits inside its base root (`.mcp.json`,
+  `.claude/settings.json`, `.claude/settings.local.json`, a `.claude.json`). Those files register
+  servers and hooks, so approving each write is the control. To block text-edit from them outright,
+  start the server with `MCP_TEXTEDIT_EXTRA_DENY=.mcp.json;.claude.json;**/.claude/settings*.json`.
+  A pattern without a `/` matches the file name at any depth; one with a `/` matches the path
+  relative to the base root, so when the base root is itself a `.claude` directory, add
+  `settings*.json` too. This gates text-edit only. The native Edit and Write tools reach those files
+  through Claude Code's own
+  [protected-path prompt](https://code.claude.com/docs/en/permission-modes#protected-paths), which
+  `acceptEdits` and `permissions.allow` rules don't skip, so both paths end at a prompt either way.
 - Drop any `allow` entry for an MCP server you do not run (an unused entry is harmless but pointless).
 - The deny list targets secret variants (`.env`, `.env.local`) rather than a blanket `.env.*`, so a
   non-secret `.env.example` stays readable. Add `Read(**/.env.*)` if you want the stricter, coarser block.

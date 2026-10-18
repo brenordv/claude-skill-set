@@ -22,9 +22,10 @@ non-overridable denylist, and round-trips encodings and line endings byte-faithf
    them all. Pass the absolute path of the project being edited (`cwd` is a per-call write firewall:
    nothing outside it can be written, even via an explicit `../other` path). Omit `cwd` only when a
    cross-project sweep is the explicit, stated intent of the task.
-4. **`replace_text` runs gated, always**: `dry_run: true` first, review the diff and the match count,
-   then the real run with `expected_match_count` set from what the dry run showed. An unguarded
-   repo-wide replace is exactly the shell-sed failure mode this server exists to prevent.
+4. **`replace_text` runs gated, always**: `dry_run: true` first, review the diff, the match count,
+   and `truncated`, then the real run with `expected_match_count` set from what the dry run showed.
+   An unguarded repo-wide replace is exactly the shell-sed failure mode this server exists to
+   prevent.
 5. **Write tools stay on prompt.** Never suggest blanket-approving `replace_text` or
    `normalize_files`, and treat a denied call as the user declining that change, not an obstacle to
    route around.
@@ -90,6 +91,14 @@ limit, not a server gap: surface it to the user rather than filing a ticket.
   project-ignore tiers are anchored at the base root and honored root-down with ancestor rules included,
   so a target an ancestor `.gitignore` hides is refused (`refusal_reason: "ignored"`); only the built-in
   default tier is skipped above a scoped `cwd`.
+- **Ignore files are never written (server v1.4.0+).** Every `.gitignore`, agent-ignore file, and
+  `.mcpignore` a selection reaches, at any depth, is refused with `refusal_reason: "ignore_file"`,
+  whether or not the pattern matched in it, so a broad sweep reports them as refused by design.
+  Edit an ignore file with the native edit tools; it's a hand-shaped change anyway.
+- **Agent and client config inside the base root stays writable** (`.mcp.json`,
+  `.claude/settings*.json`, a `.claude.json`) unless the operator denied it through
+  `MCP_TEXTEDIT_EXTRA_DENY`. Those files register servers and hooks. Keep them out of bulk sweeps;
+  a change there is a single edit the user approves on its own.
 - `replace_text` is literal by default; `is_regex: true` enables .NET regex with back-references in the
   replacement (`$1`, `${name}`, `$$` for a literal `$`). An over-long or invalid regex is rejected up
   front (`PatternInvalid`; the agent-supplied pattern length is capped, currently 2048 chars).
@@ -104,26 +113,40 @@ limit, not a server gap: surface it to the user rather than filing a ticket.
   Never pass one you haven't verified.
 - **Read the per-file outcomes.** A mutation result is one element carrying `batch_id` (absent on a dry
   run or a no-op batch), `attempted`/`changed`/`refused` counts, and per-file entries with `outcome`
-  and, when refused, a `refusal_reason` (`denied`, `out_of_root`, `ignored`, `not_found`,
-  `is_directory`, `binary`, `too_large`, `low_confidence_encoding`, `regex_timeout`, `io_error`,
-  `write_failed`). Refused files mean the sweep was partial; say so instead of reporting full coverage.
+  and, when refused, a `refusal_reason` (`denied`, `ignore_file`, `out_of_root`, `ignored`,
+  `not_found`, `is_directory`, `binary`, `too_large`, `low_confidence_encoding`, `regex_timeout`,
+  `io_error`, `write_failed`). Refused files mean the sweep was partial; say so instead of reporting
+  full coverage.
+- **Check `truncated` on every sweep (server v1.5.0+).** `truncated: true` on a `replace_text` or
+  `normalize_files` result means the selection stopped at `max_files` (default 1000) and every file
+  past the cap was left untouched. The dry run reports it too, before anything is written: narrow
+  the selector or raise `max_files` and dry-run again. Older builds acted on the first `max_files`
+  files and still reported `truncated: false`, so on those a sweep that may exceed the cap has to be
+  split by selector.
 - **Undo is hash-gated and short-horizon.** `undo_batch` restores only files whose current content
   still equals what the batch wrote; a file changed since is skipped and named, never clobbered, and a
-  since-deleted file is recreated. A journal row that no longer confines under the base, or is now
-  denylisted, is skipped as a security measure. Retention defaults to 50 batches / 48 hours: the
-  journal is a session-scale safety net, not version control, and it never substitutes for the user's
-  own git review (standing rule: never stage, never commit).
-- Denylisted files are omitted from selector walks; one named explicitly in `paths` is reported as
-  refused.
+  since-deleted file is recreated. A journal row that no longer confines under the base, is now
+  denylisted, or names an ignore file is skipped as a security measure. Retention defaults to 50
+  batches / 48 hours: the journal is a session-scale safety net, not version control, and it never
+  substitutes for the user's own git review (standing rule: never stage, never commit).
+- Denylisted files are dropped from the selection, walked or named explicitly in `paths`, and are
+  not reported at all: neither changed nor refused. A file you named that is missing from the
+  per-file results was dropped this way. The write gate still refuses, as `denied`, any denylisted
+  file that reaches it.
 
 ### Reading the result envelope
 
 Every tool returns `{ results, count, filters_applied, error }` (mutations are single-element
 `results`), and `filters_applied.cwd` echoes the scope base-relative (`.` when `cwd` was omitted),
-never an absolute path. Check `error` first and branch on `error.code`: `SelectorInvalid`,
-`PatternInvalid`, `PathOutsideRoot`, `NotFound`, `ExpectedMatchCountMismatch`, `BatchNotFound`,
-`OperationBudgetExceeded`, `InvalidArgument`, `InternalError`. `InvalidArgument` also covers every bad
-`cwd` (escapes the base, not a directory, denylisted) and an unknown `source_encoding`.
+never an absolute path. On server v1.5.0+, the `replace_text` and `normalize_files` envelopes also
+carry `truncated` (see "Check `truncated` on every sweep" above) and `skipped_symlinks`, the count of
+symbolic links the selector walk passed over. Check `error` first and branch on `error.code`:
+`SelectorInvalid`, `PatternInvalid`, `PathOutsideRoot`, `NotFound`, `ExpectedMatchCountMismatch`,
+`BatchNotFound`, `OperationBudgetExceeded`, `InvalidArgument`, `InternalError`. `InvalidArgument` also
+covers every bad `cwd` (escapes the base, not a directory, denylisted) and an unknown
+`source_encoding`. An `InternalError` can mean an ignore file the selection walks exists but couldn't
+be read (another process holds it locked): the server never treats it as empty, so retry once the
+lock clears.
 Argument-shape mistakes are rejected before the tool runs (server v1.3.0+), as `InvalidArgument`: an
 unknown argument name now fails the call instead of being silently ignored and run on defaults, with
 `detail.unknown_arguments` naming each one (plus a `did_you_mean` when a schema name is close),
