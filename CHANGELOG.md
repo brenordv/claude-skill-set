@@ -1,5 +1,31 @@
 # Changelog
 
+## v16
+- Aligned the MCP knowledge files with mcp-toolset v23. `git-readonly-operations.md` maps
+  `git grep -c` to `countOnly`, pathspec wildcards and exclusions to `globs` and `excludePaths`, and
+  `git log --all` and `-P` to `allRefs` and `perlRegex`. It says a wildcard in `paths` is now
+  `RejectedArgument` (an empty success on older builds), `grep: "A|B"` matches nothing without
+  `perlRegex`, how to page `git_file_at_ref` with `maxBytes` and `next_byte_offset`, where
+  `old_mode` and `new_mode` show a mode change, and which pinned behaviors (filter drivers compared
+  raw, dirty submodules unlisted, `log.follow` ignored, no lazy fetch in a partial clone) are
+  expected results rather than gaps. `text-search-operations.md` covers `count_only` and
+  `total_match_count` (v1.5.0) and case-insensitive ignore-file names and the unlistable-directory
+  `InternalError` (v1.8.0). `text-edit-operations.md` covers the unlistable-directory failure
+  (v1.9.0) and `OperationBudgetExceeded` writing nothing when the budget runs out after selection
+  (v1.10.0). `vault-operations.md` is unchanged: file-vault changed only its logging and its git
+  lookup for project inference, and none of the file's guidance depends on either.
+- `install-reference.md` registers the `skill-stats-cli` hook on `UserPromptExpansion` (matcher
+  `.*`, the skills the user types) as well as `PostToolUse` (matcher `Skill`, the skills the model
+  invokes), with the 10 s timeout the CLI README now documents, and says why `skill-stats-cli`
+  1.1.0 is a precondition for the new entry: 1.0.0 exits 2 on a failure, which blocks the prompt
+  on that event. Step 4 checks each entry with a before-and-after `usage_summary` pair and reads a
+  stuck count from `ingest-errors.log`; the update flow adds the missing entry to a
+  `PostToolUse`-only registration after the binary swap.
+- `route-to-text-tools` (`.sh` and `.ps1`): the redirect hints name `files_only` and `count_only`
+  for `grep -l` and `-c`, and `countOnly`, `globs`, `allRefs`, and `perlRegex` for git, so a denied
+  `git grep foo -- '*.cs'` lands on `globs` instead of a `paths` entry the server rejects. Two new
+  `tools/hook-cases.tsv` rows pin that text in both implementations (86 cases to 88).
+
 ## v15
 - Aligned the MCP knowledge files with mcp-toolset v22. `git-readonly-operations.md` maps
   `git show <ref>:<path>` to the new `git_file_at_ref` and `git ls-files --stage` to `git_ls_files`
