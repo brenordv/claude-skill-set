@@ -87,6 +87,7 @@ the path) instead of filing a ticket.
 |---------------------------------------------------------|------------------------------------------------------------|
 | `find`, `ls -R`, `Get-ChildItem -Recurse`               | `find_files` (glob/regex/paths selector, size + mtime out) |
 | `grep -rn`, `rg`, `Select-String`                       | `search_text` (literal by default, `is_regex: true` for regex) |
+| `grep -l`, `grep -c`, `rg --count`                      | `search_text` with `files_only: true`, or `count_only: true` (server v1.5.0+) |
 | `cat`, `head`, `tail`, `sed -n 'a,bp'`, `Get-Content`   | `read_lines` (numbered, span-capped slice of one file)     |
 | `jq '.key' file`, `python -c "json.load(...)"` plucking | `read_json` (whole JSON document, or the value at a `json_path`) |
 | `file`, encoding/line-ending guesswork                  | `inspect_files` (encoding + confidence, BOM, endings, counts) |
@@ -119,12 +120,19 @@ the path) instead of filing a ticket.
   `match_start`, and `match_end` are 1-based UTF-16 code units. `files_only: true` lists matching files
   instead of matches. `case_sensitive: true` applies to both file selection and content matching
   (default false).
+- **`count_only: true` returns per-file counts** (server v1.5.0+): one `{path, match_count}` per
+  matching file, where `match_count` counts matching lines (a line with two matches counts once)
+  and `max_matches_per_file` doesn't apply. The envelope adds `total_match_count`, the sum over every
+  page; when the selection hits its ceiling (`truncated` with no `cursor`), that total covers only
+  the files walked. A file whose regex timed out keeps the count it reached, with no marker. It pages
+  like `files_only`, and the two together are `InvalidArgument`.
 - **Four ignore tiers prune every walk, applied least-specific first (git last-match-wins).** (1) a
   built-in **default set** of heavy build and dependency directories (`node_modules/`, `bin/`, `obj/`,
   `target/`, `dist/`, and the like); (2) `.gitignore`; (3) the AI-agent ignore files (`.claudeignore`,
   `.cursorignore`, `.aiexclude`, `.aiignore`, `.codeiumignore`, `.continueignore`, `.aiderignore`,
   `.geminiignore`); (4) `.mcpignore`, the most specific, overriding the rest. `describe_scope` reports
-  the exact default set and the honored ignore-file names.
+  the exact default set and the honored ignore-file names, which match case-insensitively on every
+  platform (server v1.8.0+), so a `.GitIgnore` applies on Linux too.
 - **The more specific tier wins regardless of directory depth (server v1.4.4+).** A `!` line in a
   nested `.gitignore` cannot re-include a path a shallower agent-ignore file or `.mcpignore` hides,
   and a `!` line in a `.mcpignore` re-includes a path a nested `.gitignore` or agent-ignore file
@@ -160,7 +168,8 @@ the path) instead of filing a ticket.
 
 ### Reading the result envelope
 
-Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filters_applied, error }`.
+Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filters_applied, error }`,
+and `search_text` in count mode adds `total_match_count`.
 
 - Check `error` first; branch on `error.code` (stable values: `SelectorInvalid`, `PatternInvalid`,
   `NotFound`, `IsBinary`, `TooLarge`, `JsonInvalid`, `JsonPathNotFound`, `ValueTooLarge`,
@@ -177,7 +186,10 @@ Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filte
   that glob, and for every content call when any ignore-file line between the base root and the
   file failed to translate; v1.4.2+ skips such a line and applies the rest. An `InternalError` can
   also mean an ignore file exists but couldn't be read (another process holds it locked): the
-  server never treats it as empty, so retry once the lock clears.
+  server never treats it as empty, so retry once the lock clears. On v1.8.0+ it can also mean a path
+  inside a directory the server can enter but not list, or a walk whose `cwd` is or lies under one,
+  since the server can't tell whether that directory holds an ignore file; a walk skips such a
+  subdirectory instead of failing.
   `InvalidArgument` also covers a malformed cursor and every bad `cwd`: one that escapes its root, is not
   a directory, is denylisted, names an unknown package root, or carries a subpath escaping its cache.
 - Argument-shape mistakes are rejected before the tool runs (server v1.4.0+), as `InvalidArgument`: an
@@ -199,6 +211,8 @@ Every tool returns `{ results, count, truncated, cursor, skipped_symlinks, filte
 
 - "Which files in this repo mention X?": `search_text` with `pattern: "X"`, `files_only: true`, and
   `cwd` set to the repo's absolute path.
+- "How many lines match X in each file?": `search_text` with `count_only: true` (server v1.5.0+);
+  `total_match_count` on the envelope is the grand total.
 - "Show matches with context": `search_text` with `context_lines`.
 - "Read lines 120-180 of that file": `read_lines` with `start_line: 120`, `end_line: 180` (and the
   same `cwd` the file was found under).

@@ -146,14 +146,17 @@ symbolic links the selector walk passed over. Check `error` first and branch on 
 covers every bad `cwd` (escapes the base, not a directory, denylisted) and an unknown
 `source_encoding`. An `InternalError` can mean an ignore file the selection walks exists but couldn't
 be read (another process holds it locked): the server never treats it as empty, so retry once the
-lock clears.
+lock clears. On v1.9.0+ it can also mean a `paths` entry inside a directory the server can't list,
+or a sweep scoped under one; the call fails before any write and records no batch.
 Argument-shape mistakes are rejected before the tool runs (server v1.3.0+), as `InvalidArgument`: an
 unknown argument name now fails the call instead of being silently ignored and run on defaults, with
 `detail.unknown_arguments` naming each one (plus a `did_you_mean` when a schema name is close),
 `missing_required`, and the full `expected_arguments`; a known argument of the wrong JSON type reports
 the same code with the SDK's fixed generic text in `detail.sdk_error`. Correct the call from the detail
 and retry; this is a caller error, never a capability gap, so no `textedit-gap` ticket in those cases.
-`OperationBudgetExceeded` means narrow the selector or pattern and rerun.
+`OperationBudgetExceeded` means narrow the selector or pattern and rerun; the call wrote nothing,
+including when the budget ran out after selection (server v1.10.0+; older builds reported that
+case as `InternalError`).
 
 ### Common patterns
 

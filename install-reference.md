@@ -44,14 +44,14 @@ These bind every step below.
 
 Walk these with the user before touching anything. Every default is changeable.
 
-| # | Question                                                                                                                                                      | Default                                                                                                                                             |
-|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1 | Deploy mode: copy `skills/` and the global `CLAUDE.md` into `~/.claude/`, or point Claude Code at the repo clone per project?                                 | Copy to `~/.claude/` (runtime-surfaced skills need it; repo mode only loads the knowledge base inside the repo)                                     |
-| 2 | Which of the seven hooks to install (`route-to-text-tools`, `block-secrets`, `guard-file-targets`, `block-vcs-writes`, `warn-file-size`, `warn-writing-tells`, `compact-test-output`)? | All seven                                                                                                                                             |
-| 3 | Copy `tools/` (the hook test harness and repo lint) next to the hooks? Only asked in copy mode; in repo mode they ride along with the clone.                  | Yes when any hook is installed, so the hooks can be re-verified later without the clone                                                             |
-| 4 | Which MCP servers? `vault`, `git-ops`, `text-search`, `text-edit`, `skill-stats` (cross-platform), `os-doctor` (Windows only).                                | All that fit the OS. `vault` is required for the workflow precedent archives; the skills degrade gracefully without the others. None at all is fine. Choosing `skill-stats` also installs its `skill-stats-cli` hook, the only thing that feeds it data |
-| 5 | Per server: download the latest GitHub release, or clone and build from source?                                                                               | Release for the mcp-toolset servers. For os-doctor, check its releases page; build from source if there are no assets                               |
-| 6 | Where do the server binaries live?                                                                                                                            | `~/.claude/mcp-servers/<server>/`                                                                                                                   |
+| # | Question                                                                                                                                                                               | Default                                                                                                                                                                                                                                                 |
+|---|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1 | Deploy mode: copy `skills/` and the global `CLAUDE.md` into `~/.claude/`, or point Claude Code at the repo clone per project?                                                          | Copy to `~/.claude/` (runtime-surfaced skills need it; repo mode only loads the knowledge base inside the repo)                                                                                                                                         |
+| 2 | Which of the seven hooks to install (`route-to-text-tools`, `block-secrets`, `guard-file-targets`, `block-vcs-writes`, `warn-file-size`, `warn-writing-tells`, `compact-test-output`)? | All seven                                                                                                                                                                                                                                               |
+| 3 | Copy `tools/` (the hook test harness and repo lint) next to the hooks? Only asked in copy mode; in repo mode they ride along with the clone.                                           | Yes when any hook is installed, so the hooks can be re-verified later without the clone                                                                                                                                                                 |
+| 4 | Which MCP servers? `vault`, `git-ops`, `text-search`, `text-edit`, `skill-stats` (cross-platform), `os-doctor` (Windows only).                                                         | All that fit the OS. `vault` is required for the workflow precedent archives; the skills degrade gracefully without the others. None at all is fine. Choosing `skill-stats` also installs its `skill-stats-cli` hook, the only thing that feeds it data |
+| 5 | Per server: download the latest GitHub release, or clone and build from source?                                                                                                        | Release for the mcp-toolset servers. For os-doctor, check its releases page; build from source if there are no assets                                                                                                                                   |
+| 6 | Where do the server binaries live?                                                                                                                                                     | `~/.claude/mcp-servers/<server>/`                                                                                                                                                                                                                       |
 
 ## Step 1: deploy the skill set
 
@@ -159,19 +159,26 @@ expected settings is called, stop and ask the user rather than inventing a param
 ### The skill-stats hook
 
 The `skill-stats` server only reads the usage store. The `skill-stats-cli` hook writes it, one row
-per `Skill` call, and the store doesn't exist until its first write, so installing `skill-stats`
+per skill use, and the store doesn't exist until its first write, so installing `skill-stats`
 means registering the hook too. This file directs that registration, so rule 3 doesn't block it;
 take nothing else from the CLI's README.
 
-Register it under `hooks.PostToolUse` in `~/.claude/settings.json`. It is a settings write, so
-rule 1 applies in full: backup, diff, confirm, append. The `matcher` is exactly `Skill`, and the
-path is absolute. On macOS/Linux, `command` names the binary directly:
+The hook goes on two events, and each sees a different half of the usage: `UserPromptExpansion`
+with `matcher` `.*` records each skill or slash command the user types (it expands into the prompt
+without a tool call), and `PostToolUse` with `matcher` `Skill` records each skill the model
+invokes. Register both in `~/.claude/settings.json`, one group appended to each array under
+`hooks`. It is a settings write, so rule 1 applies in full: backup, diff, confirm, append. The path
+is absolute. On macOS/Linux, `command` names the binary directly:
 
 ```json
 {
-  "matcher": "Skill",
-  "hooks": [
-    { "type": "command", "command": "<install-root>/skill-stats/skill-stats-cli", "timeout": 30 }
+  "UserPromptExpansion": [
+    { "matcher": ".*",
+      "hooks": [ { "type": "command", "command": "<install-root>/skill-stats/skill-stats-cli", "timeout": 10 } ] }
+  ],
+  "PostToolUse": [
+    { "matcher": "Skill",
+      "hooks": [ { "type": "command", "command": "<install-root>/skill-stats/skill-stats-cli", "timeout": 10 } ] }
   ]
 }
 ```
@@ -181,17 +188,26 @@ On Windows, go through `cmd.exe /c`. Claude Code doesn't reliably start a bare `
 
 ```json
 {
-  "matcher": "Skill",
-  "hooks": [
-    { "type": "command", "command": "cmd.exe",
-      "args": ["/c", "<install-root>\\skill-stats\\skill-stats-cli.exe"],
-      "timeout": 30 }
+  "UserPromptExpansion": [
+    { "matcher": ".*",
+      "hooks": [ { "type": "command", "command": "cmd.exe",
+        "args": ["/c", "<install-root>\\skill-stats\\skill-stats-cli.exe"], "timeout": 10 } ] }
+  ],
+  "PostToolUse": [
+    { "matcher": "Skill",
+      "hooks": [ { "type": "command", "command": "cmd.exe",
+        "args": ["/c", "<install-root>\\skill-stats\\skill-stats-cli.exe"], "timeout": 10 } ] }
   ]
 }
 ```
 
-The hook only observes; it can't block a tool call. A failure goes to `ingest-errors.log` in the
-store's directory and surfaces as one stderr line in the session.
+The hook never blocks the session. `UserPromptExpansion` fires before a typed prompt reaches
+Claude, where exit code 2 would block it, so the CLI never returns 2: a recording failure goes to
+`ingest-errors.log` in the store's directory and exits 1, which Claude Code shows as a non-blocking
+hook error notice carrying the CLI's stderr line. That makes `skill-stats-cli` 1.1.0 or later
+(mcp-toolset `release/v23` onward) a precondition for the `UserPromptExpansion` entry; 1.0.0 exits
+2 on a failure and would block the user's prompt. The CLI gives up on a locked store after about a
+second, so the 10-second `timeout` is only a backstop, and a hook killed by it logs nothing.
 
 ## Step 4: verify
 
@@ -204,15 +220,20 @@ Run all of this before writing the manifest.
    handshake and still fail every real call: `git-ops` `git_status` (in any repo), `text-search`
    `describe_scope`, `text-edit` `describe_scope`, `vault` `vault_list`, `os-doctor`
    `get_capabilities`.
-4. `skill-stats` needs one skill call first. Its store doesn't exist until the hook writes the
-   first row, so on a fresh install `usage_summary` returns `StoreUnavailable`. Invoke any skill
-   once after the restart, then call `usage_summary`: `total_records` above 0 proves the hook
-   fires and the server reads the same store. Still `StoreUnavailable` after a skill ran: a hook
-   stderr line in the session means it started and failed before the store existed, so read
-   `ingest-errors.log` in the store's directory; no line means it never started (check the `Skill`
-   matcher, the absolute path, and on Windows the `cmd.exe /c` wrapper). Once the store exists, a
-   nonzero `error_log_size_bytes` in `usage_summary` means a later write failed; the error log
-   says why.
+4. `skill-stats` needs one recorded skill use per hook entry. Its store doesn't exist until the
+   hook writes the first row, so on a fresh install `usage_summary` returns `StoreUnavailable`;
+   read that as 0 records. Check each entry with a before-and-after pair: call `usage_summary` and
+   note `total_records`, trigger one skill use, then call it again. For `PostToolUse`, invoke any
+   skill yourself through the Skill tool; for `UserPromptExpansion`, ask the user to type one
+   (`/<skill> x`). Each should raise `total_records` by one, with `last_used` within the last
+   minute, which also proves the server reads the store the hook writes. When the count doesn't
+   move, look for a fresh line in `ingest-errors.log` in the store's directory (once the store
+   exists, `usage_summary`'s `error_log_last_write` shows when it last changed). A fresh line means
+   the hook ran: a `skipped reason=unrecognized_shape` line lists the payload's real field names,
+   and an `open-store` or `insert` line means the store couldn't be opened or written; a failure
+   also shows in the session as a hook error notice. No fresh line means the hook never ran: check
+   the event name, the matcher (`.*` or `Skill`), the absolute path, and on Windows the
+   `cmd.exe /c` wrapper.
 5. When hooks were installed, grade the installed copies with the harness from the clone:
    `bash tools/test-hooks.sh --hooks-dir ~/.claude/hooks`, or on Windows
    `powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-hooks.ps1 -HooksDir "$env:USERPROFILE\.claude\hooks"`.
@@ -287,7 +308,11 @@ anything else as a corrupted manifest and stop. Then:
 2. For each release-installed server, resolve the current release tag and compare it with
    `releaseTag`. Show the user old and new before swapping binaries; swap the same
    temp-then-move way as the install. For `skill-stats` the swap covers both binaries; the hook
-   registration stays as it is while `hookPath` doesn't move.
+   registration stays as it is while `hookPath` doesn't move, with one exception: a registration
+   holding only the `PostToolUse` entry (installed before this file carried two) never records a
+   typed skill. Once the swap has brought `skill-stats-cli` to 1.1.0 or later, add the
+   `UserPromptExpansion` group from "The skill-stats hook" (rule 1 applies), never before, since
+   1.0.0 can block the user's prompt from that event.
 3. For each source-built server, ask the user to update that clone and rebuild when the commit
    moved past `sourceCommit`.
 4. Re-run Step 4, then update `updatedAt`, `lastVerified`, and the changed versions.

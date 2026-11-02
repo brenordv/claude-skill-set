@@ -15,7 +15,7 @@
 # (one ~300KB line pinning pathological-input runtime).
 # Both harnesses verify the declared count below against the rows they parse; update it when
 # adding or removing rows.
-# cases: 86
+# cases: 88
 #
 # route-to-text-tools: file-probing, in-place-edit, and read-only-git shell commands
 route-to-text-tools	Bash	{"command":"grep -r foo ."}	deny	command's OWN output
@@ -23,6 +23,8 @@ route-to-text-tools	Bash	{"command":"dotnet test | tail -20"}	allow	-
 route-to-text-tools	Bash	{"command":"sed -i s/a/b/ f"}	deny	the repo's absolute path. For one hand-shaped edit
 route-to-text-tools	Bash	{"command":"git log --oneline"}	deny	Use these with cwd = the repo's absolute path
 route-to-text-tools	Bash	{"command":"git commit -m x"}	allow	-
+route-to-text-tools	Bash	{"command":"git grep -c TODO -- '*.cs'"}	deny	wildcard pathspecs -> globs, not paths
+route-to-text-tools	Bash	{"command":"grep -c TODO src"}	deny	-c -> count_only
 route-to-text-tools	Bash	{"command":"ls -R"}	deny	command's OWN output
 route-to-text-tools	Bash	{"command":"ls -r"}	allow	-
 route-to-text-tools	Bash	{"command":"build && grep TODO src"}	deny	command's OWN output
