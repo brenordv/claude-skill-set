@@ -1,5 +1,54 @@
 # Changelog
 
+## v17
+- Added three `coding-general.md` ⛔ Hard Rules. Hard Rule 9: a summary, docstring, or doc
+  comment describes the unit it sits on and never names its callers, consumers, or the services
+  that relay it; the "explain inline instead of pointing at docs" rules there and in csharp Hard
+  Rule 10 now say the inline context goes at the code that acts on it. Hard Rule 10: a handled
+  failure never ends on the success path. The failure propagates uncaught, or a catch throws or
+  wraps with the original kept as the cause, returns a failure the caller's contract makes it
+  handle, recovers for real, or reports at a boundary, with message-handler rules for hosts that
+  redeliver and for Event Hubs triggers, which advance the checkpoint either way. Logging is never
+  an ending, a failure is logged once, and §5's "At minimum, log them" and "return empty, not null"
+  bullets are rewritten to match, as are the csharp style guide's empty-list bullet and the csharp
+  §8 log-and-rethrow bullet. Hard Rule 11: a credential is attached by the client's configuration, never
+  by its call surface or a URL, and an exposed one is flagged for rotation. Driven by three
+  incidents: an Event Hub message model whose summary described the frontend and function around
+  it; a Cosmos repository whose trailing `catch (CosmosException)` only logged, so the caller
+  published success after a failed save and no test broke when throws were added; and a Refit
+  refactor that moved an Azure Functions key from `?code=` to a per-call `[Header]` parameter
+  instead of the client registration.
+- `testing.md` gained a ⛔ Hard Rules block: every catch, except, or error arm a change adds is
+  driven by a test whose assertion matches how the arm ends, and a coverage percentage never
+  excuses an undriven arm. The language skills mirror the rules in their own blocks (csharp Hard
+  Rule 17 for catch endings and Hard Rule 18 for Refit credentials, python Hard Rule 8, rust Hard
+  Rule 6, each naming its language's swallow shapes), and each testing guide gained a "Failure
+  paths" section. csharp §8 now says where each kind of credential attaches (a static key in
+  `ConfigureHttpClient`, a rotating key in a transient `DelegatingHandler`, tokens from the repo's
+  token provider) and how header-log redaction differs before and after .NET 9.
+- `general-problem-solving.md` §2: a stated reason is the acceptance criterion. Options are
+  compared at the named step's footprint, the named mechanism is kept and done in its strongest
+  form, and a stronger different mechanism goes in the report as a follow-up. `scope-discipline.md`
+  counts that stronger form as in scope, and both minimal-change bullets say minimal limits what
+  you touch, never how well a stated goal is met. `security.md` covers credentials at client
+  configuration, rotation after exposure, and least privilege.
+- Review side: `review-heuristics.md` gained findings for log-and-fall-through catches (Critical
+  when the caller reports success or the catch sits in a security decision), undriven arms,
+  credentials in signatures or URLs, real credential values in source or logs (Critical),
+  interface-only credential tests, and summaries that describe their surroundings, plus a carve-out
+  letting a test assert the request its own registration code produces. branch-review Step 4
+  carries the matching items, including a stated-reason check that applies only when the task gave
+  one.
+- Fixed samples that taught a failure read as success: the Event Hubs C# send error handling,
+  buffered-producer failure handler, and processor consumer, plus the checkpoint key rule, which
+  claimed a skipped checkpoint redelivers; the Java and TypeScript batch re-adds that ignored
+  `tryAdd`'s result and the Rust add that ignored `try_add_event_data`'s bool; Java's empty transient `processError` branch; the Cosmos ETag, Java,
+  TypeScript bulk, and Python service samples; both Angular state-management patterns; and the
+  SAST scanner, which reported a failed Semgrep ruleset as a clean scan, with CI steps that hid
+  scanner crashes behind `|| true`.
+- `skills/python/SKILL.md` pointed reviews at the runtime's `code-review` skill, which
+  `task-workflows.md` Hard Rule 1 bans; it now names `branch-review`.
+
 ## v16
 - Aligned the MCP knowledge files with mcp-toolset v23. `git-readonly-operations.md` maps
   `git grep -c` to `countOnly`, pathspec wildcards and exclusions to `globs` and `excludePaths`, and

@@ -109,6 +109,47 @@ fn state_after_start_is_running() {
 }
 ```
 
+## Failure paths
+
+Every error arm you add has a test that drives it (`brain/knowledge/testing.md` ⛔ Hard Rule 1,
+SKILL.md Hard Rule 6). The fake returns the crate's own error type (an `anyhow` error here; the
+`thiserror` type in a published library, asserted with `matches!`), and the test checks both that
+the error reached the caller and that the success side effect never happened:
+
+```rust
+use std::cell::RefCell;
+
+struct FailingStore;
+
+impl OrderStore for FailingStore {
+    fn save(&self, _order: &Order) -> anyhow::Result<()> {
+        anyhow::bail!("store unavailable")
+    }
+}
+
+#[derive(Default)]
+struct RecordingPublisher {
+    published: RefCell<Vec<OrderEvent>>,
+}
+
+impl Publisher for RecordingPublisher {
+    fn publish(&self, event: OrderEvent) {
+        self.published.borrow_mut().push(event);
+    }
+}
+
+#[test]
+fn complete_order_save_fails_returns_error_and_publishes_nothing() {
+    let publisher = RecordingPublisher::default();
+    let service = OrderService::new(&FailingStore, &publisher);
+
+    let result = service.complete_order(&sample_order());
+
+    assert!(result.is_err());
+    assert!(publisher.published.borrow().is_empty());
+}
+```
+
 ## What to Test
 
 - **Happy paths**: the primary use case works correctly

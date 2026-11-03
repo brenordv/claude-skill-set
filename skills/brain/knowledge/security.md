@@ -45,6 +45,19 @@ These guidelines apply to all security-related skills, covering application secu
 - Never log secrets, tokens, or credentials.
 - An embedded/local database is not encryption: to a same-user or filesystem-read adversary, a secret
   stored in SQLite or similar is plaintext unless the store or the value itself is actually encrypted.
+- Attach credentials where the client is configured: a static key as a default header (or the SDK
+  client's credential argument) from secret-store-backed configuration, an expiring or per-user
+  token from an auth handler on the client's pipeline. Never pass one as a call parameter and never
+  put one in a URL or query string, where it lands in web logs, browser history, and Referer
+  headers even over HTTPS
+  ([OWASP](https://community.owasp.org/vulnerabilities/Information_exposure_through_query_strings_in_url)).
+  Full rule: `coding-general.md` ⛔ Hard Rule 11.
+- A credential that reached a URL, a log, or source control is exposed. Rotating it is the
+  owner's act, and the handoff tells them to ("explicitly rotate the affected keys", per
+  [Azure Functions access keys](https://learn.microsoft.com/en-us/azure/azure-functions/function-keys-how-to)).
+- Hold the narrowest credential: a function key for the one function a client calls, never a host
+  or master key. A credential shipped in browser or native-client code is not a secret (same page:
+  "don't distribute shared secrets in a public app").
 
 ---
 

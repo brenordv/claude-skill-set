@@ -134,6 +134,24 @@ For every changed file, evaluate it across the review dimensions defined in `bra
   that is a Critical finding: the stale test should change, not the production code. Also flag a
   validation relaxation that spilled onto fields the change did not target. See
   `brain/knowledge/review-heuristics.md` §Correctness.
+- [ ] **Summaries describe their own unit.** No added summary, docstring, or doc comment names who
+  calls or consumes the unit, or the services and queues it travels through
+  (`brain/knowledge/coding-general.md` ⛔ Hard Rule 9; `brain/knowledge/review-heuristics.md`
+  §Architecture). At minimum Important on touched lines.
+- [ ] **No handled failure ends on the success path, and every new arm is driven.** Each catch,
+  except, or error arm the diff adds ends in one of `brain/knowledge/coding-general.md` ⛔ Hard
+  Rule 10's endings and has a test that makes the dependency fail that way
+  (`brain/knowledge/testing.md` ⛔ Hard Rule 1). A log-and-fall-through arm is at minimum
+  Important, Critical when the caller then reports success or the arm sits in a security decision;
+  an undriven arm is at minimum Important (`brain/knowledge/review-heuristics.md` §Correctness and
+  §Testing).
+- [ ] **Credentials attach at client configuration.** No credential in a call signature, URL, or
+  query string (at minimum Important), and no real credential value in source or in a log
+  (Critical) (`brain/knowledge/coding-general.md` ⛔ Hard Rule 11;
+  `brain/knowledge/review-heuristics.md` §Security).
+- [ ] **When the task stated a reason, the diff meets it.** For an ask like "move the key to a
+  header for security", check the diff against the stated reason at the named step's footprint
+  (`brain/knowledge/general-problem-solving.md` §2). Skip this item when the task gave no reason.
 
 ### Step 5: Produce Feedback
 
@@ -181,7 +199,7 @@ full review as the body. Name, summary (carry the overall assessment), and tags 
 ## Testing Assessment
 - [ ] New code paths have test coverage
 - [ ] Tests verify meaningful behavior
-- [ ] Error paths are tested
+- [ ] Every new catch, except, or error arm is driven by a test asserting what the caller sees
 
 ## Notes
 [Any observations about dead code spotted, architectural concerns for future, etc.]

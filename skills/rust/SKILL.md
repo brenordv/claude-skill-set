@@ -52,6 +52,16 @@ list before writing code, and walk it again at handoff (§8).
    `#[cfg(test)] mod tests` block is subtracted, so co-located unit tests never push a file over a
    tier, and test-only files (`tests/`, `*_tests.rs`) are warn-only. The new-code quality gate (§8)
    enforces the cap.
+6. **A handled failure never ends on the success path, and every error arm you add has a test that
+   drives it.** This is `brain/knowledge/coding-general.md` ⛔ Hard Rule 10 in Rust terms. Errors
+   propagate with `?`: with `.context(...)` in anyhow crates, into the typed `thiserror` variant
+   (`#[from]` or `map_err`) in published libraries (Hard Rule 1). Not-found is `Ok(None)` in a
+   `Result<Option<T>>`, never an error folded into `None`. The swallow shapes on a `Result` the
+   caller must see are `.ok()` (and `.ok()?`), `let _ =`, `unwrap_or_default()`,
+   `unwrap_or_else(|_| ...)`, `if let Ok(..)` with no `else`, `Err(_) => {}`, and
+   `filter_map(Result::ok)` over results. `if let Err(e) = ... { warn!(error = %e, ...) }` is
+   allowed only for best-effort work, with the comment coding-general Hard Rule 10 asks for. The test follows
+   `brain/knowledge/testing.md` ⛔ Hard Rule 1 and `testing-guidelines.md` §"Failure paths".
 
 ### 1. Design Principles
 
@@ -91,6 +101,8 @@ In a published library crate:
 - Return `Result<T, YourError>` from the public API; let binaries wrap it into `anyhow` at their boundary with `?` and `.context(...)`
 - Keep variants meaningful to the caller (what they can match on and react to), not one variant per internal call site
 
+Whatever the crate kind, a handled error ends the way Hard Rule 6 says.
+
 ### 3. Logging (tracing required)
 
 `tracing` is the logging crate; never `log`, `env_logger`, or `println!` diagnostics (Hard Rule 3).
@@ -106,7 +118,7 @@ In a published library crate:
 - Use the repo's `rustfmt` and `clippy` defaults; never change an existing project's settings; fix all warnings. Setting the lint policy on a new crate or workspace you are creating is the one sanctioned exception (§1), including the `too_many_lines` pin
 - `snake_case` for functions/variables/modules/files; `PascalCase` for types; `UPPER_SNAKE_CASE` for constants
 - Group imports: `crate::`, external crates, `std::`; no glob imports in production code
-- Doc comments (`///`) on all public items with `# Errors` / `# Panics` sections where applicable
+- Doc comments (`///`) on all public items with `# Errors` / `# Panics` sections where applicable; each describes the item itself, never its callers or the services it travels through (`brain/knowledge/coding-general.md` ⛔ Hard Rule 9)
 - Comments explain "why", not "what"; the code's why, never the edit's (no comments narrating the
   fix, the request, or the old behavior; `brain/knowledge/coding-general.md` ⛔ Hard Rule 3); no
   commented-out code
@@ -129,6 +141,7 @@ In a published library crate:
 - Follow Arrange-Act-Assert; use helper functions to build test fixtures
 - Use `assert!(matches!(...))` for enum variant checks
 - Test happy paths, error conditions, and meaningful boundary values
+- Every error arm you add has a test that makes the dependency fail that way (Hard Rule 6, `brain/knowledge/testing.md` ⛔ Hard Rule 1)
 - Add tests where it makes sense; don't add them purely for coverage numbers
 - New-code quality gate: `scripts/rust_quality_gate.py --skip-mutants` checks diff coverage before handoff; the mutation half is opt-in and runs only after the user has committed the work themselves and asked for it; see `testing-guidelines.md` §"New-code quality gate"
 
@@ -145,8 +158,9 @@ In a published library crate:
 Before completion:
 
 1. **Walk the ⛔ Hard Rules block at the top item by item against your diff**: error crates match the
-   crate kind, no new `unwrap()`/`expect()`, events use structured fields. Verify by looking, not by
-   assuming.
+   crate kind, no new `unwrap()`/`expect()`, events use structured fields, every new error arm is
+   driven by a test. Verify by looking, not by assuming. Then walk the language-agnostic ⛔ block in
+   `brain/knowledge/coding-general.md` the same way.
 2. Run the four gates; all clean, warnings as errors:
 ```bash
 cargo fmt --all -- --check

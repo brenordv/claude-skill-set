@@ -25,9 +25,15 @@ let producer = ProducerClient::builder()
 
 ```rust
 let batch = producer.create_batch(None).await?;
-batch.try_add_event_data(b"event data".to_vec(), None)?;
+if !batch.try_add_event_data(b"event data".to_vec(), None)? {
+    anyhow::bail!("event exceeds the maximum batch size");
+}
 producer.send_batch(batch, None).await?;
 ```
+
+`try_add_event_data` returns `Ok(false)` when the event doesn't fit, so the bool needs checking;
+`?` alone drops it
+([EventDataBatch](https://docs.rs/azure_messaging_eventhubs/latest/azure_messaging_eventhubs/struct.EventDataBatch.html)).
 
 ## Consumer: Production with Checkpointing
 

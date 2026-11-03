@@ -144,7 +144,7 @@ class ItemService:
     async def get_by_id(self, item_id: str, partition_key: str) -> Item | None:
         container = await self._get_container()
         if container is None:
-            return None  # Graceful degradation
+            raise ServiceUnavailableError("Cosmos container is not available")
         try:
             doc = container.read_item(item=item_id, partition_key=partition_key)
             return self._doc_to_model(doc)
@@ -184,11 +184,33 @@ def mock_cosmos_container(mocker):
     mocker.patch("app.db.cosmos.get_container", return_value=container)
     return container
 
+@pytest.fixture
+def service():
+    return ItemService()
+
 @pytest.mark.asyncio
-async def test_get_item_returns_none_when_not_found(mock_cosmos_container):
+async def test_get_item_returns_none_when_not_found(mock_cosmos_container, service):
     mock_cosmos_container.read_item.side_effect = CosmosHttpResponseError(
         status_code=404, message="Not found"
     )
     result = await service.get_by_id("missing", "pk")
     assert result is None
+
+@pytest.mark.asyncio
+async def test_get_item_propagates_errors_other_than_not_found(mock_cosmos_container, service):
+    mock_cosmos_container.read_item.side_effect = CosmosHttpResponseError(
+        status_code=503, message="Service unavailable"
+    )
+    with pytest.raises(CosmosHttpResponseError):
+        await service.get_by_id("any", "pk")
+
+@pytest.mark.asyncio
+async def test_get_item_raises_when_container_unavailable(mocker, service):
+    mocker.patch("app.db.cosmos.get_container", return_value=None)
+    with pytest.raises(ServiceUnavailableError):
+        await service.get_by_id("any", "pk")
 ```
+
+Not-found returns None by contract; an outage or any other status propagates, and the second and
+third tests prove it. Returning None for an unavailable container would make an outage read as
+"item missing".

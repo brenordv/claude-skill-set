@@ -88,6 +88,63 @@ Re-read this list before writing code and walk it again at handoff (§10).
    looked too small to route is the defect this rule names: the habits those files replace (fixed
    calendar dates, invented literal ids, a mocking library the skill bans) are exactly what shows
    up when they're skipped. Reading them after a correction doesn't count as having loaded them.
+9. **Documentation describes the unit it sits on, never the system around it.** A summary,
+   docstring, or doc comment says what the unit is or does: for a type, what it represents, what
+   its members mean, and its constraints and invariants; for a method, its behavior, inputs,
+   outputs, and what it throws. It never says who produces, consumes, or calls the unit, which
+   services, queues, or functions relay it, or how it is deployed. Naming what the unit itself
+   calls or binds to is describing it: a publisher names the hub it sends to, a trigger function
+   names the queue it reads. The check: would the summary still be true if a different caller used
+   the unit, or it travelled by another route? If not, it describes usage, and that context belongs
+   at the code that does the wiring. A message model that a frontend relays to an Event Hub
+   function gets a summary about the message, and nothing about the frontend or the function. A
+   repo full of such summaries is precedent, not permission.
+10. **A handled failure never ends on the success path.** A caller must never mistake a failure
+    for success. Every catch, except, or error arm ends in exactly one of these:
+    - **Not catching.** When nothing at this level can do one of the endings below, let the
+      failure propagate. A catch that adds nothing is noise.
+    - **Throw.** Rethrow, or wrap in the repo's domain error with context the caller lacks, keeping
+      the original as the cause (inner exception, `raise ... from e`, `.context(...)`).
+    - **Return a failure the caller's contract makes it handle.** A result type, or a sentinel the
+      signature or its doc comment documents: null or None for not-found, Rust `Ok(None)` in a
+      `Result<Option<T>>`.
+    - **Recover for real.** A retry that succeeded, a fallback that produces a correct value.
+    - **Report at a boundary.** A request handler returns an error response (generic to the
+      caller, details in server logs); a UI handler shows an error state; a job or CLI exits
+      non-zero. A message or event handler rethrows only where its host redelivers until success
+      or dead-letters (Service Bus and Storage queue triggers). An Event Hubs trigger advances its
+      checkpoint with or without an exception, so with a host retry policy the handler rethrows on
+      earlier attempts and parks the event on the final one (the invocation's retry context carries
+      the current and maximum retry count), and without one it retries in code and parks after the
+      loop. Where the SDK says not to throw from the handler (the Event Hubs processor), the
+      handler parks the event somewhere recoverable and logs at error so an alert can fire.
+
+    Logging is never an ending on its own. Log a failure once, where the context is: a catch that
+    throws or wraps logs only data the boundary can't see, or carries it in the wrapped error, and
+    the boundary or the error-handling middleware logs the rest. Two catches are exempt. An SDK
+    error-notification callback whose library owns recovery (an Event Hubs processor's error
+    handler) ends in a log or an alert. Best-effort work whose failure can't change the result
+    (cleanup, telemetry other than a required audit record, cache warm-up) logs at warning level,
+    naming the skipped work and its identifier (item id, cache key) with the error attached, and a
+    comment at the catch says it is best-effort. Cancellation is not a failure: catch it only where
+    the stop was requested, and never let a broad catch or a retry loop absorb it. The shape that
+    regresses is the last broad catch of an SDK's exception type after the specific handlers
+    (`catch (CosmosException)`, `except CosmosHttpResponseError`, a catch-all error arm): delete
+    it, or make it wrap with context. The test half is `testing.md` ⛔ Hard Rule 1: every arm you
+    add is driven by a test.
+11. **A credential is attached by the client's configuration, never by its call surface.** A
+    static key (an API key, function key, or subscription key) is set where the client is built,
+    as a default header or the SDK client's credential argument, from configuration backed by a
+    secret store, never a committed settings file. A token that expires or varies per user or
+    tenant comes from an auth handler on the client's pipeline. Neither is ever a parameter of the
+    client's call methods, and neither goes in a URL or query string: a credential in a URL lands
+    in web logs, browser history, and Referer headers even over HTTPS
+    ([OWASP](https://community.owasp.org/vulnerabilities/Information_exposure_through_query_strings_in_url)).
+    When a service issues the credential as a URL (a SAS or presigned URL, a webhook URL), the
+    whole URL is the secret: loaded from a secret store, never logged. A credential that already
+    reached a URL, a log, or source control is exposed; rotating it is the owner's act, and the
+    handoff says so. A test of credential handling asserts on the outgoing request, never on an
+    interface signature. The C# mechanisms are in `csharp/SKILL.md` §8.
 
 ---
 
@@ -126,7 +183,7 @@ Re-read this list before writing code and walk it again at handoff (§10).
 - **Avoid premature abstraction**: Don't create helpers, utilities, or frameworks for things that only happen once. Wait until you see the pattern repeat.
 - **Avoid over-engineering**: The right amount of complexity is what the task actually requires. No speculative abstractions, but no half-finished implementations either. The mechanism-sizing test is ⛔ Hard Rule 6.
 - **Avoid code duplication through thoughtfulness**: Before writing new code, check if similar logic already exists. If it does, reuse or extend it. If you're about to write similar code in multiple places, extract it once. The pre-write search is mandatory, not aspirational: ⛔ Hard Rule 1.
-- **Minimal changes**: Solve the problem asked. Don't add features, refactor surrounding code, or make "improvements" beyond what was requested.
+- **Minimal changes**: Solve the problem asked. Don't add features, refactor surrounding code, or make "improvements" beyond what was requested. Minimal limits what you touch beyond the goal, never how well you meet a goal the user stated: when the ask gives a reason, `general-problem-solving.md` §2 decides which way of doing the step counts as done.
 - **Contain the blast radius**: A change that tightens or fixes one thing must not loosen or alter anything unrelated. Making one field's validation stricter must never make another field's more lenient. Keep a change's effect scoped to exactly what it targets.
 - **A deliberate change outranks stale tests and legacy code**: When behavior changes on purpose, conform failing tests and old assumptions to it; never revert it, relax a validation, or weaken code to satisfy a test or to match the code it replaced. Full statement in `general-problem-solving.md` §3.
 
@@ -237,10 +294,10 @@ detail behind ⛔ Hard Rule 4; they are not a mandate to refactor existing files
 
 - **Use specific exceptions/errors**: Never catch or throw generic exceptions when a specific one exists.
 - **Provide meaningful error messages**: Include context: what failed, what was the input, why it matters.
-- **Never swallow errors silently**: At minimum, log them. Prefer surfacing to the user.
+- **Never swallow errors**: every catch ends in one of ⛔ Hard Rule 10's endings; logging alone is not one.
 - **Validate inputs early**: Guard at system boundaries (user input, external APIs). Fail fast with clear messages.
 - **Use resource management patterns**: Context managers, try-with-resources, `using`, RAII (whatever the language provides).
-- **When a method returning a collection fails, return empty, not null**: Unless null carries distinct semantic meaning.
+- **When a method returning a collection finds nothing, return empty, not null**: Unless null carries distinct semantic meaning. A failure is never an empty collection (⛔ Hard Rule 10).
 
 ---
 
@@ -254,10 +311,10 @@ detail behind ⛔ Hard Rule 4; they are not a mandate to refactor existing files
   inside code comments, docstrings, and documentation exactly as they do in chat and PR prose.
 - **No commented-out code**: Use version control for history.
 - **Remove dead code you introduced**: If code you wrote becomes unused during the task, delete it. However, do not remove pre-existing dead code unrelated to your change; that increases diff scope. Instead, point it out to the user.
-- **Document new code**: Add summaries/docstrings to new methods and classes so added code is properly documented.
+- **Document new code**: Add summaries/docstrings to new methods and classes so added code is properly documented. Each describes the unit itself, never its callers or the route it travels (⛔ Hard Rule 9).
 - **Avoid magic numbers**: Extract to named constants.
 - **Keep nesting shallow**: Use early returns and extraction to keep code flat.
-- **Never reference separate documentation from code; explain inline instead**: Code comments, docstrings, READMEs, and summaries must never point at ADRs, design docs, wikis, planning docs, or tickets ("see ADR-012", "as described in the architecture document"). Those artifacts don't ship with the code and rot independently of it. When the reader needs that context, briefly explain the relevant decision or constraint in one or two sentences right there, in place of the pointer. This applies to every artifact you write: source files, XML docs/docstrings, READMEs, and handoff summaries.
+- **Never reference separate documentation from code; explain inline instead**: Code comments, docstrings, READMEs, and summaries must never point at ADRs, design docs, wikis, planning docs, or tickets ("see ADR-012", "as described in the architecture document"). Those artifacts don't ship with the code and rot independently of it. When the reader needs that context, briefly explain the relevant decision or constraint in one or two sentences right there, in place of the pointer. "Right there" means the code that acts on the decision, never the summary of a type that code merely uses (⛔ Hard Rule 9). This applies to every artifact you write: source files, XML docs/docstrings, READMEs, and handoff summaries.
 
 ---
 
@@ -278,6 +335,7 @@ detail behind ⛔ Hard Rule 4; they are not a mandate to refactor existing files
 - **Never hardcode secrets**: Use environment variables, vaults, or secret managers.
 - **Never log sensitive data**: Passwords, tokens, PII must never appear in logs.
 - **Apply least privilege**: Grant only the permissions needed.
+- **Credentials attach at client configuration**: never as call arguments and never in URLs (⛔ Hard Rule 11).
 
 ---
 
@@ -310,9 +368,13 @@ Before delivering work:
    mid-task without the user's explicit yes; a tool gap you hit goes in the summary with the
    suggested install command (Hard Rule 7). Name the skill files and knowledge files read for
    the task; if a language's code changed and its skill file isn't on that list, the handoff
-   isn't ready (Hard Rule 8). Then
-   reread every comment the diff adds or edits: any that narrates the change rather than the current
-   code gets deleted here, its story moved to the summary (Hard Rule 3).
+   isn't ready (Hard Rule 8). Every summary the diff adds describes its own unit (Hard Rule 9).
+   List each catch the diff adds with its ending and the test that drives it; an uncovered catch
+   line blocks the handoff whatever the coverage percentage (Hard Rule 10). No credential sits in a
+   call signature or a URL, and one that was exposed is flagged for rotation (Hard Rule 11). When
+   the ask stated a reason, name the way chosen and the one rejected (`general-problem-solving.md`
+   §2). Then reread every comment the diff adds or edits: any that narrates the change rather than
+   the current code gets deleted here, its story moved to the summary (Hard Rule 3).
 3. Ensure new code is covered by tests.
 4. Run the test suite; confirm nothing is broken.
 5. Summarize the change, its rationale, and any caveats or warnings.

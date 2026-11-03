@@ -37,6 +37,15 @@ As a high level, here are some examples:
   writing the cases directly reads shorter and clearer. A guideline naming a mechanism by example
   (`TimeProvider`) doesn't change that: a method that already takes the date as a parameter gets the
   parameter passed, with no clock injected beside it.
+- Documentation describes the thing it sits on. A message model's summary says what the message is,
+  never which services relay it or who consumes it; that context goes at the code doing the wiring.
+- A handled failure never ends on the success path. A catch rethrows, wraps with context, returns a
+  failure the caller has to check, recovers for real, or reports at a boundary; outside best-effort
+  work and SDK error callbacks, a catch that only logs is a defect. Every catch a change adds gets a test that makes the dependency fail and checks
+  that the caller sees it.
+- Credentials live in the client's configuration. A static key is a default header set where the
+  client is built, never a method parameter or a query string. And when a request gives a reason
+  ("for security"), the reason decides which way of doing the step counts as done.
 - Git stays human. The agent inspects freely (through a read-only MCP) but never stages or commits.
 - Version numbers move only at release time. A project that has never shipped keeps its initial
   version no matter how much lands, so the first release goes out as 1.0.0, not an accumulated

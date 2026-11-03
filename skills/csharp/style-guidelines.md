@@ -111,7 +111,7 @@ These rules reflect the `.editorconfig` and formatting conventions for C# projec
 
 - When dealing with nullable types, prefer safe guarding and asserting you have all you need early, instead of multiple null-coalescing checks during execution.
 - **Check strings with `string.IsNullOrWhiteSpace`, never `string.IsNullOrEmpty`** (Hard Rule 8). A whitespace-only string is almost never a meaningful value; `IsNullOrEmpty` lets `"   "` slip through as valid. Use `IsNullOrEmpty` only when whitespace-only is explicitly documented as valid for that field.
-- When a method returning a list fails, return empty list, not `null`.
+- When a method returning a list finds nothing, return an empty list, not `null`; a failure is never an empty list (SKILL.md Hard Rule 17).
 - Prefer `is null` / `is not null` over `== null` / `!= null` for null checks: idiomatic and clearer in chains.
 - Don't use `?.` on a value the surrounding control flow already guarantees non-null (e.g. inside `if (error != null)`). It implies a null case that can't happen. Use direct member access.
 - Since nullable reference types are disabled project-wide, don't annotate reference types with `?` (e.g. `string?`); a reference type is already nullable, so it's just noise. The canonical `.editorconfig` enforces this as a build error (`dotnet_diagnostic.CS8632.severity = error`): a stray `?` annotation fails the build instead of slipping through.

@@ -255,15 +255,18 @@ Auto-expire documents to save storage and RU costs:
 
 ```typescript
 // TypeScript
-const { resource, etag } = await container.item("1", "pk").read<Item>();
-resource.price = 899.99;
-try {
-  await container.item("1", "pk").replace(resource, {
-    accessCondition: { type: "IfMatch", condition: etag },
-  });
-} catch (error) {
-  if (error instanceof ErrorResponse && error.code === 412) {
-    // Document modified by another process - re-read and retry
+/** @returns false when the item's ETag no longer matches (412); any other failure throws */
+async function replaceIfUnchanged(item: Item, partitionKey: string, etag: string): Promise<boolean> {
+  try {
+    await container.item(item.id, partitionKey).replace(item, {
+      accessCondition: { type: "IfMatch", condition: etag },
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof ErrorResponse && error.code === 412) {
+      return false;
+    }
+    throw error;
   }
 }
 ```

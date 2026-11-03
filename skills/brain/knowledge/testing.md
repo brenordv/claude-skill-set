@@ -2,6 +2,23 @@
 
 These guidelines apply to all coding and game development skills regardless of language or framework. They define the quality bar for test code. Read this file before adding or changing any test, whatever the size of the task, together with the routed language skill's `testing-guidelines.md`.
 
+## ⛔ Hard Rules
+
+These bind every test you add or change, in every language, and they beat repository conventions:
+a suite that only covers happy paths is precedent, not permission. A coverage percentage above the
+gate's threshold never excuses breaking one.
+
+1. **A failure branch is proven only by a test that drives it.** Every catch, except, or error arm
+   a change adds gets a test that makes the dependency fail that way, and the assertion matches how
+   the arm ends (`coding-general.md` ⛔ Hard Rule 10). For a throw, a failure result, or a boundary
+   report, the caller sees the failure and the success-path side effect didn't happen: nothing
+   saved, no event published, no success status. For a recovery, the result is correct and the
+   injected failure actually fired. For a best-effort catch, the main result is unchanged despite
+   the failure. A test that would still pass if the arm became log-and-continue proves nothing. The
+   failure and the absent side effect are one logical verification, and reading a fake's captured
+   state is an output check, not an interaction check. Propagation through `?`, `finally`, `using`,
+   or `with` is not an arm that needs its own test.
+
 ---
 
 ## 1. Testing Philosophy
@@ -42,7 +59,7 @@ Keep each section clearly separated. One logical assertion per test (multiple `a
 ### Always Test
 
 - **Happy path**: The normal, expected behavior.
-- **Error conditions**: What happens when things go wrong (invalid input, failures).
+- **Error conditions**: What happens when things go wrong (invalid input, failures). Every failure arm the change adds is driven by its own test (⛔ Hard Rule 1).
 - **Boundary values**: Edge cases at the limits (empty collections, zero, max values, off-by-one).
 
 ### Test Judiciously
@@ -170,6 +187,7 @@ When multiple test cases share the same logic but differ in input/output:
 | Giant test methods | Hard to diagnose failures | One assertion per test |
 | Copy-paste test code | Maintenance nightmare | Extract helpers/fixtures |
 | Testing only the happy path | Bugs hide in error paths | Test errors and edges |
+| Failure branches covered only by happy-path tests | Deleting the throw breaks nothing | Drive each arm and assert what the caller sees (⛔ Hard Rule 1) |
 | Comments narrating the test | Signals the test is too complex to read | Simplify until name + code speak for themselves |
 | Slow test suites | Developers skip running them | Isolate slow tests |
 | No tests at all | Refactoring is terrifying | Start with critical paths |

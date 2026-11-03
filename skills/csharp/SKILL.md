@@ -31,13 +31,15 @@ break these. Re-read this list before writing code, and walk it again at handoff
 7. **`const` over `var` for locals when possible.** A local whose value is a compile-time constant and is never reassigned is declared `const`.
 8. **`string.IsNullOrWhiteSpace`, never `string.IsNullOrEmpty`**, unless whitespace-only is explicitly documented as a valid value for that field.
 9. **No magic values or magic behavior.** Every enum member gets an explicit value and numbering starts at 1, so `0`/`default` always means "bug: never assigned". Never rely on an implicit default (enum, config value, parameter) to make a flow work.
-10. **Never point at separate documentation.** Code, XML docs, comments, READMEs, and summaries must not reference ADRs, design docs, wikis, or tickets. Briefly explain the relevant decision inline instead; documentation does not ship with the code.
+10. **Never point at separate documentation.** Code, XML docs, comments, READMEs, and summaries must not reference ADRs, design docs, wikis, or tickets. Briefly explain the relevant decision inline instead; documentation does not ship with the code. The inline explanation goes at the code that acts on the decision; a type's summary never carries how other components use it (`brain/knowledge/coding-general.md` ⛔ Hard Rule 9).
 11. **Test files mirror the source folder structure; never flatten them to the test project root.** A test for `src/App.Domain/Services/OrderService.cs` lives at `tests/App.Domain.Tests/Services/OrderServiceTests.cs`, and you create the `Services/` folder to hold it. Scaffolding the test project yourself is not an exception: a fresh, empty project is where this mistake happens most, so build the mirrored folders as you add each file instead of dropping everything at the root.
 12. **Hard Rules apply to YOUR code only; never expand the task's scope to enforce them.** If a class is full of `set` properties, the property you add uses `init` and the existing ones stay untouched. If the test project uses FluentAssertions or Moq, your new tests use native `Assert` and hand-rolled fakes while the existing tests stay as they are. Fixing pre-existing violations is a separate task: mention them in your handoff summary and move on.
 13. **`var` wherever it compiles, delegate lambdas included.** A local whose initializer lets the compiler infer the type is `var` (or `const` per rule 7), never an explicit type, even when the repo spells types out. The deferred-action local for exception asserts is where this regresses: `var act = () => sut.UpdateDocumentAsync(document, CancellationToken.None);`, never `Func<Task> act = ...`. An explicit type is allowed only where `var` genuinely cannot compile (no initializer, a bare `null`/`default`, a language version below C# 10 that can't infer the lambda's natural type).
 14. **No stale-prone hard-coded test data.** A date or time in a test derives from the clock (`DateTime.UtcNow` with offsets, e.g. `.AddDays(-30)`), or from the injected fake clock when the code under test reads time. A literal calendar date silently rots: "one year ago" becomes "five years ago" and the scenario changes without anyone touching the test. A fixed literal is allowed only when that exact value is the scenario (a boundary, a regression's input), and then it lives in a named `const` (or `static readonly` for types `const` can't hold, `DateTime` included) whose name says why. The same instinct applies to other data: generated realistic values (`Faker`/`MockDataGenerators`) over invented literals, and any literal used twice becomes a named const. When the method under test already takes the instant as a parameter (`DateOnly day`, `DateTime asOf`), the test passes it: a `TimeProvider` injected beside an existing date parameter is the oversized mechanism `brain/knowledge/coding-general.md` ⛔ Hard Rule 6 bans, and a real-clock fallback on that parameter that no production caller uses is removed, never faked around.
 15. **No AutoMapper. Ever.** Not the package, not a new `Profile`, not a single new `Map` call, even in a repo built on it. Mapping is explicit code: hand-written extension methods (`ToDto()`, `ToDomain()`) or constructors, testable and greppable, with no convention magic deciding what maps where. Existing AutoMapper usage in untouched code stays as it is (rule 12).
 16. **File size: split new code into a new file; never mass-refactor an existing file for size.** A `.cs` file you create, or a pre-existing one your change grows across 1,500 lines (the hard cap; the warn tier starts at 700), goes into a new cohesive type and file instead of sailing past the cap. The per-language tier table is in `brain/knowledge/coding-general.md` §3 (File size). Like rule 12, this is your-code-only: a file already over the cap stays untouched for size; route your addition into a new file and name the oversized one in the handoff. Test files (`*Tests.cs`, `test`/`tests`/`*.Tests` path segments) are warn-only, never a hard failure. One public type per file (rule 1) already points you at the split; the new-code quality gate (§18) enforces the cap.
+17. **A catch never ends on the success path, and every catch you add has a test that drives it.** This is `brain/knowledge/coding-general.md` ⛔ Hard Rule 10 in C# terms. A catch rethrows with `throw;`, wraps into the repo's exception with the original as the inner exception, or handles an expected status through a `when` filter, as in `catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound) { return null; }` with the null documented in `<returns>`. It may also recover for real, or report at a boundary: an endpoint with no error-handling middleware returns a generic `ProblemDetails` (§9, §16), and a message or event handler follows coding-general Hard Rule 10's handler rules. The trailing broad `catch (CosmosException)` after the filtered handlers is the shape that regresses: delete it so other statuses propagate, or make it wrap with context, and never let it log and return normally (§5 has the pair). A broad catch never absorbs `OperationCanceledException` (`when (ex is not OperationCanceledException)` where a broad catch is unavoidable). The test that drives each catch follows `brain/knowledge/testing.md` ⛔ Hard Rule 1 and `testing-guidelines.md` §"Failure paths".
+18. **Credentials attach at client registration, never on a Refit interface.** A Refit method never carries a credential as a `[Header]`, `[HeaderCollection]`, `[Query]`, `[AliasAs("code")]`, or `[Authorize]` parameter, and `[Headers]` never holds a credential literal. A static key is set in the client's registration and a token comes from a handler on its pipeline (§8; `brain/knowledge/coding-general.md` ⛔ Hard Rule 11).
 
 ### 1. Prime Directives
 
@@ -79,7 +81,50 @@ Cut to summary; see `style-guidelines.md` for the full formatting, naming, and `
 
 - Discover the repository's base exception type and use it for custom exceptions.
 - If no base exception exists, introduce a domain-appropriate base and inherit from it.
-- Avoid throwing or catching `Exception`; catch specific exceptions and recover when possible.
+- Avoid throwing or catching `Exception`; catch specific exceptions, and end every catch the way Hard Rule 17 says. A swallowed failure usually hides in the last catch of a chain, after the specific handlers:
+
+```csharp
+// Bad: a failed save returns normally, so the caller publishes OrderSaved anyway
+public async Task SaveAsync(Order order, CancellationToken cancellationToken)
+{
+    try
+    {
+        await _container.ReplaceItemAsync(
+            order,
+            order.Id,
+            new PartitionKey(order.CustomerId),
+            new ItemRequestOptions { IfMatchEtag = order.ETag },
+            cancellationToken);
+    }
+    catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.PreconditionFailed)
+    {
+        throw new OrderConcurrencyException(order.Id, ex);
+    }
+    catch (CosmosException ex)
+    {
+        _logger.LogError(ex, "Saving order [{OrderId}] failed", order.Id);
+    }
+}
+
+// Good: any other status propagates, so the caller's publish never runs
+public async Task SaveAsync(Order order, CancellationToken cancellationToken)
+{
+    try
+    {
+        await _container.ReplaceItemAsync(
+            order,
+            order.Id,
+            new PartitionKey(order.CustomerId),
+            new ItemRequestOptions { IfMatchEtag = order.ETag },
+            cancellationToken);
+    }
+    catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.PreconditionFailed)
+    {
+        throw new OrderConcurrencyException(order.Id, ex);
+    }
+}
+```
+
 - If the repo provides error helpers (for example, `LogAndProcessError`), use them consistently.
 
 ### 6. Serialization
@@ -104,14 +149,19 @@ Cut to summary; see `style-guidelines.md` for the full formatting, naming, and `
 - Register all Refit clients in a single extension method, and wire them in `Program.cs` via `RegisterRefitClients`.
     - If the repository already have an initialization method with a different name, use that instead.
 - Always configure each client with `BaseAddress` from configuration and reuse the shared `ConfigureRefitClient` policy setup.
-- Use client-credentials authentication via the existing profiles when calling external services.
+- Every credential the client sends is attached by its registration, never by a method parameter (Hard Rule 18). For client-credentials authentication, use the existing profiles when calling external services.
     - If the repository has a dedicated authentication package already installed, use it consistently.
     - Otherwise, create an extension method to configure authentication in a centralized place.
+- Where each kind of credential attaches:
+    - A static key (function key, API key, subscription key): set it in the registration with `AddRefitClient<T>().ConfigureHttpClient((sp, client) => ...)`, reading the key from validated options (`IOptions<T>`, §10); the two-argument overload hands the delegate the root service provider ([ConfigureHttpClient](https://learn.microsoft.com/en-us/dotnet/api/microsoft.extensions.dependencyinjection.httpclientbuilderextensions.configurehttpclient)), and `client.DefaultRequestHeaders.Add(...)` is the shape [Make HTTP requests using IHttpClientFactory](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/http-requests) shows for Refit. An Azure Function takes the key in the `x-functions-key` header, which the host accepts in place of the `code` query parameter ([Azure Functions access keys](https://learn.microsoft.com/en-us/azure/azure-functions/function-keys-how-to)).
+    - A static key that rotates: a `DelegatingHandler` registered as transient with `AddHttpMessageHandler`, reading `IOptionsMonitor<T>.CurrentValue` inside `SendAsync` so a rotated value takes effect.
+    - An expiring or per-user token: a handler that gets it from the token provider the repo already uses (the authentication package or extension above), or Refit's `AddAuthorizationHeaderValueProvider` ([Refit dependency injection](https://www.reactiveui.net/documentation/refit/clients/dependency-injection/)). A token is never stored in options.
+- Keep the key out of logs. From .NET 9, IHttpClientFactory redacts every logged header value by default, but any `RedactLoggedHeaders` call replaces that default with its own list, so a client that calls it names the key header too; below .NET 9 the keyed client calls `RedactLoggedHeaders` naming the key header ([.NET 9 breaking change](https://learn.microsoft.com/en-us/dotnet/core/compatibility/networking/9.0/redact-headers)). Never log the options object that holds the key.
 - Apply the standard retry policies: unauthorized retry plus transient HTTP error policy.
 - Configure request timeouts and shared message handlers centrally when the repo provides them.
 - Prefer typed `ApiResponse<T>` when you need to access the body/content returned; If all you need is the status codes and headers, use `IApiResponse` instead.
 - Always validate responses with custom methods in the repository, if available. Otherwise, use `EnsureSuccessStatusCode`.
-- Log failures with structured logging and rethrow a domain-appropriate exception.
+- Rethrow a domain-appropriate exception carrying the request context, and log only what the error-handling middleware can't see (Hard Rule 17, §7).
 
 ### 9. Global Error Handling
 
@@ -139,6 +189,32 @@ When an Error Handling Middleware is present:
 - Choose explicit lifetimes (`Singleton`, `Scoped`, `Transient`) based on behavior.
 
 ### 12. Documentation Comments (Summary Required)
+
+- A summary describes the type or member it sits on: what it represents or does, what its members mean, its constraints. It never says who sends, relays, or consumes it (`brain/knowledge/coding-general.md` ⛔ Hard Rule 9):
+
+```csharp
+// Bad: the summary narrates the system around the record
+/// <summary>
+/// Message the Frontend relays to the order-processing Event Hub function, which stores it in Cosmos.
+/// </summary>
+public sealed record OrderStatusChanged;
+
+// Good: the summary describes the message
+/// <summary>
+/// A change to an order's status.
+/// </summary>
+public sealed record OrderStatusChanged
+{
+    /// <summary>The order whose status changed.</summary>
+    public string OrderId { get; init; }
+
+    /// <summary>The status the order moved to.</summary>
+    public OrderStatus Status { get; init; }
+
+    /// <summary>When the change happened, in UTC.</summary>
+    public DateTime ChangedAtUtc { get; init; }
+}
+```
 
 - Every new public class, interface, struct, record, and method must have XML documentation comments.
 - Every new internal/private methods or classes should be documented unless the repo explicitly avoids it.
@@ -186,10 +262,10 @@ Use xUnit with native `Assert` methods and the AAA (Arrange, Act, Assert) patter
 ### 18. Quality Validation
 
 Before handing off your work:
-1. **Walk the Hard Rules list (⛔ section at the top) item by item against your diff.** For each rule, scan the changed lines and fix every violation. This step is mandatory even for small changes; these are the rules that keep regressing.
+1. **Walk the Hard Rules list (⛔ section at the top) item by item against your diff.** For each rule, scan the changed lines and fix every violation. This step is mandatory even for small changes; these are the rules that keep regressing. Walk the language-agnostic ⛔ block in `brain/knowledge/coding-general.md` the same way.
 2. Run `dotnet format` and fix any reported problems.
 3. Make sure the code is changed, and the new use-case is covered by unit tests. If there are no tests, create test coverage for it to improve repository maintainability.
-4. **Open every test file you added or touched and confirm four things:** each test has its `// Arrange` / `// Act` / `// Assert` markers (Hard Rule 3); the file sits in a folder mirroring its source, not at the test project root (Hard Rule 11); no local spells out a type `var` could infer, `Func<Task> act` included (Hard Rule 13); and no literal calendar date sits where a `DateTime.UtcNow` offset or fake clock belongs (Hard Rule 14). These regress the most in test code, so verify them by looking, not by assuming.
+4. **Open every test file you added or touched and confirm five things:** each test has its `// Arrange` / `// Act` / `// Assert` markers (Hard Rule 3); the file sits in a folder mirroring its source, not at the test project root (Hard Rule 11); no local spells out a type `var` could infer, `Func<Task> act` included (Hard Rule 13); no literal calendar date sits where a `DateTime.UtcNow` offset or fake clock belongs (Hard Rule 14); and every catch the diff adds has a test that makes the dependency fail that way and asserts what the caller sees (Hard Rule 17, `brain/knowledge/testing.md` ⛔ Hard Rule 1). These regress the most in test code, so verify them by looking, not by assuming.
 5. Run `dotnet test` to make sure you didn't break anything.
 6. Run the coverage half of the new-code quality gate (`scripts/csharp_quality_gate.py --skip-mutants` in this skill folder) where the dotnet toolchain is available. The mutation half is optional: never commit anything yourself; ask the user whether they want it and to commit the changes themselves first, then run the gate without `--skip-mutants`. See `testing-guidelines.md` §"New-code quality gate". The gate also checks file size (Hard Rule 16): exit code 4 means a new or cap-crossing production file hit the 1,500-line cap. The fix is to split the new code into a new file, not to mass-refactor the existing one; the size phase runs on git and the filesystem alone, so it reports even where the dotnet toolchain is absent.
 7. Check that all NuGet packages are on the latest stable version. Run `dotnet list package --outdated` and update any that are behind.
