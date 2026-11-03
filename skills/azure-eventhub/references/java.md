@@ -36,7 +36,9 @@ for (String payload : payloads) {
     if (!batch.tryAdd(event)) {
         producer.send(batch);
         batch = producer.createBatch();
-        batch.tryAdd(event);
+        if (!batch.tryAdd(event)) {
+            throw new IllegalArgumentException("Event exceeds the maximum batch size");
+        }
     }
 }
 if (batch.getCount() > 0) producer.send(batch);
@@ -70,11 +72,11 @@ processor.stop();
 ```java
 .processError(ctx -> {
     Throwable err = ctx.getThrowable();
+    String partitionId = ctx.getPartitionContext().getPartitionId();
     if (err instanceof AmqpException && ((AmqpException) err).isTransient()) {
-        // SDK retries automatically
+        log.warn("Transient error on partition {}; the SDK retries automatically", partitionId, err);
     } else {
-        log.error("Non-transient error on partition {}: {}",
-            ctx.getPartitionContext().getPartitionId(), err);
+        log.error("Non-transient error on partition {}", partitionId, err);
     }
 })
 ```

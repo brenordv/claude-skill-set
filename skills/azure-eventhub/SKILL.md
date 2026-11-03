@@ -113,10 +113,33 @@ await blobClient.CreateIfNotExistsAsync();
 
 var processor = new EventProcessorClient(blobClient,
     EventHubConsumerClient.DefaultConsumerGroup, ns, hub, new DefaultAzureCredential());
+using var stopProcessing = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
 processor.ProcessEventAsync += async args =>
 {
-    Console.WriteLine($"Partition {args.Partition.PartitionId}: {args.Data.EventBody}");
+    if (stopProcessing.IsCancellationRequested)
+    {
+        return;
+    }
+
+    try
+    {
+        await HandleEventAsync(args.Data, args.CancellationToken);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        if (!await deadLetterStore.TryParkAsync(args.Data, args.CancellationToken))
+        {
+            logger.LogCritical(ex, "Parking failed, stopping. Partition: [{PartitionId}], SequenceNumber: [{SequenceNumber}]",
+                args.Partition.PartitionId, args.Data.SequenceNumber);
+            stopProcessing.Cancel();
+            return;
+        }
+
+        logger.LogError(ex, "Parked event. Partition: [{PartitionId}], SequenceNumber: [{SequenceNumber}]",
+            args.Partition.PartitionId, args.Data.SequenceNumber);
+    }
+
     await args.UpdateCheckpointAsync();
 };
 processor.ProcessErrorAsync += args =>
@@ -126,9 +149,26 @@ processor.ProcessErrorAsync += args =>
 };
 
 await processor.StartProcessingAsync();
-await Task.Delay(Timeout.Infinite, cancellationToken);
+try
+{
+    await Task.Delay(Timeout.Infinite, stopProcessing.Token);
+}
+catch (TaskCanceledException)
+{
+    // Expected: the host, or a park that failed, requested the stop.
+}
 await processor.StopProcessingAsync();
 ```
+
+The processor never catches exceptions thrown from `ProcessEventAsync`
+([processor README](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/messaging.eventhubs.processor-readme)),
+so the handler catches its own: a failed event is parked, logged at error with its partition and
+sequence number, and then checkpointed. If parking fails too, the handler skips the checkpoint and
+signals the stop, and every event dispatched after that returns at the first line without being
+processed or checkpointed, so nothing moves the checkpoint past the unparked event before the stop
+lands. The hosting code calls `StopProcessingAsync`, which may wait for active partition reads to
+finish, so the handler never calls it itself. `ProcessErrorAsync` only observes errors the
+processor recovers from on its own, so a log is its whole job.
 
 Java, Python, TypeScript, and Rust production-consumer variants (checkpoint-backed): see `references/java.md`, `references/python.md`, `references/typescript.md`, `references/rust.md`.
 
@@ -143,9 +183,16 @@ Java, Python, TypeScript, and Rust production-consumer variants (checkpoint-back
 
 ## Error Handling
 
-Per-language error-handling examples (transient vs. non-transient): see `references/csharp.md`, `references/java.md`.
+Per-language error-handling examples (C# send failures, Java processor errors): see `references/csharp.md`, `references/java.md`.
 
-**Key rule**: Never checkpoint on processing failure. Let events be redelivered.
+**Key rule**: never checkpoint past an event you failed to process unless you parked it. A checkpoint
+records a position in the stream, so skipping one doesn't redeliver the failed event: the next
+successful checkpoint moves past it. An Event Hubs-triggered Azure Function advances the checkpoint
+with or without an exception, so with a host retry policy the function rethrows on earlier attempts
+and parks the event on the final one (the retry context carries the current and maximum retry
+count), and without one it retries in code and parks after the loop
+([reliable event processing](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reliable-event-processing),
+[error handling and retries](https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-error-pages)).
 
 ## Performance Tuning
 

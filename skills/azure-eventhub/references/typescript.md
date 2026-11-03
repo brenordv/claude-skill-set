@@ -20,12 +20,14 @@ const producer = new EventHubProducerClient(namespace, eventHubName, new Default
 ## Producer: Batch Send
 
 ```typescript
-const batch = await producer.createBatch();
+let batch = await producer.createBatch();
 for (const item of items) {
     if (!batch.tryAdd({ body: item })) {
         await producer.sendBatch(batch);
         batch = await producer.createBatch();
-        batch.tryAdd({ body: item });
+        if (!batch.tryAdd({ body: item })) {
+            throw new Error("Event exceeds the maximum batch size");
+        }
     }
 }
 await producer.sendBatch(batch);

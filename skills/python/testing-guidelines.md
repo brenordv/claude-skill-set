@@ -74,6 +74,36 @@ def test_fetch_user_calls_api_with_correct_id(mocker):
     assert result.name == "Alice"
 ```
 
+## Failure paths
+
+Every `except` you add has a test that drives it (`brain/knowledge/testing.md` ⛔ Hard Rule 1,
+SKILL.md Hard Rule 8). Make the fake fail the way the dependency does, assert the failure reaches
+the caller, and assert the success side effect never happened:
+
+```python
+class FailingOrderRepository:
+    def save(self, order: Order) -> None:
+        raise OrderStoreError("save failed")
+
+
+class RecordingPublisher:
+    def __init__(self) -> None:
+        self.published: list[object] = []
+
+    def publish(self, message: object) -> None:
+        self.published.append(message)
+
+
+def test_complete_order_save_fails_raises_and_publishes_nothing(sample_order: Order) -> None:
+    publisher = RecordingPublisher()
+    service = OrderService(repository=FailingOrderRepository(), publisher=publisher)
+
+    with pytest.raises(OrderStoreError):
+        service.complete_order(sample_order)
+
+    assert publisher.published == []
+```
+
 ## Integration Tests
 
 Mark integration tests for selective execution:

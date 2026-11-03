@@ -28,6 +28,17 @@ Before touching any code:
 Once the problem is understood:
 
 - **Think through the solution**: Consider 2-3 approaches mentally. Choose the simplest one that fully solves the problem.
+- **A stated reason is the acceptance criterion**: when the ask gives a reason ("for security", "to
+  cut latency"), the reason decides which way of doing the named step counts as done. Compare the
+  ways at the named step's footprint: the same component, no new service, infrastructure,
+  dependency, or another team's surface. Keep the mechanism the user named and do it in its
+  strongest form at that footprint. When costs are comparable, the way that serves the reason best
+  wins, and for a security reason the weaker way at similar cost needs a stated justification. A
+  stronger, different mechanism goes in the report as a follow-up, never substituted. Name the way
+  chosen and the one rejected in the report. Example: asked to move a function key from the query
+  string to the `x-functions-key` header for security, set the header once on the client
+  registration rather than as a per-call header parameter, and tell the user to rotate the key,
+  since its earlier calls carried it in URLs, which server logs capture.
 - **Consider architecture**: For non-trivial tasks, consider calling the `system-architect` skill to get a design perspective, especially for:
   - New features that affect multiple systems
   - Changes to data models or APIs
@@ -72,7 +83,8 @@ With a plan in hand:
   that reads the clock), check what the code already offers first. If the method already takes the
   value as a parameter, pass the parameter; adding the named mechanism beside it is the oversized
   mechanism `coding-general.md` ⛔ Hard Rule 6 bans.
-- **Keep changes minimal**: Solve only what was asked. Resist scope creep.
+- **Keep changes minimal**: Solve only what was asked. Resist scope creep. Minimal governs what you
+  touch outside the goal, never how well a stated goal is met (§2).
 - **Write tests alongside code**: Don't defer testing until the end.
 
 ### A deliberate change is the source of truth

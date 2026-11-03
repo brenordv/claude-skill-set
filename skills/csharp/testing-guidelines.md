@@ -63,6 +63,82 @@ public async Task UpdateDocument_WithArchivedDocument_ThrowsDocumentArchivedExce
 }
 ```
 
+### Failure paths
+
+Every catch you add has a test that drives it (`brain/knowledge/testing.md` ⛔ Hard Rule 1,
+SKILL.md Hard Rule 17). Test each catch at the layer it lives in. A service that calls
+`IOrderRepository` only needs `SaveAsync` to fail, whatever the exception, so its test fakes the
+repository throwing and asserts both halves of the failure: the caller gets the exception, and the
+success side effect never happened.
+
+```csharp
+[Fact]
+public async Task CompleteOrder_WhenSaveFails_ThrowsAndPublishesNothing()
+{
+    // Arrange
+    var repository = new FakeOrderRepository { SaveFailure = new OrderStoreException("Saving the order failed") };
+    var publisher = new FakeEventPublisher();
+    var sut = BuildSut(repository, publisher);
+    var order = MockDataGenerators.Order();
+
+    // Act
+    var act = () => sut.CompleteOrderAsync(order, CancellationToken.None);
+
+    // Assert
+    await Assert.ThrowsAsync<OrderStoreException>(act);
+    Assert.Empty(publisher.Published);
+}
+```
+
+```csharp
+private sealed class FakeOrderRepository : IOrderRepository
+{
+    public Exception SaveFailure { get; init; }
+
+    public Task SaveAsync(Order order, CancellationToken cancellationToken)
+    {
+        return SaveFailure is null ? Task.CompletedTask : Task.FromException(SaveFailure);
+    }
+}
+
+private sealed class FakeEventPublisher : IEventPublisher
+{
+    private readonly List<object> _published = [];
+
+    public IReadOnlyList<object> Published => _published;
+
+    public Task PublishAsync(object message, CancellationToken cancellationToken)
+    {
+        _published.Add(message);
+        return Task.CompletedTask;
+    }
+}
+```
+
+The repository's own catches sit on `Container` calls, and `Container` is an abstract class too
+wide to fake by hand, so its arms are driven by an integration test against the Cosmos emulator
+(the azure-cosmos skill), run in the same `dotnet test` the coverage gate measures. For the
+`SaveAsync` in SKILL.md §5, a replace on an id that doesn't exist returns 404, which the 412
+filter doesn't match, so the `CosmosException` propagates; a replace carrying a stale ETag returns
+412, which becomes the concurrency exception
+([Cosmos DB status codes](https://learn.microsoft.com/en-us/rest/api/cosmos-db/http-status-codes-for-cosmosdb)).
+The 412 test needs an emulator or test account that honors ETag conditions: the Linux vNext
+emulator's feature table doesn't document If-Match, and it doesn't enforce authentication either,
+so an auth failure can't be driven there
+([vNext emulator](https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux)).
+
+Credential handling is tested on the outgoing request, never on an interface signature
+(`brain/knowledge/coding-general.md` ⛔ Hard Rule 11). Generate the key in the test
+(`var key = Guid.NewGuid().ToString("N");`) and assert the request carries it in the header and
+nowhere in the URL. A `DelegatingHandler` is driven alone: give it a capturing inner handler and
+send through `new HttpMessageInvoker(new FunctionKeyHandler(options) { InnerHandler = capturing })`.
+A header set in `ConfigureHttpClient` is driven through the project's own registration extension:
+call it on a `ServiceCollection`, swap the primary handler for the capturing one with
+`services.ConfigureAll<HttpClientFactoryOptions>(o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = capturing))`
+([HttpMessageHandlerBuilderActions](https://learn.microsoft.com/en-us/dotnet/api/microsoft.extensions.http.httpclientfactoryoptions.httpmessagehandlerbuilderactions)),
+resolve the Refit interface, and call it. That asserts what your registration produces, which is
+your code rather than framework wiring.
+
 ### Test Naming Convention
 
 ```

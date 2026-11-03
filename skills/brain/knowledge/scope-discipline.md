@@ -102,6 +102,11 @@ spell them out, and flagging them as creep is the failure mode to avoid:
 
 - Correctness and edge-case handling the described flow can actually hit.
 - Security controls a feature genuinely requires: authn/authz, input validation, secret handling.
+- The stronger form of the step the user named, within that step's footprint, when they gave a
+  reason for it. Asked to move a key into a header "for security", setting it once on the client is
+  the ask, not an addition. A different mechanism the reason might also justify (a new auth service,
+  another team's gateway) stays out of scope and goes in the report as a follow-up
+  (`general-problem-solving.md` §2).
 - Data-safety and integrity for data the feature touches.
 - Tests for the code being written.
 - The project's standing conventions and Hard Rules.

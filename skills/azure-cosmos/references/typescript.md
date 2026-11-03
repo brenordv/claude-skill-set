@@ -98,13 +98,18 @@ const operations: OperationInput[] = [
   { operationType: BulkOperationType.Delete, id: "3", partitionKey: "pk" },
 ];
 
-const response = await container.items.executeBulkOperations(operations);
-response.forEach((result, i) => {
-  if (result.statusCode < 200 || result.statusCode >= 300) {
-    console.error(`Operation ${i} failed: ${result.statusCode}`);
-  }
-});
+const results = await container.items.executeBulkOperations(operations);
+const failed = results.filter((result) => result.error);
+if (failed.length > 0) {
+  const detail = failed.map((result) => `${result.operationInput.operationType}: ${result.error?.code}`);
+  throw new Error(`${failed.length} bulk operations failed: ${detail.join(", ")}`);
+}
 ```
+
+Each `BulkOperationResult` carries `operationInput`, a `response` on success, and an `error` on
+failure ([BulkOperationResult](https://learn.microsoft.com/en-us/javascript/api/@azure/cosmos/bulkoperationresult)),
+so a failed operation is found by its `error`, and the batch fails loudly instead of being logged
+past.
 
 ## Client Lifetime and Gotchas
 

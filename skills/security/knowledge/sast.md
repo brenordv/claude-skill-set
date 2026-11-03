@@ -330,6 +330,7 @@ class MultiLanguageSASTScanner:
     def __init__(self, project_path: str):
         self.project_path = Path(project_path)
         self.findings: List[SASTFinding] = []
+        self.failed_scans: list[dict[str, str]] = []
 
     def detect_languages(self) -> List[str]:
         """Auto-detect languages"""
@@ -361,8 +362,8 @@ class MultiLanguageSASTScanner:
             'findings': []
         }
 
-        self.run_semgrep_scan()
-        scan_results['tools_executed'].append('semgrep')
+        if self.run_semgrep_scan():
+            scan_results['tools_executed'].append('semgrep')
 
         if 'python' in languages:
             self.run_bandit_scan()
@@ -372,11 +373,16 @@ class MultiLanguageSASTScanner:
             scan_results['tools_executed'].append('eslint-security')
 
         scan_results['findings'] = [vars(f) for f in self.findings]
+        scan_results['failed_scans'] = self.failed_scans
+        scan_results['complete'] = not self.failed_scans
         scan_results['summary'] = self.generate_summary()
+        if not scan_results['complete']:
+            scan_results['summary']['risk_score'] = None
         return scan_results
 
-    def run_semgrep_scan(self):
-        """Run Semgrep"""
+    def run_semgrep_scan(self) -> bool:
+        """Run Semgrep; returns True when at least one ruleset ran to completion"""
+        succeeded = False
         for ruleset in ['auto', 'p/security-audit', 'p/owasp-top-ten']:
             try:
                 result = subprocess.run([
@@ -384,23 +390,32 @@ class MultiLanguageSASTScanner:
                     str(self.project_path)
                 ], capture_output=True, text=True, timeout=300)
 
-                if result.stdout:
-                    data = json.loads(result.stdout)
-                    for f in data.get('results', []):
-                        self.findings.append(SASTFinding(
-                            tool='semgrep',
-                            severity=f.get('extra', {}).get('severity', 'MEDIUM').upper(),
-                            category='sast',
-                            title=f.get('check_id', ''),
-                            description=f.get('extra', {}).get('message', ''),
-                            file_path=f.get('path', ''),
-                            line_number=f.get('start', {}).get('line', 0),
-                            cwe=f.get('extra', {}).get('metadata', {}).get('cwe', ''),
-                            owasp=f.get('extra', {}).get('metadata', {}).get('owasp', ''),
-                            confidence=f.get('extra', {}).get('metadata', {}).get('confidence', 'MEDIUM')
-                        ))
+                # Without --error, Semgrep exits 0 whether or not it finds issues
+                if result.returncode != 0 or not result.stdout:
+                    self.failed_scans.append({
+                        'ruleset': ruleset,
+                        'reason': f"exit {result.returncode}: {result.stderr.strip()[-500:]}",
+                    })
+                    continue
+
+                data = json.loads(result.stdout)
+                for f in data.get('results', []):
+                    self.findings.append(SASTFinding(
+                        tool='semgrep',
+                        severity=f.get('extra', {}).get('severity', 'MEDIUM').upper(),
+                        category='sast',
+                        title=f.get('check_id', ''),
+                        description=f.get('extra', {}).get('message', ''),
+                        file_path=f.get('path', ''),
+                        line_number=f.get('start', {}).get('line', 0),
+                        cwe=f.get('extra', {}).get('metadata', {}).get('cwe', ''),
+                        owasp=f.get('extra', {}).get('metadata', {}).get('owasp', ''),
+                        confidence=f.get('extra', {}).get('metadata', {}).get('confidence', 'MEDIUM')
+                    ))
+                succeeded = True
             except Exception as e:
-                print(f"Semgrep {ruleset} failed: {e}")
+                self.failed_scans.append({'ruleset': ruleset, 'reason': str(e)})
+        return succeeded
 
     def generate_summary(self) -> Dict[str, Any]:
         """Generate statistics"""
@@ -420,6 +435,14 @@ class MultiLanguageSASTScanner:
         total = sum(weights[s] * c for s, c in severity_counts.items())
         return min(100, int((total / 50) * 100))
 ```
+
+A Semgrep ruleset that exits non-zero, prints nothing, or raises is recorded in `failed_scans` with
+its reason, and the results carry `complete: False` with no risk score, so a Semgrep run that
+failed never reads as a clean one. The bandit and ESLint helpers need the same contract (return
+whether they ran, record failures in `failed_scans`) before their results can count toward
+`complete`. The caller (a CLI or CI step) exits non-zero when `complete` is false. Semgrep
+exits 0 when it finds issues unless `--error` is passed, so a non-zero exit always means the run
+failed ([Semgrep exit codes](https://docs.semgrep.dev/cli-reference)).
 
 ## CI/CD Integration
 
@@ -447,8 +470,8 @@ jobs:
 
       - name: Run scans
         run: |
-          bandit -r . -f json -o bandit.json || true
-          semgrep --config=auto --json --output=semgrep.json || true
+          bandit -r . -f json -o bandit.json --exit-zero
+          semgrep --config=auto --json --output=semgrep.json
 
       - name: Upload reports
         uses: actions/upload-artifact@v3
@@ -459,6 +482,11 @@ jobs:
             semgrep.json
 ```
 
+`--exit-zero` keeps bandit's findings from failing the step while a crash still fails it
+([bandit](https://bandit.readthedocs.io/en/latest/man/bandit.html)). Semgrep already exits 0 on
+findings without `--error`, so neither command needs `|| true`, which would turn a crashed scanner
+into a green job.
+
 ### GitLab CI
 
 ```yaml
@@ -467,8 +495,8 @@ sast:
   image: python:3.11
   script:
     - pip install bandit semgrep
-    - bandit -r . -f json -o bandit.json || true
-    - semgrep --config=auto --json --output=semgrep.json || true
+    - bandit -r . -f json -o bandit.json --exit-zero
+    - semgrep --config=auto --json --output=semgrep.json
   artifacts:
     reports:
       sast: bandit.json

@@ -89,8 +89,10 @@ CosmosPagedIterable<Item> results = container.queryItems(query, options, Item.cl
 try {
     container.createItem(item);
 } catch (CosmosException e) {
-    if (e.getStatusCode() == 429) {
-        Duration retryAfter = e.getRetryAfterDuration();
-    }
+    throw new ItemStoreException("Creating item [" + item.getId() + "] failed", e);
 }
 ```
+
+Wrap with what only this call knows and keep the exception as the cause. Whoever logs it at the
+boundary logs `getDiagnostics()`, the status code, sub-status, activity id, and request charge from
+the cause, as described above; a 429 that surfaces here means the SDK's throttling retries ran out.

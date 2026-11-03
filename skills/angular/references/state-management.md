@@ -20,8 +20,11 @@ export class UserStore {
     this._loading.set(true);
     this._error.set(null);
     try {
-      const user = await fetch(`/api/users/${id}`).then(r => r.json());
-      this._user.set(user);
+      const response = await fetch(`/api/users/${id}`);
+      if (!response.ok) {
+        throw new Error(`Loading user failed with status ${response.status}`);
+      }
+      this._user.set(await response.json());
     } catch {
       this._error.set('Failed to load user');
     } finally {
@@ -31,6 +34,10 @@ export class UserStore {
 }
 ```
 
+`fetch` resolves on HTTP error statuses, so the `ok` check is what sends a 500 to the catch instead
+of setting the error body as the user
+([MDN](https://developer.mozilla.org/en-US/docs/Web/API/Window/fetch)).
+
 ## Pattern 2: NgRx SignalStore
 
 ```typescript
@@ -38,7 +45,7 @@ import { signalStore, withState, withMethods, withComputed, patchState } from '@
 
 export const ProductStore = signalStore(
   { providedIn: 'root' },
-  withState({ products: [] as Product[], loading: false, filter: '' }),
+  withState({ products: [] as Product[], loading: false, error: null as string | null, filter: '' }),
   withComputed(store => ({
     filteredProducts: computed(() => {
       const f = store.filter().toLowerCase();
@@ -47,12 +54,12 @@ export const ProductStore = signalStore(
   })),
   withMethods((store, productService = inject(ProductService)) => ({
     async loadProducts() {
-      patchState(store, { loading: true });
+      patchState(store, { loading: true, error: null });
       try {
         const products = await productService.getAll();
         patchState(store, { products, loading: false });
       } catch {
-        patchState(store, { loading: false });
+        patchState(store, { loading: false, error: 'Failed to load products' });
       }
     },
     setFilter(filter: string) { patchState(store, { filter }); },

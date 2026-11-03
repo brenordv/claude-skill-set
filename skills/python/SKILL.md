@@ -32,7 +32,9 @@ list before writing code, and walk it again at handoff (§5).
    `Dict`, `Optional`, or `Union` from `typing` for new code unless the project pins a Python
    version that still needs them (below 3.10).
 3. **Docstrings on every public module, class, and function** (Google or NumPy style, matching the
-   repo's), with `Args:`, `Returns:`, and `Raises:` where they apply.
+   repo's), with `Args:`, `Returns:`, and `Raises:` where they apply. Each describes the unit
+   itself, never its callers or the services it travels through
+   (`brain/knowledge/coding-general.md` ⛔ Hard Rule 9).
 4. **Test files mirror the source package layout under `tests/`; never flatten them to the root.**
    A test for `src/app/services/orders.py` lives at `tests/services/test_orders.py`, and you create
    the folders as you add each file. Scaffolding the suite yourself is not an exception: an empty
@@ -56,6 +58,17 @@ list before writing code, and walk it again at handoff (§5).
    by path, never fall back to a globally installed copy, and never install into whichever
    environment happens to be active: a missing tool is added through the manager (`uv add --dev`,
    `poetry add --group dev`) or surfaced to the user.
+8. **A handled failure never ends on the success path, and every `except` you add has a test that
+   drives it.** This is `brain/knowledge/coding-general.md` ⛔ Hard Rule 10 in Python terms: an
+   `except` re-raises, raises the repo's error with `raise OrderStoreError(...) from e`, returns a
+   documented sentinel, recovers for real, or reports at a boundary (a CLI exits non-zero, a
+   request handler returns a generic error response). The swallow shapes are an `except` that logs and
+   falls through, `contextlib.suppress` around work whose failure matters, an `__exit__` that
+   returns `True`, and a `return`, `break`, or `continue` inside `finally`, which discards the
+   in-flight exception ([try statement](https://docs.python.org/3/reference/compound_stmts.html)).
+   Never a bare `except:` or an `except BaseException` that doesn't re-raise: it absorbs
+   cancellation (`asyncio.CancelledError`) along with everything else. The test follows
+   `brain/knowledge/testing.md` ⛔ Hard Rule 1 and `testing-guidelines.md` §"Failure paths".
 
 ### 1. Code Style & Standards
 
@@ -85,6 +98,7 @@ def process_data(
 - Use Google or NumPy style docstrings
 - Document all public APIs (classes, functions, modules)
 - Include: purpose, parameters (`Args:`), return values (`Returns:`), exceptions (`Raises:`), and an example where useful
+- Describe the unit itself; never name who calls it or the services it passes through (Hard Rule 3)
 
 ### 2. Implementation Guidelines
 
@@ -93,13 +107,20 @@ def process_data(
 # Use specific exceptions
 raise ValueError(f"Invalid user_id: {user_id}")
 
-# Provide context in error messages
+# Add context by wrapping, keeping the original as the cause
 try:
     result = risky_operation()
 except SpecificError as e:
-    logger.error(f"Operation failed for user {user_id}: {e}")
-    raise
+    raise OperationError(f"Operation failed for user {user_id}") from e
+
+# Bad: the failure is logged and the caller carries on as if the save worked
+try:
+    container.upsert_item(order)
+except CosmosHttpResponseError:
+    logger.exception("Saving order %s failed", order["id"])
 ```
+
+Every `except` ends the way Hard Rule 8 says; logging alone is not an ending.
 
 **Resource Management:**
 ```python
@@ -150,6 +171,7 @@ Use **pytest** with the Arrange-Act-Assert structure. Test happy paths, error co
 Run these checks before marking work complete:
 
 - [ ] **Walk the ⛔ Hard Rules block at the top item by item against your diff.** These are the rules that regress; verify them by looking, not by assuming.
+- [ ] Every `except` the diff adds ends per Hard Rule 8 and has a test that drives it
 - [ ] No lint errors: `ruff check .` (ruff carries the flake8, isort, pylint-style, and bandit-style rule sets)
 - [ ] Formatting clean: `ruff format --check .` (run `ruff format .` to fix)
 - [ ] Type checking clean: `mypy src/`
@@ -160,7 +182,7 @@ Run these checks before marking work complete:
 - [ ] Test files mirror the source package layout under `tests/`, not dumped flat at the root (Hard Rule 4)
 - [ ] Documentation complete (docstrings on every public API; Hard Rule 3)
 - [ ] Performance profiled if applicable
-- [ ] Code reviewed (use `code-review` skill)
+- [ ] Code reviewed with the `branch-review` skill
 - [ ] Summarize the changes to the user, alongside any problems and caveats you can see with the new code.
 
 ## When to Use This Skill
@@ -175,5 +197,4 @@ Run these checks before marking work complete:
 
 ## Related Skills
 
-- `code-review`: For reviewing the current diff after implementation
 - `branch-review`: For reviewing all changes in the branch before merging

@@ -33,6 +33,15 @@ general principle. Distilled from real review findings.
 - **No machine-identifying details in the diff.** Absolute local paths, drive-letter paths, UNC shares,
   OS usernames, hostnames. Use the `machine-privacy.md` self-check patterns and judge hits against its
   carve-outs. On touched lines this is Critical and blocks approval.
+- **A credential in a call signature, a URL, or a query string is a finding.** A key passed through
+  a client's call methods, or sent as `?code=` or `?api_key=`, belongs in the client's
+  configuration (`coding-general.md` ⛔ Hard Rule 11). At minimum Important.
+- **A credential value in source, or one written to a log, is Critical.** Any credential value in
+  source (tests and attribute values included) that is not a generated value (GUID, Faker), an
+  obvious placeholder, or a vendor-published emulator key is treated as real: Critical, blocks
+  approval, and the finding tells the owner to rotate it, since history keeps the value. The
+  reviewer never tests whether it works. A credential written to a log (a logged header, URL, or
+  options object) is Critical the same way: the log keeps the value, so it needs rotating too.
 
 ## Prose (comments, docs, and other human-facing text)
 
@@ -135,7 +144,15 @@ general principle. Distilled from real review findings.
   surroundings; the extracted method receives the raw parameter and loses that guarantee. Guard at the top
   or document that the caller is responsible.
 - **No `catch` that only rethrows.** `catch (X) { throw; }` is behaviourally identical to no catch; the
-  comment inside is stripped at compile time. Put intent in a comment above the `try`.
+  comment inside is stripped at compile time. Put intent in a comment above the `try`. Not catching
+  at all is one of `coding-general.md` ⛔ Hard Rule 10's endings.
+- **A catch that logs and falls through is a finding.** After the log, the method returns normally
+  or the caller's next step runs, so a failure reads as success: the trailing
+  `catch (CosmosException)` after specific handlers, an `except` that logs, an error arm that only
+  traces. At minimum Important; Critical when the caller then reports success (persists, acknowledges,
+  returns a success status), or when the catch sits inside a security decision (an authn or authz
+  check, signature, token, or input validation, a scan result), where it fails open. The legal
+  endings are `coding-general.md` ⛔ Hard Rule 10's.
 - **Never rely on implicit ordering from an external API.** `FirstOrDefault()` on an upstream list assumes
   a sort order that's never contractually guaranteed. Request an explicit sort, or sort yourself before
   selecting, and document which ordering the logic depends on.
@@ -162,6 +179,15 @@ general principle. Distilled from real review findings.
 
 - **Don't test framework or DI wiring.** A test that resolves `IFooService` from the container tests the
   framework, not your code; a missing registration already fails at startup. Reserve tests for your logic.
+  Asserting the outgoing request your own registration code produces (a header, a base address)
+  tests your code, not the framework.
+- **A new catch, except, or error arm with no test that drives it is a finding.** At minimum
+  Important, whatever the coverage percentage (`testing.md` ⛔ Hard Rule 1). A test that would still
+  pass if the arm became log-and-continue doesn't count.
+- **A credential test that asserts the interface instead of the outgoing request is a finding.**
+  Checking that a method takes a header parameter passes for exactly the per-call design
+  `coding-general.md` ⛔ Hard Rule 11 bans; the test inspects the request on the wire (header
+  present, URL keyless). At minimum Important.
 - **New endpoints need HTTP-layer tests.** A new action must ship with tests covering routing,
   authorization, response shape, and error handling in the same change, not only service-layer tests.
 - **Sibling tests for the same scenario must assert consistently.** If two tests cover equivalent states,
@@ -192,6 +218,9 @@ general principle. Distilled from real review findings.
 - **Don't leak other services' internals into code or comments.** Comments describing how a downstream
   system deduplicates, what envelope a receiver expects, or another service's terminology go stale and
   confuse anyone reading the producer alone. Describe *what you send*, not *why the receiver needs it*.
+  The same goes for a summary on a type or method that names its callers, its consumers, or the
+  route it travels: a message model documents the message, not the services that relay it
+  (`coding-general.md` ⛔ Hard Rule 9).
 - **Adapter/facade layers translate upstream models to domain models.** A wrapper over an external API is
   an anti-corruption layer; its public interface exposes domain types, not the vendor's. Leaking
   `ThirdPartyProviderXxx` types ties every caller to the upstream schema. Map at the boundary.
