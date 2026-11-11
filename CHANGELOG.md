@@ -1,5 +1,33 @@
 # Changelog
 
+## v18
+- New `state-machine-auditor` skill and `brain/knowledge/implicit-state-machines.md`. The
+  knowledge file defines implicit state machines (behavior keyed to field, flag, or row values with
+  no one place listing the states), ten detection signals S1-S10 (status fields written from
+  several places, repeated switches, exclusive flags, nullable-as-state, temporal coupling,
+  event-first handlers, UI-guarded transitions, persisted statuses advanced by several processes,
+  history bookkeeping, and a flag added to make a symptom stop), the guards that keep a lone toggle
+  from being flagged, the SCXML vocabulary for maps, a flaw catalog F1-F15 with default severities
+  (security state is Critical by default), and a smallest-first fix ladder whose exhaustive-dispatch
+  rung gives the per-language setup, including C# CS8509 as an error with CS8524 suppressed and no
+  discard arm. Every external source it cites was opened and checked.
+- The skill has two modes. Review mode takes a diff or a Stage 1 plan, traces every writer and
+  reader of the state the change touches, and compares the transition table before and after.
+  Audit mode sweeps a scope, maps each machine (states, transitions with `file:line`, guards,
+  readers, a Mermaid diagram, uncovered states, flaws), and archives the map in the new pinned
+  vault project `state-machine-maps`; a file in the audited repo is written only on request. Its
+  Hard Rules keep it read-only and static, keep secret-shaped files out of every search, and keep
+  values out of maps (names only, placeholders, a scrub scan before saving).
+- branch-review Step 4 runs the auditor as a subagent when an added, modified, or deleted line
+  touches state (triggers keyed to the signal ids, deletions and lone flags included), folds its
+  findings in as `[State machine F<n>]`, and records a lens line in the Summary: ran, triggered but
+  not run with the reason, or not triggered. Its "review the diff" principle names the auditor's
+  Notes as the one exception. `task-workflows.md` routes plans with persisted multi-writer
+  statuses, ordered lifecycles, or flag clusters to the auditor on the Stage 1 panel, and
+  `review-heuristics.md` §Correctness gained three findings: a new state member until every reader
+  handles it, an unguarded write to persisted state, and a flag added to stop a symptom.
+- `vault-operations.md` and the README list the new archive; the README catalog lists the skill.
+
 ## v17
 - Added three `coding-general.md` ⛔ Hard Rules. Hard Rule 9: a summary, docstring, or doc
   comment describes the unit it sits on and never names its callers, consumers, or the services

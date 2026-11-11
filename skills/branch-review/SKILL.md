@@ -152,6 +152,28 @@ For every changed file, evaluate it across the review dimensions defined in `bra
 - [ ] **When the task stated a reason, the diff meets it.** For an ask like "move the key to a
   header for security", check the diff against the stated reason at the named step's footprint
   (`brain/knowledge/general-problem-solving.md` §2). Skip this item when the task gave no reason.
+- [ ] **State changes checked against their machine.** Run the `state-machine-auditor` skill in
+  review mode when an added, modified, or deleted line does any of these (signal ids from
+  `brain/knowledge/implicit-state-machines.md`):
+  - writes a status, state, phase, stage, step, or mode field, auth state included (`verified`,
+    `approved`, `active`, `revoked`) (S1);
+  - adds or removes a member of an enum or value set such a field holds (S1, F9);
+  - adds or removes a guard, a `WHERE state =` clause, or a switch arm on such a field (S2, F4);
+  - adds a boolean flag to a type or component, a lone flag included (S3, S10);
+  - sets or clears a nullable field or timestamp that stands for a state (S4);
+  - changes the order of lifecycle calls (S5);
+  - touches a handler, job, or webhook that advances a persisted status (S8);
+  - touches retry counters, attempt ids, leases, locks, or processed-id sets (S9).
+
+  Dispatch it as a subagent. Invoke the skill through the Skill tool where the runtime allows;
+  otherwise tell the subagent to read `state-machine-auditor/SKILL.md` and
+  `brain/knowledge/implicit-state-machines.md` before anything else. Pass the diff refs from
+  Step 1, the dispatch restatements `brain/knowledge/task-workflows.md` requires (git-ops,
+  text-search, vault, machine-privacy), and the secret-file rule from
+  `brain/knowledge/text-search-operations.md` ⛔ Hard Rules item 8. Fold its findings into this
+  review at the severities it assigns, each tagged `[State machine F<n>]`, and record the lens line
+  in the Summary. The trigger is what the diff touches, never its size; a flag added to make a
+  symptom stop is the first case to check.
 
 ### Step 5: Produce Feedback
 
@@ -179,6 +201,7 @@ full review as the body. Name, summary (carry the overall assessment), and tags 
 **Files changed**: [count]
 **Languages**: [detected languages]
 **Overall assessment**: APPROVED | CHANGES REQUESTED | CONCERNS
+**State-machine lens**: ran (<signal ids>), <n> machines, <m> findings | triggered (<signal ids>), not run: <reason> | not triggered
 
 ---
 
@@ -219,7 +242,7 @@ Classify findings by severity and map to the overall outcome (Approved / Changes
 
 ## Review Principles
 
-- **Review the diff, not the whole file**: Focus on what changed. Don't flag pre-existing issues unless they're security-critical.
+- **Review the diff, not the whole file**: Focus on what changed. Don't flag pre-existing issues unless they're security-critical. The one standing exception is the `state-machine-auditor` sanity pass, which reports pre-existing flaws in the machine a change touches as Notes.
 - **One concern per finding**: Keep feedback atomic and addressable.
 - **Provide fixes, not just problems**: Show what "better" looks like.
 - **Respect existing patterns**: Don't suggest rewrites that contradict the project's conventions, except where a language skill marks a rule as a Hard Rule; those beat project conventions and must be flagged.
