@@ -178,18 +178,18 @@ general principle. Distilled from real review findings.
   Search for every switch, mapping, serializer, database check constraint, API contract, and
   frontend union over the field, and ask about rows older versions stored. A default arm that
   silently treats the new value as another state counts as unhandled. At minimum Important
-  (`implicit-state-machines.md` F1 and F9).
+  (`implicit-state-machines.md` F1 and F9; `coding-general.md` ⛔ Hard Rule 12).
 - **A write to persisted state that doesn't check the current state is a finding.** An
   unconditional `status = X` from a handler or job lets a final state move backwards and lets two
   writers both win. Expect a conditional write on the expected state plus a row-count check. At
   minimum Important; Critical under the catalog's escalation rule, when a reachable path corrupts
   persisted data, loses or duplicates money, messages, or work, or lands in a security state
-  (`implicit-state-machines.md` F4, F5, and F14).
+  (`implicit-state-machines.md` F4, F5, and F14; `coding-general.md` ⛔ Hard Rule 12).
 - **A boolean flag added to make a symptom stop is a finding until its combinations are
   mapped.** `if (_alreadyHandled) return;` doubles its owner's state space. List the flag's
   combinations with the owner's other flags and status and show that every reachable one is
-  designed. At minimum Important (`implicit-state-machines.md` S10 and F2); the
-  `state-machine-auditor` skill does the mapping.
+  designed. At minimum Important (`implicit-state-machines.md` S10 and F2;
+  `coding-general.md` ⛔ Hard Rule 12); the `state-machine-auditor` skill does the mapping.
 
 ## Testing
 

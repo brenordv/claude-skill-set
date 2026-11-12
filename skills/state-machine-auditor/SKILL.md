@@ -81,7 +81,9 @@ whoever dispatched you to fix the code or to stay inside the diff.
 
 The full guards are in the knowledge file. In short: a lone boolean that combines with nothing, a
 field set once at construction, startup configuration, and an explicit machine (which still gets
-the catalog). A status with one guarded writer is not implicit, but its readers still get F1 and F9.
+the catalog). A status with one guarded writer that never runs twice at once on the same row is
+not implicit (a lease or session lock that can lapse mid-handler is not that guarantee), but its
+readers still get F1 and F9.
 
 ## Review mode
 

@@ -69,6 +69,23 @@ list before writing code, and walk it again at handoff (§5).
    Never a bare `except:` or an `except BaseException` that doesn't re-raise: it absorbs
    cancellation (`asyncio.CancelledError`) along with everything else. The test follows
    `brain/knowledge/testing.md` ⛔ Hard Rule 1 and `testing-guidelines.md` §"Failure paths".
+9. **A state type you create is an `Enum` or a `Literal` union, and dispatch you write on one
+   ends in `assert_never`.** This is `brain/knowledge/coding-general.md` ⛔ Hard Rule 12 in
+   Python terms. A `match` or `if`/`elif` chain you write over a state names every member
+   (compare `Enum` members with `is`, `Literal` strings with `==`), and its last branch is
+   `case _: assert_never(state)` or `else: assert_never(state)`. mypy (Hard Rule 1) then reports
+   any member no branch handles, and the call raises if a value from outside the type reaches it
+   at runtime; keep it even where mypy's `exhaustive-match` error code is on, since a `match`
+   with no default lets that value fall through. A grouping predicate (`is_terminal`) is a full
+   `match`, or an `if`/`elif` chain, ending in `assert_never` too. Import it from `typing` on
+   Python 3.11 and later, from `typing_extensions` (4.1.0 or later) below that, declared through
+   the environment manager (Hard Rule 7) when the project doesn't already depend on it. A last
+   branch that returns, logs, or raises anything else hides the new member from mypy and is the
+   shape that regresses. The rule governs dispatch over a state that is already an `Enum` or
+   `Literal` union, or one the change creates: an existing `str` status is never converted for
+   it (the scope bound in `coding-general.md` ⛔ Hard Rule 12), and an existing dispatch you
+   extend that ends in `case _` or a catch-all `else` keeps its form, gets the case, and goes in
+   the handoff.
 
 ### 1. Code Style & Standards
 

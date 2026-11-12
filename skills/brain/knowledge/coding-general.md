@@ -145,6 +145,71 @@ Re-read this list before writing code and walk it again at handoff (§10).
     reached a URL, a log, or source control is exposed; rotating it is the owner's act, and the
     handoff says so. A test of credential handling asserts on the outgoing request, never on an
     interface signature. The C# mechanisms are in `csharp/SKILL.md` §8.
+12. **State you add joins its machine on purpose.** A change that adds a state value, adds a flag
+    or field to an owner that already holds a status or other flags, or writes a persisted status
+    must leave the owner unable to reach a combination nobody designed. A lone toggle that
+    combines with nothing (`isOpen` on a modal) is outside this rule; state that gates access
+    never is. A status field or column the change adds has no default that names a real state:
+    new rows take theirs from the transition that creates them, and existing rows one derived
+    from their data or a named never-assigned state, which every reader handles and which a
+    transition leaves (a backfill, or the next writer that can derive the real state) unless the
+    row is closed. First find every writer and reader of a value, flag, or field the change adds
+    (the Hard Rule 1 search, aimed at the field). Then:
+    - **Every reader handles every state, and the default fails closed.** Dispatch is a switch,
+      match, or if/else-if chain over two or more states, or a grouping predicate (`IsTerminal`)
+      written once on the state's type. Dispatch the change writes is exhaustive where the
+      language can check it, so a missed state is reported at every reader that misses it, and no
+      arm treats "everything else" as one state. The only default allowed fails when reached (it
+      throws, or returns a failure the caller must handle, Hard Rule 10), so an out-of-type value
+      (a newer server, an old row) fails closed; a type-only check or a debug-only assert is not
+      that default. A one-state test (`status == Paid`) is not dispatch and keeps its `else`, but
+      a new state its `else` would mishandle joins it. Per-language setup: rung 2 of
+      `implicit-state-machines.md` §"Making it explicit" and the language skill's Hard Rules.
+    - **Readers the change reaches get the new case, and nothing more.** An existing dispatch the
+      checker can't verify (a switch statement, a discard or `_` arm, a catch-all `else`) keeps
+      its form, gets the case, and is named in the handoff as compile-unchecked. Existing flags
+      and persisted or wire-format fields are not converted; a cluster of them goes in the handoff.
+    - **A flag or field the change adds joins the state it depends on.** A boolean that can't be
+      true beside another, or that only means something in some states, becomes a value of the
+      status. Data valid in only some states lives in that state's variant where the language
+      has sum types, set and cleared by the transitions in and out.
+    - **A persisted status moves only from the state the writer expects.** The write names it
+      (`UPDATE ... SET status = @next WHERE id = @id AND status = @expected`) and checks the row
+      count; an ORM concurrency token or an ETag precondition the server applies meets the same
+      intent. Zero rows is a rejected transition: it stops the transition and every effect after
+      it, is never a silent return, and is recorded with the expected and actual state, the
+      trigger, and the correlation id; a caller that required the transition gets it reported
+      per Hard Rule 10 (a 409 at a request boundary). A webhook is signature-checked before
+      anything else, and an effect that follows the write commits with it. How to tell
+      duplicate, late, and early deliveries apart and end each, how effects and outbox rows
+      commit and drain, what a machine that can return to an earlier state needs, and when a
+      single writer may check the state in code are in `implicit-state-machines.md`
+      §"Persisted transitions and deliveries".
+    - **A persisted in-flight state has a way out** when the process dies mid-transition: a
+      timeout measured from an entered-at timestamp the transition writes, or a reaper, with a
+      bounded retry that ends in a failed state that is final or has its own exit. An outbox row
+      is one; its drain contract is in the same section.
+    - **State that gates access fails closed**: verified, approved, active, locked, revoked, MFA,
+      sessions, one-time tokens, and reset or checkout steps. Every path that authenticates or
+      authorizes the principal is one of its readers, whether it reads the field yet or not. A
+      check names the states that allow, so a new, unknown, default, or zero value denies; an
+      existing check the change reaches that names a denying state (`status == Locked`) gets the
+      new state beside it when that state must deny, and either way its deny-by-name shape goes
+      in the handoff; request input never binds to the field; each step checks the step before
+      it on the server; a one-time token expires and is consumed by the conditional write above,
+      and zero rows denies the request, never acknowledges it or returns what the first consume
+      granted. `implicit-state-machines.md` F14 has the rest.
+
+    The shape this rule exists for is the flag added to make a symptom stop: a late `shipped`
+    webhook moves a cancelled order back to `Shipped`, and the patch adds
+    `if (order.WasCancelled) return;`, a second copy of the status that every other writer
+    ignores. The fix is the conditional write `WHERE status = 'Paid'`, which rejects the late event
+    at the one place the order changes state and records the rejection. Fix the transition that
+    produced the bad state, not the symptom downstream, and stop at the smallest fix that closes
+    it (Hard Rule 6): no State pattern, state-machine library, or typestate API the cases don't
+    demand. Game code keeps the explicit machines `coding-gamedev.md` §3 prescribes. Tests drive
+    each transition the change adds, one the machine must reject, and an effect that fails after
+    the commit with the message redelivered.
 
 ---
 
@@ -371,10 +436,13 @@ Before delivering work:
    isn't ready (Hard Rule 8). Every summary the diff adds describes its own unit (Hard Rule 9).
    List each catch the diff adds with its ending and the test that drives it; an uncovered catch
    line blocks the handoff whatever the coverage percentage (Hard Rule 10). No credential sits in a
-   call signature or a URL, and one that was exposed is flagged for rotation (Hard Rule 11). When
-   the ask stated a reason, name the way chosen and the one rejected (`general-problem-solving.md`
-   §2). Then reread every comment the diff adds or edits: any that narrates the change rather than
-   the current code gets deleted here, its story moved to the summary (Hard Rule 3).
+   call signature or a URL, and one that was exposed is flagged for rotation (Hard Rule 11). For
+   each state value, flag, or persisted status write the diff adds, name its readers and how each
+   handles it, the guard on each write and what its rejected path records, and, for state that
+   gates access, every path that grants on it (Hard Rule 12). When the ask stated a reason, name
+   the way chosen and the one rejected (`general-problem-solving.md` §2). Then reread every
+   comment the diff adds or edits: any that narrates the change rather than the current code gets
+   deleted here, its story moved to the summary (Hard Rule 3).
 3. Ensure new code is covered by tests.
 4. Run the test suite; confirm nothing is broken.
 5. Summarize the change, its rationale, and any caveats or warnings.

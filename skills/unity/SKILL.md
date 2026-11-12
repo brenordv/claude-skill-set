@@ -119,12 +119,17 @@ public float GetSpeedMultiplier(PlayerState state) => state switch
     PlayerState.Running => 1.8f,
     PlayerState.Crouching => 0.5f,
     PlayerState.Stunned => 0f,
-    _ => 1f,
 };
 
 // Span<T> for zero-alloc string/array work in tools & editor code
 ReadOnlySpan<char> extension = filePath.AsSpan()[filePath.LastIndexOf('.')..];
 ```
+
+With no discard arm, a new `PlayerState` member raises CS8509 here. By default Unity compiles with
+its own pipeline, and its documented route for compiler options is `Assets/csc.rsp`: `-nowarn:8524`
+there quiets the unnamed-value warning, and `-warnaserror+:8509` makes a missed member a compile
+error, a project-wide setting for the project's owner to choose. Player Settings' Additional
+Compiler Arguments takes the same flags; use one place, not both.
 
 ### Null checks in Unity
 

@@ -61,8 +61,11 @@ A signal marks a candidate, not a finding. Run the "Not a finding" guards before
 - Configuration read once at startup.
 - An explicit machine: a transition table, a state-machine library, Erlang's `gen_statem`, a
   typestate API. It is not flagged as implicit, but it still gets the flaw catalog.
-- A status field with exactly one writer that guards every transition. It is not flagged as
-  implicit, but its readers still get F1 and F9.
+- A status field with exactly one writer that guards every transition, where that writer never
+  runs twice at once on the same row (an actor, or a per-key queue inside one process); a request
+  handler two requests can enter at once is not one writer, and a lease or session lock that can
+  lapse mid-handler is not that guarantee. It is not flagged as implicit, but its readers still
+  get F1 and F9.
 
 ## Building the map
 
@@ -110,11 +113,17 @@ owner of severity for state-machine findings; the skill and `review-heuristics.m
   change."
 - **F7 Replay and reordering.** At-least-once delivery applies a transition twice, or events
   arrive out of order and an older event overwrites a newer state. Check each transition a message
-  drives for an idempotency key or a version or sequence guard. Important.
+  drives for an idempotency key, and for a sequence the event carries from its source where the
+  machine can return to an earlier state (§"Persisted transitions and deliveries"). Important.
 - **F8 Side effect outside the transition.** The email, charge, or publish happens and the state
-  write fails, or the reverse, and the retry repeats it. Check whether the effect and the write
-  share a transaction, an outbox, or an idempotent receiver. Important; Critical for money or
-  messages.
+  write fails, or the reverse, and the retry repeats it; or the effect runs after the write and
+  fails, and the redelivery is acknowledged as a duplicate, so the effect never runs. Check that
+  the effect commits with the write, as a write in the same transaction or an outbox row that write
+  inserts, which a relay outside the handler sends to a receiver that dedupes on the outbox row's
+  id, and that work an in-flight state does before its closing write goes to a receiver that
+  dedupes on a key the row keeps across reclaims (§"Persisted transitions and deliveries"). An
+  idempotent receiver called from the handler after the write does not pass on its own.
+  Important; Critical for money or messages.
 - **F9 New state not propagated.** F1 at the moment a state is added: every repeated switch (S2),
   serializer, database check constraint, API contract, frontend union, and report, plus rows that
   older versions stored and, in a rolling or mixed-version deploy, old code reading the new value.
@@ -164,18 +173,29 @@ from the top and stop at the first rung that does it.
 1. The local fix the F entry names: the missing arm, the guard or compare-and-set, the
    idempotency key, the timeout or entered-at timestamp, the default that can no longer read as a
    state.
-2. Exhaustive dispatch, so the next new state fails the build. No arm may handle "everything
-   else"; the only default allowed is one that asserts it is unreachable.
-   - TypeScript: a discriminated union with a `never` assignment in the default branch, relying on
-     "`never` turning up to do exhaustive checking."
+2. Exhaustive dispatch, so the next new state is reported at every reader that misses it. No arm
+   may handle "everything else". The only default allowed fails when reached: it throws, or
+   returns a failure the caller must handle. A type-only check or a debug-only assert is not that
+   default (`coding-general.md` ⛔ Hard Rule 12).
+   - TypeScript: a discriminated union whose default branch assigns the value to `never` and then
+     throws, relying on "`never` turning up to do exhaustive checking." The throw is needed
+     because the check is type-only ("Type annotations never change the runtime behavior of your
+     program", Handbook, Erased Types), so a value from outside the type (a newer server, an old
+     row) would otherwise pass through.
    - Rust: `match` with no `_` arm; "the arms' patterns must cover all possibilities."
    - Python: a `match` or if-chain whose last branch calls `typing.assert_never` (3.11+), checked
      by the project's type checker.
-   - C#: a switch expression with CS8509 ("does not handle all possible values") raised to an
-     error, CS8524 (unnamed enum values) suppressed, and no discard arm. A discard arm matches every
-     value, so CS8509 never fires, even when that arm throws, and a new member would compile. The
-     compiler raises no exhaustiveness warning on switch statements, so the state dispatch has to
-     be a switch expression.
+   - C#: a switch expression with no discard arm, so a missed member raises CS8509 ("does not
+     handle all possible values"), with CS8524 (unnamed enum values) suppressed in the project
+     (`NoWarn`). A discard arm matches every value, so CS8509 never fires, even when that arm
+     throws, and a new member would compile. Microsoft Learn's switch-expression page advises the
+     opposite ("To guarantee that a `switch` expression handles all possible input values,
+     provide a `switch` expression arm with a discard pattern."); this setup gets totality from
+     the runtime instead, which throws on an unmatched value (`SwitchExpressionException` on .NET
+     Core 3.0 and later), and keeps CS8509 for the next member. Raising CS8509 to an error is a
+     project-wide setting the owner chooses: a handoff recommendation, except in a project file
+     the change creates (csharp Hard Rule 19). The compiler raises no exhaustiveness warning on
+     switch statements, so the state dispatch has to be a switch expression.
 3. Representation changes, as Suggestions, and in review mode only on code the change touches:
    - collapse exclusive flags into one status value and derive the booleans from it (Nystrom,
      Dodds);
@@ -193,6 +213,66 @@ from the top and stop at the first rung that does it.
 For an explicit machine in production code, read hashicorp/raft: `RaftState` (`Follower`,
 `Candidate`, `Leader`, `Shutdown`) is one typed value with atomic `getState` and `setState`
 accessors.
+
+## Persisted transitions and deliveries
+
+The mechanics behind a conditional status write (F4, F5) and the deliveries that drive it (F7,
+F8). `coding-general.md` ⛔ Hard Rule 12 states the rule and points here.
+
+### A single writer that checks in code
+
+The status's only writer, one that never runs twice at once on the same row (an actor, or a
+per-key queue inside one process), may check the state in code instead of in the write, but it
+still checks it; a request handler two requests can enter at once is not that writer, and a lease
+or session lock that can lapse mid-handler is not that guarantee.
+
+### When the write matches zero rows
+
+On a machine that never returns to the expected state, read the current state to tell the cases
+apart:
+
+- A row already in the target state, or in one from which the expected state can no longer be
+  reached, is a duplicate or late delivery. Acknowledge it to the host without applying it,
+  rather than throw, so the host doesn't redeliver it forever. This ending is for messages and
+  webhooks only; a caller that required the transition gets the rejection reported per
+  `coding-general.md` Hard Rule 10.
+- A row in a state that still leads to the expected one is an early delivery. Hand it back for
+  redelivery where the host redelivers until success or dead-letters
+  (`coding-general.md` Hard Rule 10's handler ending).
+- No row at all is early when another delivery creates the row, and a failure reported per
+  `coding-general.md` Hard Rule 10 otherwise.
+
+### Machines that return to an earlier state
+
+On a cycle (`PastDue` and `Active`, `Failed` back to `Pending` on a retry), the current state
+can't tell a replay or an older event from a new one. An idempotency key catches only a replay; an
+older event arriving for the first time needs a sequence the event carries from its source,
+compared with the last one the row applied, never the row's own concurrency token. On such a
+machine the event id or sequence, not the current state, sorts a zero-row result into duplicate,
+late, or early, and an acknowledged event still records its id or sequence.
+
+### Event ids
+
+A webhook is signature-checked before anything else. Event-id deduplication, for a webhook or a
+message, records the id in the transaction that applies the event, never before it: an id
+committed ahead of a write that then fails reads as done on the retry, and the transition never
+applies (F11).
+
+### Effects
+
+An effect that follows the status write commits with it, as a write in the same transaction or an
+outbox row that write inserts, which a relay outside the handler sends to a receiver that dedupes
+on the outbox row's id. The outbox row exists only when the transition applied, so the duplicate
+and late endings acknowledge without losing or repeating the effect. Work an in-flight state does
+before its closing write goes to a receiver that dedupes on a key the row stores when the work is
+first requested and keeps across reclaims.
+
+### Draining the outbox
+
+An outbox row is an in-flight state (F6). The relay deletes or marks the row only after the send
+succeeds, so a crash repeats the send for the receiver to dedupe and never drops it. The row
+records when it was written and how many sends failed, and a bounded retry ends in a failed or
+dead state with its own exit.
 
 ## Sources
 
@@ -221,10 +301,16 @@ accessors.
   https://stately.ai/blog/2019-11-13-no-disabling-a-button-is-not-app-logic
 - TypeScript Handbook, Narrowing (exhaustiveness checking):
   https://www.typescriptlang.org/docs/handbook/2/narrowing.html
+- TypeScript Handbook, The Basics (Erased Types):
+  https://www.typescriptlang.org/docs/handbook/2/basic-types.html
 - The Rust Book, "Matches Are Exhaustive": https://doc.rust-lang.org/book/ch06-02-match.html
 - Python, `typing.assert_never`: https://docs.python.org/3/library/typing.html#typing.assert_never
 - Microsoft Learn, pattern-matching warnings (CS8509, CS8524):
   https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-messages/pattern-matching-warnings
+- Microsoft Learn, switch expression (the exception an unmatched value throws on each platform;
+  its union-type guidance applies the same reasoning: "Prefer a `null` arm to a `var` or discard
+  arm so that adding a new case type still produces a non-exhaustiveness warning"):
+  https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/operators/switch-expression
 - Erlang/OTP, `gen_statem` behaviour (state time-outs): https://www.erlang.org/doc/system/statem.html
 - Biffle, "The Typestate Pattern in Rust": https://cliffle.com/blog/rust-typestate/
 - Mermaid, state diagrams: https://mermaid.js.org/syntax/stateDiagram.html
