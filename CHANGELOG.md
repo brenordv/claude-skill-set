@@ -108,8 +108,8 @@
   "Do Not Use" line sends to `csharp` only C# that Unity never compiles. `branch-review` reviews a
   `.cs` file Unity compiles (under `Assets/` or `Packages/` of its nearest enclosing Unity root,
   which in a mono-repo can sit below the repo root, or below a `package.json` with a `unity`
-  field) against the unity skill plus csharp's Hard Rules; any other `.cs` file, a tool kept beside
-  `Assets/` included, gets csharp. A paragraph after the `csharp` Hard Rules preamble names the
+  field) against the unity skill plus csharp with its Unity overrides; any other `.cs` file, a
+  tool kept beside `Assets/` included, gets csharp. A paragraph after the `csharp` Hard Rules preamble names the
   four rules Unity overrides: rule 4 falls back to get-only properties and `readonly` except on
   fields Unity serializes, rule 5 gives way on those fields to Unity's serialization rules, rule
   2's assertions are NUnit's, and rule 19's `NoWarn` and `WarningsAsErrors` become the unity
@@ -143,7 +143,8 @@
 - `skills/csharp/.editorconfig` set four keys twice in its `[*.cs]` section. EditorConfig lets the
   later pair win, so the stray copies under `# Wrapping preferences` made namespaces
   `block_scoped:silent`, against csharp §2. They're gone; namespaces are now
-  `file_scoped:suggestion`, and method-group conversion keeps its effective `true:silent`.
+  `file_scoped:suggestion` and method-group conversion `true:suggestion`, the values the earlier
+  pair sets.
 - Unity's "Null checks in Unity" subsection made an unsourced performance claim for `if (!obj)`.
   It now says what Unity's `Object` page does: `==`, `!=`, and the `bool` check give one answer and
   treat a destroyed or missing object as null, while `?.`, `??`, `is null`, and `is not null` skip
@@ -167,8 +168,10 @@
   in a `finally`. Rust's consumer is rewritten onto `EventProcessor` and
   `BlobCheckpointStore`, pinned to `azure_messaging_eventhubs` 0.15 because the blob store 0.9
   requires it; the old sample called methods that don't exist and never checkpointed. The new one
-  installs a `tracing` subscriber, authenticates with `ManagedIdentityCredential`, and polls `run`
-  first (`biased;`) so an early stop can't be lost; the Authentication section marks
+  installs a `tracing` subscriber, authenticates with `ManagedIdentityCredential`, polls `run`
+  first (`biased;`) so an early stop can't be lost, and drives each partition stream on the host
+  task in a `FuturesUnordered`, since the stream isn't `Send`; it passes `cargo check`, rustfmt,
+  and clippy against 0.15 and the store 0.9; the Authentication section marks
   `DeveloperToolsCredential` as local development only.
 - `review-heuristics.md`'s log-and-fall-through finding names the catch shape generically (a
   trailing catch of a client library's base exception); the Cosmos form stays in csharp Hard Rule

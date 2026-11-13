@@ -55,12 +55,11 @@ use azure_messaging_eventhubs::{
 };
 use azure_messaging_eventhubs_checkpointstore_blob::BlobCheckpointStore;
 use azure_storage_blob::BlobServiceClient;
-use futures::StreamExt;
-use tokio::task::JoinSet;
+use futures::{stream::FuturesUnordered, StreamExt};
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
-use std::{pin::pin, sync::Arc};
+use std::{future::Future, pin::pin, pin::Pin, sync::Arc};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -88,7 +87,9 @@ async fn main() -> anyhow::Result<()> {
         .context("building the processor")?;
 
     let stop = CancellationToken::new();
-    let mut partitions = JoinSet::new();
+    let mut partitions: FuturesUnordered<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> =
+        FuturesUnordered::new();
+    let mut first_failure = None;
     let mut run = pin!(processor.run());
     let run_result = loop {
         tokio::select! {
@@ -98,22 +99,29 @@ async fn main() -> anyhow::Result<()> {
                 processor.shutdown().await.context("shutting down the processor")?;
                 break run.await;
             }
+            Some(result) = partitions.next(), if !partitions.is_empty() => {
+                if let Err(err) = result {
+                    first_failure.get_or_insert(err);
+                    stop.cancel();
+                }
+            }
             next = processor.next_partition_client() => {
                 let partition = next.context("acquiring a partition")?;
                 let (dead_letters, stop) = (Arc::clone(&dead_letters), stop.clone());
-                partitions.spawn(async move {
-                    let result = process_partition(&partition, &dead_letters, &stop).await;
-                    if result.is_err() {
-                        stop.cancel();
-                    }
-                    result
-                });
+                partitions.push(Box::pin(async move {
+                    process_partition(&partition, &dead_letters, &stop).await
+                }));
             }
         }
     };
     stop.cancel();
-    while let Some(finished) = partitions.join_next().await {
-        finished.context("joining a partition task")??;
+    while let Some(result) = partitions.next().await {
+        if let Err(err) = result {
+            first_failure.get_or_insert(err);
+        }
+    }
+    if let Some(err) = first_failure {
+        return Err(err);
     }
     run_result.context("running the processor")?;
     Ok(())
@@ -161,12 +169,14 @@ stops on its own is reported when it stops. A failed event is parked, logged at 
 checkpointed.
 
 A park failure skips the checkpoint, logs once with `park_failed = true` (`tracing` has no level
-above `ERROR`, so that field is what an alert keys on), and returns the park error, which the spawn
-wrapper turns into a stop: `take_until` ends every stream at the next event boundary and the host
+above `ERROR`, so that field is what an alert keys on), and returns the park error, which the host
+loop turns into a stop: `take_until` ends every stream at the next event boundary and the host
 returns the first failure, so the process exits non-zero. Any receive or checkpoint error stops the
 host the same way, which is the safe choice. `ConsumerDisconnected` means the partition was
-reassigned or the broker disconnected the receiver, so that task ends cleanly and the processor
-hands the partition out again through `next_partition_client`. The host stops by cancelling `stop`,
+reassigned or the broker disconnected the receiver, so that partition's future ends cleanly and the
+processor hands the partition out again through `next_partition_client`. The partition futures run
+on the host task in a `FuturesUnordered`: `stream_events()` returns a stream that isn't `Send`, so
+`tokio::spawn` and `JoinSet` refuse a future that holds it. The host stops by cancelling `stop`,
 and its own shutdown signal cancels the same token; `shutdown()` alone leaves the partition streams
 open. `shutdown()` only clears the flag `run` sets when it starts, and `run` reads it after each
 load-balancing sleep (30 seconds by default), so the stop can take that long to land

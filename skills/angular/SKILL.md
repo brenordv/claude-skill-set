@@ -182,7 +182,7 @@ decides:
   action a button triggers, whatever the page shows.
 
 In a `switch`, `status satisfies never;` in the `default` branch fails to compile when a member has
-no `case`, and it leaves no unread variable for `noUnusedLocals` or a linter to flag.
+no `case`, and it leaves no unread variable for `noUnusedLocals` to flag.
 
 ```typescript
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
@@ -223,10 +223,11 @@ value arrives, never through `ErrorHandler`, whose errors Angular describes as u
 arm in a test with `fixture.componentRef.setInput('status', 'archived')` and assert the badge reads
 "Unknown".
 
-`@default never;` (Angular 21.2 and later) is the template's own exhaustiveness check. It is
-compile-time only: an unmatched value renders nothing, and it works only on a plain variable or
-field (for a signal, `@let s = status();`), not on a signal call like `status()`. On its own it
-doesn't meet Hard Rule 12's fail-closed default.
+`@default never;` (Angular 21.2 and later) is the template's own exhaustiveness check
+([`@switch`](https://angular.dev/api/core/@switch)). It is compile-time only: an unmatched value
+renders nothing, and it works only on a plain variable or field (for a signal,
+`@let s = status();`), not on a signal call like `status()`. On its own it doesn't meet Hard
+Rule 12's fail-closed default.
 
 ---
 
