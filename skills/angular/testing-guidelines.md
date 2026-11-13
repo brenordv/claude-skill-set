@@ -44,22 +44,23 @@ it('should increment the counter', () => {
 });
 ```
 
-### Testing Services with HttpClientTestingModule
+### Testing services with HttpClient
 
 ```typescript
 beforeEach(() => {
   TestBed.configureTestingModule({
-    imports: [HttpClientTestingModule],
-    providers: [DataService],
+    providers: [DataService, provideHttpClient(), provideHttpClientTesting()],
   });
   service = TestBed.inject(DataService);
   httpMock = TestBed.inject(HttpTestingController);
 });
 
 afterEach(() => {
-  httpMock.verify(); // ensure no outstanding requests
+  httpMock.verify();
 });
 ```
+
+`provideHttpClient()` goes before `provideHttpClientTesting()`, which overwrites parts of it, and the reverse order can break the tests ([HTTP testing guide](https://angular.dev/guide/http/testing)). `verify()` fails the test when a request is still outstanding.
 
 ### Testing Reactive Forms
 

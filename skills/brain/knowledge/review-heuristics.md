@@ -147,8 +147,8 @@ general principle. Distilled from real review findings.
   comment inside is stripped at compile time. Put intent in a comment above the `try`. Not catching
   at all is one of `coding-general.md` ⛔ Hard Rule 10's endings.
 - **A catch that logs and falls through is a finding.** After the log, the method returns normally
-  or the caller's next step runs, so a failure reads as success: the trailing
-  `catch (CosmosException)` after specific handlers, an `except` that logs, an error arm that only
+  or the caller's next step runs, so a failure reads as success: a trailing catch of a client
+  library's base exception after the specific handlers, an `except` that logs, an error arm that only
   traces. At minimum Important; Critical when the caller then reports success (persists, acknowledges,
   returns a success status), or when the catch sits inside a security decision (an authn or authz
   check, signature, token, or input validation, a scan result), where it fails open. The legal
@@ -174,6 +174,22 @@ general principle. Distilled from real review findings.
 - **Prefer split-and-check-length over `IndexOf`-plus-substring for delimited parsing.** `key.Split(':')`
   gives a clearly sized array. If the delimiter can appear in the value, design the format to be
   unambiguous (split on the first occurrence, or pick another delimiter).
+- **A new member in a state enum or status set is a finding until every reader handles it.**
+  Search for every switch, mapping, serializer, database check constraint, API contract, and
+  frontend union over the field, and ask about rows older versions stored. A default arm that
+  silently treats the new value as another state counts as unhandled. At minimum Important
+  (`implicit-state-machines.md` F1 and F9; `coding-general.md` ⛔ Hard Rule 12).
+- **A write to persisted state that doesn't check the current state is a finding.** An
+  unconditional `status = X` from a handler or job lets a final state move backwards and lets two
+  writers both win. Expect a conditional write on the expected state plus a row-count check. At
+  minimum Important; Critical under the catalog's escalation rule, when a reachable path corrupts
+  persisted data, loses or duplicates money, messages, or work, or lands in a security state
+  (`implicit-state-machines.md` F4, F5, and F14; `coding-general.md` ⛔ Hard Rule 12).
+- **A boolean flag added to make a symptom stop is a finding until its combinations are
+  mapped.** `if (_alreadyHandled) return;` doubles its owner's state space. List the flag's
+  combinations with the owner's other flags and status and show that every reachable one is
+  designed. At minimum Important (`implicit-state-machines.md` S10 and F2;
+  `coding-general.md` ⛔ Hard Rule 12); the `state-machine-auditor` skill does the mapping.
 
 ## Testing
 

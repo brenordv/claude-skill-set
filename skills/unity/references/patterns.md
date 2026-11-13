@@ -111,8 +111,8 @@ public class Health : MonoBehaviour
     public void Subtract(int amount)
     {
         _current = Mathf.Max(0, _current - amount);
-        _onHealthChanged?.Raise(_current);
-        if (_current <= 0) _onDeath?.Raise();
+        if (_onHealthChanged) { _onHealthChanged.Raise(_current); }
+        if (_current <= 0 && _onDeath) { _onDeath.Raise(); }
     }
 }
 ```

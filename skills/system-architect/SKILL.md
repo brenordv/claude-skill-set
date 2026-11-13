@@ -9,7 +9,7 @@ description: >-
 
 # System Architect: Planning-Only Skill
 
-> **Shared Knowledge**: This skill builds on `brain/knowledge/general-problem-solving.md` and `brain/knowledge/writing-style.md`. Always apply the understand → plan → verify workflow when producing architectural artifacts, and write ADRs and design docs in the human voice that `writing-style.md` describes.
+> **Shared Knowledge**: This skill builds on `brain/knowledge/general-problem-solving.md` and `brain/knowledge/writing-style.md`. Always apply the understand → plan → verify workflow when producing architectural artifacts, and write ADRs and design docs in the human voice that `writing-style.md` describes. When a design adds state, it also applies `brain/knowledge/implicit-state-machines.md` (§2, "State machines in the design").
 
 You are an expert System Architect. You produce **plans, documents, and architectural artifacts only**. You analyze requirements, evaluate trade-offs, select patterns, and deliver comprehensive architectural documentation.
 
@@ -94,7 +94,7 @@ Follow this sequence for every architecture engagement:
 3. **Define domain boundaries**: Bounded contexts, core vs supporting subdomains
 4. **Select architecture style**: Based on pattern selection decision tree
 5. **Design components** (C4 model: Context, Containers, Components)
-6. **Define interfaces**: API contracts, event schemas, data flow
+6. **Define interfaces**: API contracts, event schemas, data flow, and the state machines the design adds or changes (below)
 7. **Evaluate trade-offs**: Document every significant decision as an ADR
 8. **Plan implementation**: Phased roadmap, migration strategy, risk mitigation
 9. **Validate**: Review against NFRs, run through the validation checklist
@@ -110,6 +110,42 @@ Follow this sequence for every architecture engagement:
 - [ ] Security, observability, and operational concerns addressed
 - [ ] Cost estimation completed
 - [ ] Migration path defined (if evolving existing system)
+- [ ] Every status, lifecycle, or flag cluster the design adds or changes has its state and transition tables, readers, write guards, in-flight exits, and replay handling written down (`implicit-state-machines.md`)
+
+### State machines in the design
+
+When the design adds or changes a status, an ordered lifecycle, or flags on one owner, read
+`brain/knowledge/implicit-state-machines.md` and write each machine into the plan in its
+§"Building the map" vocabulary:
+
+- a state table: each state, the data valid in it, and whether it is final;
+- a transition table: from, to, trigger, guard, the one place that writes it, and its side
+  effects with how each commits with the write (for work that must finish before the write: the
+  in-flight state it runs in, the conditional write that enters it and stores a new key its
+  receiver dedupes on, the reaper that takes the row over when its worker dies, the write that
+  records the receiver's answer and clears the key, which responses count as no answer, the
+  receiver's window for the key against the state's timeout, and where a row is parked and how a
+  lookup settles it), plus every reader and what it does in each state (an existing machine cites
+  repo-relative `file:line`s);
+- for a persisted status, how each write checks the current state and where a rejected write is
+  recorded, with the state it found;
+- for each transition a message or webhook drives, how each delivery ending in the knowledge
+  file's §"Persisted transitions and deliveries" is handled, an early one whose row doesn't exist
+  yet included;
+- for each in-flight state and outbox row, its exit when the process dies, how a reclaim fences
+  the worker it took the row from and each claim counts the attempt, the timestamp its age is
+  measured from, and where it lands after the last retry (a final state or one with its own exit
+  that resets the attempt count; for an outbox row, one with its own exit that also resets the
+  first-claim time; for work that may already have reached a receiver, the park, never a final
+  state); an outbox row is claimed in a write that counts the attempt before its send and is
+  deleted or marked only after the send succeeds, and the plan says whether its receiver dedupes
+  on the row's id and inside what window, and, when it can't, the repeat that remains;
+- for state that gates access (the knowledge file's F14): every reader that grants on it, the
+  server-side check at each step, the token's expiry and compare-and-set consume, and the request
+  fields that can't set it.
+
+Pick the representation from the knowledge file's fix ladder, smallest rung first; §4's three
+questions apply, so no State pattern or state-machine library the cases don't demand.
 
 ---
 

@@ -31,7 +31,9 @@ Build high-performance, maintainable games in Unity 6.3 using modern C# patterns
 
 - Designing game mechanics before implementation: use `game-developer` first
 - Working in Godot or Unreal Engine: use `godot` or `unreal-engine`
-- Writing pure C# with no Unity dependency: use `csharp` skill
+- Writing C# that Unity never compiles, such as a standalone .NET backend the game calls (a
+  matchmaking or REST service) or a command-line tool: use the `csharp` skill. A plain C# class
+  in the Unity project still goes through Unity's C# 9.0 compiler and stays with this skill.
 
 ## Instructions
 
@@ -105,12 +107,21 @@ Code demonstrations for all five rules: see `references/patterns.md` → "Perfor
 
 ### Modern C# Features Safe for Unity 6.x
 
-Unity 6.x supports C# 12 / .NET 8+. Use modern features freely:
+Unity 6.x compiles C# 9.0 with Roslyn, against .NET Standard 2.1 by default or .NET Framework 4.8,
+and doesn't support .NET 5 or later. Features from C# 10 on don't compile, including file-scoped
+namespaces, global usings, record structs, lambdas with a natural type (a lambda assigned to
+`var`), raw string literals, required members, primary constructors on classes and structs (a
+record's positional parameter list is C# 9), and collection expressions. Unity also lists some C# 9
+features as unsupported, among them covariant return types, module initializers, and init only
+setters; positional records fail for the same reason, because their generated properties are
+init-only. Keep records out of anything Unity serializes (inspector fields, ScriptableObject data),
+since Unity's serializer doesn't support them. For immutable runtime data, use a `readonly struct`
+with a constructor (RULE 3 in `references/patterns.md`) or a class whose get-only properties a
+constructor sets. Unity doesn't serialize `readonly` fields, and a get-only property's backing field
+is `readonly`, so data the inspector edits stays in `public` or `[SerializeField]` fields. These
+compile as written:
 
 ```csharp
-// Records for immutable game data
-public record WeaponStats(string Name, int Damage, float FireRate, float Range);
-
 // Pattern matching for state logic
 public float GetSpeedMultiplier(PlayerState state) => state switch
 {
@@ -119,22 +130,38 @@ public float GetSpeedMultiplier(PlayerState state) => state switch
     PlayerState.Running => 1.8f,
     PlayerState.Crouching => 0.5f,
     PlayerState.Stunned => 0f,
-    _ => 1f,
 };
 
 // Span<T> for zero-alloc string/array work in tools & editor code
 ReadOnlySpan<char> extension = filePath.AsSpan()[filePath.LastIndexOf('.')..];
 ```
 
+With no discard arm, a new `PlayerState` member raises CS8509 here. By default Unity compiles with
+its own pipeline, and one documented route for compiler options is a `csc.rsp` response file in
+`Assets`, in `csc.exe` syntax
+([Windows Player settings](https://docs.unity.com/en-us/engine/6000.3/manual/platform-specific/windows/playersettings),
+[errors and warnings options](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-options/errors-warnings)):
+`-nowarn:8524` there quiets the unnamed-value warning, and `-warnaserror+:8509` makes a missed
+member a compile error, a project-wide setting for the project's owner to choose. Player Settings'
+Additional Compiler Arguments takes the same flags; use one place, not both, since the Windows
+Player settings page warns that an argument defined in both can cause errors.
+
 ### Null checks in Unity
 
-Null checks `obj == null` are expensive, and Unity provides a sugar syntax that seems to help with performance:
+A type that derives from `UnityEngine.Object` (a component, `MonoBehaviour`, `ScriptableObject`,
+`GameObject`) overloads `==`, `!=`, and `bool`, so `obj == null`, `!obj`, and `if (obj)` give one
+answer and treat a destroyed object, or one whose asset or type is missing, as null
+([`Object`](https://docs.unity.com/en-us/engine/6000.3/script-reference/unityengine/object)).
+`?.`, `??`, `is null`, and `is not null` skip those overloads and see such an object as non-null
+(the compiler never calls an overloaded `==` for `is null`, per the
+[patterns reference](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/operators/patterns#constant-pattern)),
+so use them on these types only when the object can never be destroyed or missing. `!obj` doesn't
+compile on a plain C# class, which has no `bool` conversion; check one with `is null`.
 
 ```csharp
-if (!obj) { return "this is null"; }
+if (!_target) { return; }          // a component: also true once it's destroyed
+if (_config is null) { return; }   // a plain C# class
 ```
-
-Use this syntax whenever you need to check for nulls.
 
 ### Async Patterns in Unity
 

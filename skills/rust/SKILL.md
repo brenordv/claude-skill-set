@@ -62,6 +62,15 @@ list before writing code, and walk it again at handoff (§8).
    `filter_map(Result::ok)` over results. `if let Err(e) = ... { warn!(error = %e, ...) }` is
    allowed only for best-effort work, with the comment coding-general Hard Rule 10 asks for. The test follows
    `brain/knowledge/testing.md` ⛔ Hard Rule 1 and `testing-guidelines.md` §"Failure paths".
+7. **A `match` on a state enum the crate owns names every variant and has no `_` arm.** This is
+   `brain/knowledge/coding-general.md` ⛔ Hard Rule 12 in Rust terms: a new variant then fails to
+   compile at every match that doesn't handle it. A grouping predicate (`is_terminal`) is a full
+   `match` too, never `matches!`. A `_` arm, or a catch-all variant a new state falls into
+   silently, is the shape that regresses; an existing `match` you extend that already has a `_`
+   arm keeps its form, gets the new arm, and goes in the handoff. An enum marked
+   `#[non_exhaustive]` from another crate is the one place a wildcard arm is forced, and that arm
+   returns an error naming the unrecognized value (Hard Rule 6), never `unreachable!()`
+   (Hard Rule 2) or a value that reads as a known state.
 
 ### 1. Design Principles
 

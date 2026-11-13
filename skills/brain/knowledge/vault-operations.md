@@ -88,6 +88,11 @@ but the rule binds first, in your reasoning.
   body up to the next heading of the same or higher level, subsections included. Duplicate or colliding
   heading text fails as `ambiguous_heading`, never a wrong-section edit, so keep headings unique within
   a note.
+- **An omitted `project` can resolve differently across server versions.** On Windows, server
+  v3.6.0+ infers `<repo>/<folder>` where earlier builds under some clients timed out on the git
+  lookup and fell back to the folder name. Notes saved under the old name keep it: when a note you
+  expect in the current repo's namespace is missing, `vault_list` with no `project` (all
+  namespaces) before concluding it's gone.
 - `vault_append` concatenates with **no separator**; start appended content with its own newline(s).
 - To change only a note's summary, tags, or parent, use `vault_set_meta`: no new version, no content resend.
 - **Restate `format` and `summary` on every `vault_save`**, not just the first. Save always replaces the
@@ -117,6 +122,7 @@ cross-repo searchable precedent:
 | `code-reviews`              | every code or branch review result                 |
 | `pr-descriptions`           | every pull-request description you author           |
 | `ticket-descriptions`       | every ticket / issue description you draft           |
+| `state-machine-maps`        | every implicit state machine audit map (`state-machine-auditor` audit mode) |
 | `git-ops-backlog`           | capability-gap tickets for the git-ops MCP (see `git-readonly-operations.md` §"Capability-gap protocol") |
 | `text-search-backlog`       | capability-gap tickets for the text-search MCP (see `text-search-operations.md` §"Capability-gap protocol") |
 | `text-edit-backlog`         | capability-gap tickets for the text-edit MCP (see `text-edit-operations.md` §"Capability-gap protocol") |
@@ -172,3 +178,6 @@ This is a **two-sided** protocol; the save half is worthless without the retriev
   `pr-description` skill; it retrieves similar past PRs first and saves the final description.
 - **Ticket descriptions**: whenever you draft a ticket or issue, use the `ticket-description` skill; it
   retrieves similar past tickets first and saves the final title and description.
+- **State machine maps**: retrieved at the start of every `state-machine-auditor` run; saved only
+  after an audit-mode run, never after a review of a diff or a plan. (Hooked in
+  `state-machine-auditor`.)

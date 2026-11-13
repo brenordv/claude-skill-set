@@ -242,9 +242,9 @@ The workflows have memory. Before a planning stage starts, prior plans are retri
 close matches inform the new one; before a review, prior reviews. Full-work tasks also keep a live
 progress checkpoint in the vault (created with the plan, updated at stage boundaries and before risky
 steps), so a crash, freeze, or token exhaustion resumes from the checkpoint instead of re-deriving
-state. Finished artifacts are archived back,
-so every plan, review, PR description, and ticket becomes searchable precedent for the next one. Each
-archive lives in a pinned vault namespace so it stays cross-project instead of siloing per repo:
+state. Finished artifacts are archived back, so every plan, review, PR description, ticket, and
+state machine map becomes searchable precedent for the next one. Each archive lives in a pinned
+vault namespace so it stays cross-project instead of siloing per repo:
 
 | Vault project          | Filled by                                                                                |
 |------------------------|------------------------------------------------------------------------------------------|
@@ -252,6 +252,7 @@ archive lives in a pinned vault namespace so it stays cross-project instead of s
 | `code-reviews`         | `branch-review`                                                                          |
 | `pr-descriptions`      | `pr-description`                                                                         |
 | `ticket-descriptions`  | `ticket-description`                                                                     |
+| `state-machine-maps`   | `state-machine-auditor`, in audit mode                                                   |
 | `lessons`              | cross-project lessons captured automatically per `general-remembering-lessons.md`        |
 | `git-ops-backlog`      | capability-gap tickets filed when the git-ops MCP can't do something an agent needed     |
 | `text-search-backlog`  | capability-gap tickets filed when the text-search MCP can't do something an agent needed |
@@ -261,7 +262,7 @@ Every archive runs the same two-sided loop:
 
 ```mermaid
 flowchart LR
-    V[("pinned vault<br/>namespace")] -->|"retrieve close matches<br/>before starting"| W["produce the artifact:<br/>plan, review, PR description, ticket"]
+    V[("pinned vault<br/>namespace")] -->|"retrieve close matches<br/>before starting"| W["produce the artifact:<br/>plan, review, PR description,<br/>ticket, state machine map"]
     W -->|"archive the<br/>finished version"| V
 ```
 
@@ -296,6 +297,7 @@ something a competent practitioner does by default), and they're consulted befor
 | `security`                     | Security and pentest entry point: SAST, dependency scanning, compliance, threat modeling                                                                                |
 | `branch-review`                | Reviews the current branch against main across correctness, security, performance, maintainability, testing; also checks prose style and blocks on machine-detail leaks |
 | `delivery-lead`                | Scope-discipline lens on a drafted plan: flags scope creep, gold-plating, speculative work, and problems the ask never raised; the review panel's one voice for less    |
+| `state-machine-auditor`        | Finds implicit state machines (status fields, flag clusters, nullable-as-state, call-order lifecycles); checks a diff or plan against every reader and writer of the state it touches, maps machines on request, never edits code |
 | `pr-description`               | Generates a PR description in the house format from the diff; retrieves precedent and archives it                                                                       |
 | `ticket-description`           | Drafts a ticket title and description from a branch or via Q&A; retrieves precedent and archives it                                                                     |
 | `visual-design`                | High-end visual design: premium/Apple-like pages, UIs, and motion, plus preset artifact themes |
@@ -307,9 +309,9 @@ something a competent practitioner does by default), and they're consulted befor
 ten always-on files listed above, it covers general coding conventions, testing, code review and its
 heuristic checklist, GitHub PR stacks (detection, plus layer-by-layer review and PR-description
 rules), the shared MCP operations protocol (capability-gap tickets, dispatch restatements),
-scope discipline, game-dev coding, databases, DevOps operations, security, and how to author
-skill rules that stick. These load on demand
-when a task touches their topic.
+scope discipline, implicit state machines (detection signals and a flaw catalog), game-dev
+coding, databases, DevOps operations, security, and how to author skill rules that stick. These
+load on demand when a task touches their topic.
 
 Traps already hit live as lessons in the vault MCP (the pinned `lessons` project described above),
 consulted before planning and during reviews so the same trap isn't hit twice.

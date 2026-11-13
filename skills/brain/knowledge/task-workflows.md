@@ -119,9 +119,11 @@ completes or when a loop cap is hit with unresolved issues (see issue handling b
    - **Domain routing (principle, not a fixed list):** add any domain or framework skill whose area the
      plan actually touches, so it can weigh in before the stage completes. Examples: `postgres`,
      `azure-sql-server`, `azure-cosmos`, `azure-eventhub`, `nosql-database`, `angular`, `reactjs`, `nextjs`,
-     `godot`, `unity`, `unreal-engine`, `game-developer`, `linux-shell-scripting`, `linux-troubleshooting`.
-     Include every subject that applies, not just the first match, and route by what the plan does rather
-     than by this list staying current.
+     `godot`, `unity`, `unreal-engine`, `game-developer`, `linux-shell-scripting`, `linux-troubleshooting`,
+     and `state-machine-auditor` when the plan adds or changes a persisted status advanced by several
+     handlers or services, an ordered lifecycle, or flags on one owner. Include every subject that
+     applies, not just the first match, and route by what the plan does rather than by this list
+     staying current.
 
 3. **Consolidate.** Merge the panel's findings, de-duplicate overlaps, and classify each as **blocking**
    (a correctness, security, data, or design flaw that must be resolved) or **suggestion** (an optional

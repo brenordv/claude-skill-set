@@ -96,9 +96,9 @@ Re-read this list before writing code and walk it again at handoff (§10).
    calls or binds to is describing it: a publisher names the hub it sends to, a trigger function
    names the queue it reads. The check: would the summary still be true if a different caller used
    the unit, or it travelled by another route? If not, it describes usage, and that context belongs
-   at the code that does the wiring. A message model that a frontend relays to an Event Hub
-   function gets a summary about the message, and nothing about the frontend or the function. A
-   repo full of such summaries is precedent, not permission.
+   at the code that does the wiring. A message model that a frontend publishes to a queue a
+   function reads gets a summary about the message, and nothing about the frontend or the
+   function. A repo full of such summaries is precedent, not permission.
 10. **A handled failure never ends on the success path.** A caller must never mistake a failure
     for success. Every catch, except, or error arm ends in exactly one of these:
     - **Not catching.** When nothing at this level can do one of the endings below, let the
@@ -111,27 +111,33 @@ Re-read this list before writing code and walk it again at handoff (§10).
     - **Recover for real.** A retry that succeeded, a fallback that produces a correct value.
     - **Report at a boundary.** A request handler returns an error response (generic to the
       caller, details in server logs); a UI handler shows an error state; a job or CLI exits
-      non-zero. A message or event handler rethrows only where its host redelivers until success
-      or dead-letters (Service Bus and Storage queue triggers). An Event Hubs trigger advances its
-      checkpoint with or without an exception, so with a host retry policy the handler rethrows on
-      earlier attempts and parks the event on the final one (the invocation's retry context carries
-      the current and maximum retry count), and without one it retries in code and parks after the
-      loop. Where the SDK says not to throw from the handler (the Event Hubs processor), the
-      handler parks the event somewhere recoverable and logs at error so an alert can fire.
+      non-zero. A message or event handler rethrows to end a delivery only where its host
+      redelivers until success or dead-letters (a Service Bus or Storage queue trigger does).
+      Where the host moves past the message whether or not the handler throws (a stream that
+      checkpoints its position), the handler rethrows on earlier attempts where the host has a
+      bounded retry policy, or retries in code where it doesn't, and on the last attempt parks the
+      message somewhere recoverable instead of throwing and logs at error so an alert can fire.
+      Where the SDK says not to throw from the handler, the handler parks the message and logs at
+      error. If the park fails too, the handler logs at critical with the message's position so it
+      can be recovered, and keeps the host from moving past the message where the host allows it.
+      The host's skill has the mechanics (`azure-eventhub/SKILL.md` for Event Hubs triggers and
+      the processor).
 
     Logging is never an ending on its own. Log a failure once, where the context is: a catch that
     throws or wraps logs only data the boundary can't see, or carries it in the wrapped error, and
-    the boundary or the error-handling middleware logs the rest. Two catches are exempt. An SDK
+    the boundary or the error-handling middleware logs the rest. Three catches are exempt. An SDK
     error-notification callback whose library owns recovery (an Event Hubs processor's error
     handler) ends in a log or an alert. Best-effort work whose failure can't change the result
     (cleanup, telemetry other than a required audit record, cache warm-up) logs at warning level,
     naming the skipped work and its identifier (item id, cache key) with the error attached, and a
-    comment at the catch says it is best-effort. Cancellation is not a failure: catch it only where
-    the stop was requested, and never let a broad catch or a retry loop absorb it. The shape that
-    regresses is the last broad catch of an SDK's exception type after the specific handlers
-    (`catch (CosmosException)`, `except CosmosHttpResponseError`, a catch-all error arm): delete
-    it, or make it wrap with context. The test half is `testing.md` ⛔ Hard Rule 1: every arm you
-    add is driven by a test.
+    comment at the catch says it is best-effort. A handler whose park failed, on a host that moves
+    past the message whether or not it throws, ends in the critical log above. Cancellation is not
+    a failure: catch it only where the stop was requested, and never let a broad catch or a retry
+    loop absorb it. The shape that regresses lets an unexpected error end normally: a broad catch
+    of an SDK's base error type, after the specific handlers or as one catch that checks the
+    status, or a catch-all error arm. Let that error propagate or wrap it with context instead
+    (csharp Hard Rule 17 and python Hard Rule 8 show it in C# and Python). The test half is
+    `testing.md` ⛔ Hard Rule 1: every arm you add is driven by a test.
 11. **A credential is attached by the client's configuration, never by its call surface.** A
     static key (an API key, function key, or subscription key) is set where the client is built,
     as a default header or the SDK client's credential argument, from configuration backed by a
@@ -145,6 +151,81 @@ Re-read this list before writing code and walk it again at handoff (§10).
     reached a URL, a log, or source control is exposed; rotating it is the owner's act, and the
     handoff says so. A test of credential handling asserts on the outgoing request, never on an
     interface signature. The C# mechanisms are in `csharp/SKILL.md` §8.
+12. **State you add joins its machine on purpose.** A change that adds a state value, adds a flag
+    or field to an owner that already holds a status or other flags, or writes a persisted status
+    must leave the owner unable to reach a combination nobody designed. A lone toggle that
+    combines with nothing (`isOpen` on a modal) is outside this rule; state that gates access
+    never is. A status field or column the change adds has no default that names a real state:
+    new rows take theirs from the transition that creates them, and existing rows one derived
+    from their data or a named never-assigned state, which every reader handles and which a
+    transition leaves (a backfill, or the next writer that can derive the real state) unless the
+    row is closed. First find every writer and reader of a value, flag, or field the change adds
+    (the Hard Rule 1 search, aimed at the field). Then:
+    - **Every reader handles every state, and the default fails closed.** Dispatch is a switch,
+      match, or if/else-if chain over two or more states, or a grouping predicate (`IsTerminal`)
+      written once on the state's type. Dispatch the change writes is exhaustive where the
+      language can check it, so a missed state is reported at every reader that misses it, and no
+      arm treats "everything else" as one state. The only default allowed fails when reached (it
+      throws, or returns a failure the caller must handle, Hard Rule 10), so an out-of-type value
+      (a newer server, an old row) fails closed; a type-only check or a debug-only assert is not
+      that default. A one-state test (`status == Paid`) is not dispatch and keeps its `else`, but
+      a new state its `else` would mishandle joins it. Per-language setup: rung 2 of
+      `implicit-state-machines.md` §"Making it explicit" and the language skill's Hard Rules.
+    - **Readers the change reaches get the new case, and nothing more.** An existing dispatch the
+      checker can't verify (a switch statement, a discard or `_` arm, a catch-all `else`) keeps
+      its form, gets the case, and is named in the handoff as compile-unchecked. Existing flags
+      and persisted or wire-format fields are not converted; a cluster of them goes in the handoff.
+    - **A flag or field the change adds joins the state it depends on.** A boolean that can't be
+      true beside another, or that only means something in some states, becomes a value of the
+      status. Data valid in only some states lives in that state's variant where the language
+      has sum types, set and cleared by the transitions in and out.
+    - **A persisted status moves only from the state the writer expects.** The write names it
+      (`UPDATE ... SET status = @next WHERE id = @id AND status = @expected`) and checks the row
+      count; a concurrency token the store checks (an ORM version, an `If-Match` ETag), on a row
+      whose state the code checked after reading it, meets the same intent, and a failed check,
+      the code's or the store's, ends as zero rows does. Zero rows is a rejected transition: it
+      stops the transition and every effect after it, is never a silent return, and is recorded
+      with the expected and actual state, the trigger, and the correlation id. A message or
+      webhook handler acknowledges it only as a duplicate or late delivery and otherwise hands it
+      back per Hard Rule 10; a caller that required the transition gets it reported per
+      Hard Rule 10 (a 409 at a request boundary). A webhook is signature-checked
+      before anything else and deduplicated by event id, and a handler that dedupes on an event
+      or message id records it in the transaction that applies the event. An effect that follows
+      the write commits with it, as a write in the same transaction or an outbox row that write
+      inserts.
+      How to tell duplicate, late, and early deliveries apart and end each, how work before the
+      write is deduped and effects after it commit, how outbox rows drain, what a machine that
+      can return to the expected state needs, and when a single writer may check the state in
+      code are in `implicit-state-machines.md` §"Persisted transitions and deliveries".
+    - **A persisted in-flight state has a way out** when the process dies mid-transition: a
+      reaper that acts on a timeout measured from the row's latest claim (the entered-at timestamp
+      the transition writes, or the claim time a takeover writes), and whose reclaim fences the
+      worker it took the row from, with a bounded retry, counted at each claim, that ends in a
+      failed state that is final or has its own exit, which resets the attempt count but never
+      reuses an attempt id. An outbox row is one, and its dead state has its own exit. Work that
+      may already have reached a receiver never ends final: the last retry parks it for a lookup.
+      The reclaim fence, the park, and the drain contract are in the same section.
+    - **State that gates access fails closed**: verified, approved, active, locked, revoked, MFA,
+      sessions, one-time tokens, and reset or checkout steps. Every path that authenticates or
+      authorizes the principal is one of its readers, whether it reads the field yet or not. A
+      check names the states that allow, so a new, unknown, default, or zero value denies; an
+      existing check the change reaches that names a denying state (`status == Locked`) gets the
+      new state beside it when that state must deny, and either way its deny-by-name shape goes
+      in the handoff; request input never binds to the field; each step checks the step before
+      it on the server; a one-time token expires and is consumed by the conditional write above,
+      and zero rows denies the request, never acknowledges it or returns what the first consume
+      granted. `implicit-state-machines.md` F14 has the rest.
+
+    The shape this rule exists for is the flag added to make a symptom stop: a late `shipped`
+    webhook moves a cancelled order back to `Shipped`, and the patch adds
+    `if (order.WasCancelled) return;`, a second copy of the status that every other writer
+    ignores. The fix is the conditional write `WHERE status = 'Paid'`, which rejects the late event
+    at the one place the order changes state and records the rejection. Fix the transition that
+    produced the bad state, not the symptom downstream, and stop at the smallest fix that closes
+    it (Hard Rule 6): no State pattern, state-machine library, or typestate API the cases don't
+    demand. Game code keeps the explicit machines `coding-gamedev.md` §3 prescribes. Tests drive
+    each transition the change adds, one the machine must reject, and an effect that fails after
+    the commit with the message redelivered.
 
 ---
 
@@ -371,10 +452,17 @@ Before delivering work:
    isn't ready (Hard Rule 8). Every summary the diff adds describes its own unit (Hard Rule 9).
    List each catch the diff adds with its ending and the test that drives it; an uncovered catch
    line blocks the handoff whatever the coverage percentage (Hard Rule 10). No credential sits in a
-   call signature or a URL, and one that was exposed is flagged for rotation (Hard Rule 11). When
-   the ask stated a reason, name the way chosen and the one rejected (`general-problem-solving.md`
-   §2). Then reread every comment the diff adds or edits: any that narrates the change rather than
-   the current code gets deleted here, its story moved to the summary (Hard Rule 3).
+   call signature or a URL, and one that was exposed is flagged for rotation (Hard Rule 11). For
+   each state value, flag, or persisted status write the diff adds, name its readers and how each
+   handles it, the guard on each write and what its rejected path records, and, for state that
+   gates access, every path that grants on it (Hard Rule 12). For each transition a message,
+   webhook, or outbox relay drives, name its delivery guarantee (at least once or at most once,
+   deduped or not) and the repeat that remains, such as a receiver that can't dedupe or a send
+   that timed out after the receiver took it, and any receiver with no lookup for a parked row
+   (Hard Rule 12). When the ask stated a reason, name
+   the way chosen and the one rejected (`general-problem-solving.md` §2). Then reread every
+   comment the diff adds or edits: any that narrates the change rather than the current code gets
+   deleted here, its story moved to the summary (Hard Rule 3).
 3. Ensure new code is covered by tests.
 4. Run the test suite; confirm nothing is broken.
 5. Summarize the change, its rationale, and any caveats or warnings.

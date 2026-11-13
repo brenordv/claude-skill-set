@@ -1,5 +1,197 @@
 # Changelog
 
+## v18
+- New `state-machine-auditor` skill and `brain/knowledge/implicit-state-machines.md`. The
+  knowledge file defines implicit state machines (behavior keyed to field, flag, or row values with
+  no one place listing the states), ten detection signals S1-S10 (status fields written from
+  several places, repeated switches, exclusive flags, nullable-as-state, temporal coupling,
+  event-first handlers, UI-guarded transitions, persisted statuses advanced by several processes,
+  history bookkeeping, and a flag added to make a symptom stop), the guards that keep a lone toggle
+  from being flagged, the SCXML vocabulary for maps, a flaw catalog F1-F15 with default severities
+  (security state is Critical by default), and a smallest-first fix ladder whose exhaustive-dispatch
+  rung gives the per-language setup, including C# with no discard arm, CS8524 suppressed, and
+  CS8509 as an error recommended to the owner. Its "Persisted transitions and deliveries" section
+  sorts a zero-row write into duplicate, late, and early deliveries. On a machine that returns to
+  the expected state, the write names the source's sequence, one value per source event, and a
+  row in a state from which the expected one can no longer be reached makes the delivery a
+  duplicate or late one whatever its sequence. Where the source carries no sequence, the handler
+  reads the object's current state from the source and handles one delivery per object at a time,
+  under a row lock taken before the read and held to the commit; a session or partition lock that
+  can lapse doesn't count. Each claim of an in-flight state stores an attempt id the row never held
+  before and counts the attempt, so the id fences a reclaimed worker and a worker that dies
+  mid-work still uses up a retry. Work that must finish before the write has its own subsection: a
+  conditional entry that stores a new receiver key and an attempt count of one, a fenced reaper
+  that takes the row over in place and counts attempts, answers that clear the key (a charge or a
+  refusal) against responses that leave the outcome unknown and keep it, a state timeout longer
+  than one whole send with a resend only while more than one send is left in the receiver's key
+  window, and a parked state a lookup settles, where a lookup that finds nothing counts as a
+  refusal only by a reference the receiver still keeps. Effects commit in the same transaction or
+  through an outbox row the relay claims, counting the attempt and recording the claim's time,
+  before the send and removes only after the send succeeds. A receiver that can't dedupe is named
+  in the handoff with the repeat that remains, and where a repeat is worse than a loss, a row
+  claimed past its timeout or sent with no answer goes to the dead state, not resent. A row past
+  the receiver's window for its id, measured from the first claim, goes there too. Every move to
+  the dead state logs at error, and its exit resets the attempt count and the first-claim time. F6
+  checks that each claim counts the attempt, that a reclaim fences the worker it took the row
+  from, and that a failed or dead state's exit resets the count; F8 rates a receiver that can't
+  dedupe, or can't say whether a request arrived, as a Suggestion naming the repeat that remains,
+  while a resend where a repeat is worse than a loss keeps F8's severity. Every external source it
+  cites was opened and checked.
+- The skill has two modes. Review mode takes a diff or a Stage 1 plan, traces every writer and
+  reader of the state the change touches, and compares the transition table before and after.
+  Audit mode sweeps a scope, maps each machine (states, transitions with `file:line`, guards,
+  readers, a Mermaid diagram, uncovered states, flaws), and archives the map in the new pinned
+  vault project `state-machine-maps`; a file in the audited repo is written only on request. Its
+  Hard Rules keep it read-only and static, keep secret-shaped files out of every search, and keep
+  values out of maps (names only, placeholders, a scrub scan before saving).
+- branch-review Step 4 runs the auditor as a subagent when an added, modified, or deleted line
+  touches state (triggers keyed to the signal ids, deletions and lone flags included), folds its
+  findings in as `[State machine F<n>]`, and records a lens line in the Summary: ran, triggered but
+  not run with the reason, or not triggered. Its "review the diff" principle names the auditor's
+  Notes as the one exception. `task-workflows.md` routes plans with persisted multi-writer
+  statuses, ordered lifecycles, or flag clusters to the auditor on the Stage 1 panel, and
+  `review-heuristics.md` §Correctness gained three findings: a new state member until every reader
+  handles it, an unguarded write to persisted state, and a flag added to stop a symptom.
+- `vault-operations.md` and the README list the new archive; the README catalog lists the skill.
+- Added `coding-general.md` ⛔ Hard Rule 12: state a change adds joins its machine on purpose.
+  Every reader handles every state, and dispatch the change writes is exhaustive with a default
+  that fails when reached; readers the change reaches get the new case and nothing more, and an
+  existing dispatch the checker can't verify keeps its form; a flag or field the change adds
+  becomes part of the status it depends on, and a status field it adds has no default that names
+  a real state (a never-assigned state for existing rows has a way out). A persisted status moves
+  only through a write conditional on the expected state (a concurrency token, such as an ORM
+  version or an `If-Match` ETag, counts only on a row whose state the code checked, and a failed
+  check, the code's or the store's, ends as zero rows does). Zero rows is a recorded rejection
+  that stops every effect after it; a message or webhook handler acknowledges it only as a
+  duplicate or late delivery, and a caller that required the transition gets it reported. An
+  effect that follows the write commits with it, in the same transaction or through an outbox
+  row. The rule keeps that intent and points to the knowledge file's
+  "Persisted transitions and deliveries" section for the delivery mechanics. Webhooks are
+  signature-checked before anything else and deduplicated by event id, a handler that dedupes on
+  an event or message id records it in the transaction that applies the event, and the in-code
+  state check is reserved for the status's only writer, one that never runs twice at once on the
+  same row, which a lease that can lapse doesn't guarantee. A persisted in-flight state gets a
+  reaper that acts on a timeout from the row's latest claim and whose reclaim fences the worker it
+  took the row from, with a bounded retry, counted at each claim, that ends in a failed state,
+  final or with an exit that resets the count but never reuses an attempt id; work that may
+  already have reached a receiver is parked for a lookup, never ended final; an outbox row's dead
+  state has its own exit; and state that gates access fails closed, a reused one-time token
+  included. Its tests include an effect that fails after the commit and is redelivered. §10's handoff walk names each new state's readers, write guards, and
+  access paths, and, for each transition a message, webhook, or relay drives, its delivery
+  guarantee and the repeat that remains. The language skills mirror the dispatch part: csharp
+  Hard Rule 19 (a switch expression with no discard arm, CS8524 suppressed in the project file,
+  CS8509 as an error only recommended in the handoff, `var` for a delegate-valued switch), python
+  Hard Rule 9 (`assert_never` as the last branch), and rust Hard Rule 7 (no `_` arm on a
+  crate-owned enum, and an error naming the value on a foreign `#[non_exhaustive]` one).
+  The Unity `PlayerState` sample dropped its discard arm and says how `Assets/csc.rsp` sets the
+  two warnings, and the three state bullets in `review-heuristics.md` §Correctness cite the rule.
+  `implicit-state-machines.md` rung 2 takes the same default (it fails when reached, and a
+  type-only check or a debug-only assert doesn't count), its TypeScript default branch throws
+  because a `never` check is type-only, and its one-writer guard, like the auditor's "Not a
+  finding" line, covers only a writer that never runs twice at once on the same row.
+- `system-architect` applies `implicit-state-machines.md` when a design adds or changes a status,
+  an ordered lifecycle, or flags on one owner. A §2 subsection, "State machines in the design",
+  asks the plan for state and transition tables with every reader, how each persisted write checks
+  the current state and where a rejected write is recorded with the state it found, how duplicate,
+  late, and early deliveries are handled, the in-flight state, entry write, reaper, answers, key
+  window, and park for work that must finish before the write, each in-flight state's exit,
+  reclaim fence, and where it lands after the last retry, how an outbox row is claimed before its
+  send and whether its receiver dedupes, and the F14 details for state that gates access. The
+  representation comes from the fix ladder, smallest rung first. Step 6 and the Shared Knowledge
+  line point at the subsection, and the Validation Checklist gained a matching item.
+- The Unity skill states what Unity 6 compiles: C# 9.0 against .NET Standard 2.1 or .NET Framework
+  4.8, with no .NET 5 or later, where it used to claim C# 12 and .NET 8. It names the C# 10 and
+  later features that fail there and the C# 9 features Unity lists as unsupported (init only
+  setters among them, so positional records fail too), keeps records out of anything Unity
+  serializes, and points immutable runtime data at a `readonly struct` or get-only properties in
+  place of the deleted record sample, with inspector-edited data in non-`readonly` fields. Its
+  "Do Not Use" line sends to `csharp` only C# that Unity never compiles. `branch-review` reviews a
+  `.cs` file Unity compiles (under `Assets/` or `Packages/` of its nearest enclosing Unity root,
+  which in a mono-repo can sit below the repo root, or below a `package.json` with a `unity`
+  field) against the unity skill plus csharp with its Unity overrides; any other `.cs` file, a
+  tool kept beside `Assets/` included, gets csharp. A paragraph after the `csharp` Hard Rules preamble names the
+  four rules Unity overrides: rule 4 falls back to get-only properties and `readonly` except on
+  fields Unity serializes, rule 5 gives way on those fields to Unity's serialization rules, rule
+  2's assertions are NUnit's, and rule 19's `NoWarn` and `WarningsAsErrors` become the unity
+  skill's `Assets/csc.rsp` flags. A second paragraph says csharp §1 to §3 and
+  `style-guidelines.md` give way to the unity skill too: the copied `.editorconfig`'s preferences
+  for C# 10 and later lose to the C# 9.0 limit, its `?.`, `??`, and `readonly` preferences lose on
+  `UnityEngine.Object` types and serialized fields, §2's records follow unity §2, and §3's
+  `is null` becomes `== null` or the `bool` check on a Unity object.
+- The Angular skill's `@switch` sample with a catch-all `@default` became a status label computed
+  in the component. Its `default` branch runs `status satisfies never;`, so a union member added
+  without a `case` fails to compile, and returns `null` for a value from outside the type, which
+  the template shows as "Unknown". The new text says dispatch that picks among behaviors throws
+  there instead, from an event handler or a service rather than anything the template evaluates; a
+  check that allows one action, which buttons a state shows included, names the states that allow
+  it while the server authorizes the action; and `@default never;` (Angular 21.2 and later) is
+  compile-time only and renders nothing for an unmatched value. `implicit-state-machines.md`'s
+  TypeScript rung names the label form beside the throwing default.
+- `coding-general.md` states its Hard Rules without vendor mechanics. Hard Rule 10's handler
+  ending covers a host that moves past a message whether or not the handler throws: the handler
+  rethrows on earlier attempts under a bounded host retry policy or retries in code, parks the
+  message on the last attempt and logs at error, and, if the park fails too, logs at critical with
+  the message's position and holds the host where it can; that critical log is the third catch
+  exempt from "Logging is never an ending". It points to `azure-eventhub/SKILL.md` for the Event
+  Hubs trigger and processor, which already carried the mechanics with citations and now says a
+  trigger retry policy needs a maximum count (`-1` holds the partition) and that a failed park
+  logs at critical in both paragraphs. Service Bus and Storage queue triggers stay as the example
+  of a host that redelivers. The catch shape that regresses is named generically, covering both a
+  trailing broad catch and one catch that checks the status, and shown in csharp Hard Rule 17 and
+  python Hard Rule 8, which gained the `except CosmosHttpResponseError` form. Hard Rule 9 uses a
+  generic example: a queue a function reads.
+- `skills/csharp/.editorconfig` set four keys twice in its `[*.cs]` section. EditorConfig lets the
+  later pair win, so the stray copies under `# Wrapping preferences` made namespaces
+  `block_scoped:silent`, against csharp §2. They're gone; namespaces are now
+  `file_scoped:suggestion` and method-group conversion `true:suggestion`, the values the earlier
+  pair sets.
+- Unity's "Null checks in Unity" subsection made an unsourced performance claim for `if (!obj)`.
+  It now says what Unity's `Object` page does: `==`, `!=`, and the `bool` check give one answer and
+  treat a destroyed or missing object as null, while `?.`, `??`, `is null`, and `is not null` skip
+  the overloads and are safe on a Unity object only when it can never be destroyed or missing; a
+  plain C# class takes `is null`. The `Health` sample in `skills/unity/references/patterns.md`
+  dropped its `?.` on serialized `ScriptableObject` fields. The §2 compiler-options passage calls `Assets/csc.rsp`
+  one documented route, cites the Windows Player settings page and the compiler's warning options,
+  and says why to set a flag in one place only.
+- Angular's HTTP service test configures `provideHttpClient()` and `provideHttpClientTesting()` in
+  that order instead of the deprecated `HttpClientTestingModule`, citing the HTTP testing guide.
+- The azure-eventhub Java, Python, TypeScript, and Rust production consumers park a failed event
+  the way the C# sample does: a per-event catch parks it, logs at error with the partition and
+  sequence number (never the body), and checkpoints; a park that fails or throws skips the
+  checkpoint, logs once with a marker an alert can match (Java's `PARK_FAILED` marker, Python's
+  critical level, a fixed `Parking failed` prefix in TypeScript, `park_failed = true` in Rust), and
+  trips the stop the host's own shutdown uses. The prose says what each SDK does when the callback
+  throws, which is why the handler catches its own failure. Java's sample moves from connection
+  strings to `DefaultAzureCredential`, and its error handler moves into the production block.
+  Python's install line names the sync checkpoint package the sample imports, and its host waits
+  in one-second steps, so Ctrl+C reaches it on Windows before Python 3.14, and closes the consumer
+  in a `finally`. Rust's consumer is rewritten onto `EventProcessor` and
+  `BlobCheckpointStore`, pinned to `azure_messaging_eventhubs` 0.15 because the blob store 0.9
+  requires it; the old sample called methods that don't exist and never checkpointed. The new one
+  installs a `tracing` subscriber, authenticates with `ManagedIdentityCredential`, polls `run`
+  first (`biased;`) so an early stop can't be lost, and drives each partition stream on the host
+  task in a `FuturesUnordered`, since the stream isn't `Send`; it passes `cargo check`, rustfmt,
+  and clippy against 0.15 and the store 0.9; the Authentication section marks
+  `DeveloperToolsCredential` as local development only.
+- `review-heuristics.md`'s log-and-fall-through finding names the catch shape generically (a
+  trailing catch of a client library's base exception); the Cosmos form stays in csharp Hard Rule
+  17.
+- Aligned the MCP knowledge files with mcp-toolset v24. `git-readonly-operations.md` maps
+  `git --version` to the new `git_version` (git-ops v2.25.0) and adds `NotAGitRepository` and
+  `GitNotInstalled` to the error codes. It says a `cwd` whose git directory belongs to another
+  checkout (through `core.worktree`, a `.git` file or link, or `commondir`) fails with
+  `NotAGitRepository` and is reported rather than ticketed, that the check needs git 2.31.0, that
+  `git_blame`'s `author_name` is now the recorded author with the mailmap name in
+  `mailmap_author_name`, that `statOnly` entries carry `is_binary`, that mailmap, replace refs,
+  grafts, and `submodule.recurse` no longer change results, that a `GitCommandError` with no
+  `git_exit_code` is unreadable output, and that a truncated reply leaves out a last record cut
+  inside an id or path. `text-search-operations.md` and `text-edit-operations.md` say an encoding
+  guess that doesn't round-trip comes back as `iso-8859-1` at confidence 0 (text-search v1.10.0,
+  text-edit v1.12.0), which text-edit refuses unless `source_encoding` reproduces the bytes.
+  `vault-operations.md` notes that file-vault v3.6.0 can infer a different default `project` on
+  Windows, so notes saved under the folder name are found with an unpinned `vault_list`.
+  `install-reference.md` lists the git 2.31.0 floor under Prerequisites.
+
 ## v17
 - Added three `coding-general.md` ⛔ Hard Rules. Hard Rule 9: a summary, docstring, or doc
   comment describes the unit it sits on and never names its callers, consumers, or the services

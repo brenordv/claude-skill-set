@@ -110,7 +110,11 @@ limit, not a server gap: surface it to the user rather than filing a ticket.
 - **Encoding gate**: a file whose encoding is detected below the confidence threshold (the
   rewrite-confidence gate, default 0.65) is refused (`low_confidence_encoding`) rather than risked.
   Confirm the real encoding with text-search's `inspect_files`, then pass `source_encoding` explicitly.
-  Never pass one you haven't verified.
+  Never pass one you haven't verified. On server v1.12.0+ a charset guess is kept only when decoding
+  the file and encoding it back reproduces its bytes; otherwise the file is reported as
+  `iso-8859-1` at confidence 0 and refused. A `source_encoding` must reproduce the file's bytes;
+  `iso-8859-1` always does, so it is the safe choice for a file with no reliable encoding when the
+  edit only touches ASCII text.
 - **Read the per-file outcomes.** A mutation result is one element carrying `batch_id` (absent on a dry
   run or a no-op batch), `attempted`/`changed`/`refused` counts, and per-file entries with `outcome`
   and, when refused, a `refusal_reason` (`denied`, `ignore_file`, `out_of_root`, `ignored`,
