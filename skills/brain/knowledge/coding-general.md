@@ -96,9 +96,9 @@ Re-read this list before writing code and walk it again at handoff (§10).
    calls or binds to is describing it: a publisher names the hub it sends to, a trigger function
    names the queue it reads. The check: would the summary still be true if a different caller used
    the unit, or it travelled by another route? If not, it describes usage, and that context belongs
-   at the code that does the wiring. A message model that a frontend relays to an Event Hub
-   function gets a summary about the message, and nothing about the frontend or the function. A
-   repo full of such summaries is precedent, not permission.
+   at the code that does the wiring. A message model that a frontend publishes to a queue a
+   function reads gets a summary about the message, and nothing about the frontend or the
+   function. A repo full of such summaries is precedent, not permission.
 10. **A handled failure never ends on the success path.** A caller must never mistake a failure
     for success. Every catch, except, or error arm ends in exactly one of these:
     - **Not catching.** When nothing at this level can do one of the endings below, let the
@@ -111,27 +111,33 @@ Re-read this list before writing code and walk it again at handoff (§10).
     - **Recover for real.** A retry that succeeded, a fallback that produces a correct value.
     - **Report at a boundary.** A request handler returns an error response (generic to the
       caller, details in server logs); a UI handler shows an error state; a job or CLI exits
-      non-zero. A message or event handler rethrows only where its host redelivers until success
-      or dead-letters (Service Bus and Storage queue triggers). An Event Hubs trigger advances its
-      checkpoint with or without an exception, so with a host retry policy the handler rethrows on
-      earlier attempts and parks the event on the final one (the invocation's retry context carries
-      the current and maximum retry count), and without one it retries in code and parks after the
-      loop. Where the SDK says not to throw from the handler (the Event Hubs processor), the
-      handler parks the event somewhere recoverable and logs at error so an alert can fire.
+      non-zero. A message or event handler rethrows to end a delivery only where its host
+      redelivers until success or dead-letters (a Service Bus or Storage queue trigger does).
+      Where the host moves past the message whether or not the handler throws (a stream that
+      checkpoints its position), the handler rethrows on earlier attempts where the host has a
+      bounded retry policy, or retries in code where it doesn't, and on the last attempt parks the
+      message somewhere recoverable instead of throwing and logs at error so an alert can fire.
+      Where the SDK says not to throw from the handler, the handler parks the message and logs at
+      error. If the park fails too, the handler logs at critical with the message's position so it
+      can be recovered, and keeps the host from moving past the message where the host allows it.
+      The host's skill has the mechanics (`azure-eventhub/SKILL.md` for Event Hubs triggers and
+      the processor).
 
     Logging is never an ending on its own. Log a failure once, where the context is: a catch that
     throws or wraps logs only data the boundary can't see, or carries it in the wrapped error, and
-    the boundary or the error-handling middleware logs the rest. Two catches are exempt. An SDK
+    the boundary or the error-handling middleware logs the rest. Three catches are exempt. An SDK
     error-notification callback whose library owns recovery (an Event Hubs processor's error
     handler) ends in a log or an alert. Best-effort work whose failure can't change the result
     (cleanup, telemetry other than a required audit record, cache warm-up) logs at warning level,
     naming the skipped work and its identifier (item id, cache key) with the error attached, and a
-    comment at the catch says it is best-effort. Cancellation is not a failure: catch it only where
-    the stop was requested, and never let a broad catch or a retry loop absorb it. The shape that
-    regresses is the last broad catch of an SDK's exception type after the specific handlers
-    (`catch (CosmosException)`, `except CosmosHttpResponseError`, a catch-all error arm): delete
-    it, or make it wrap with context. The test half is `testing.md` ⛔ Hard Rule 1: every arm you
-    add is driven by a test.
+    comment at the catch says it is best-effort. A handler whose park failed, on a host that moves
+    past the message whether or not it throws, ends in the critical log above. Cancellation is not
+    a failure: catch it only where the stop was requested, and never let a broad catch or a retry
+    loop absorb it. The shape that regresses lets an unexpected error end normally: a broad catch
+    of an SDK's base error type, after the specific handlers or as one catch that checks the
+    status, or a catch-all error arm. Let that error propagate or wrap it with context instead
+    (csharp Hard Rule 17 and python Hard Rule 8 show it in C# and Python). The test half is
+    `testing.md` ⛔ Hard Rule 1: every arm you add is driven by a test.
 11. **A credential is attached by the client's configuration, never by its call surface.** A
     static key (an API key, function key, or subscription key) is set where the client is built,
     as a default header or the SDK client's credential argument, from configuration backed by a
@@ -175,8 +181,8 @@ Re-read this list before writing code and walk it again at handoff (§10).
       has sum types, set and cleared by the transitions in and out.
     - **A persisted status moves only from the state the writer expects.** The write names it
       (`UPDATE ... SET status = @next WHERE id = @id AND status = @expected`) and checks the row
-      count; an ORM concurrency token or an ETag precondition the server applies, on a row whose
-      state the code checked after reading it, meets the same intent. Zero rows is a rejected
+      count; a concurrency token the store checks (an ORM version, an `If-Match` ETag), on a row
+      whose state the code checked after reading it, meets the same intent. Zero rows is a rejected
       transition: it stops the transition and every effect after it, is never a silent return,
       and is recorded with the expected and actual state, the trigger, and the correlation id. A
       message or webhook handler acknowledges it only as a duplicate or late delivery and
@@ -189,10 +195,13 @@ Re-read this list before writing code and walk it again at handoff (§10).
       can return to the expected state needs, and when a single writer may check the state in
       code are in `implicit-state-machines.md` §"Persisted transitions and deliveries".
     - **A persisted in-flight state has a way out** when the process dies mid-transition: a
-      timeout measured from an entered-at timestamp the transition writes, or a reaper whose
-      reclaim fences the worker it took the row from, with a bounded retry that ends in a failed
-      state that is final or has its own exit. An outbox row is one, and its dead state has its
-      own exit; the reclaim fence and the drain contract are in the same section.
+      reaper that acts on a timeout measured from the row's latest claim (the entered-at timestamp
+      the transition writes, or the claim time a takeover writes), and whose reclaim fences the
+      worker it took the row from, with a bounded retry that ends in
+      a failed state that is final or has its own exit. An outbox row is one, and its dead state
+      has its own exit. Work that may already have reached a receiver never ends final: the last
+      retry parks it for a lookup. The reclaim fence, the park, and the drain contract are in the
+      same section.
     - **State that gates access fails closed**: verified, approved, active, locked, revoked, MFA,
       sessions, one-time tokens, and reset or checkout steps. Every path that authenticates or
       authorizes the principal is one of its readers, whether it reads the field yet or not. A
@@ -446,7 +455,8 @@ Before delivering work:
    gates access, every path that grants on it (Hard Rule 12). For each transition a message,
    webhook, or outbox relay drives, name its delivery guarantee (at least once or at most once,
    deduped or not) and the repeat that remains, such as a receiver that can't dedupe or a send
-   that timed out after the receiver took it (Hard Rule 12). When the ask stated a reason, name
+   that timed out after the receiver took it, and any receiver with no lookup for a parked row
+   (Hard Rule 12). When the ask stated a reason, name
    the way chosen and the one rejected (`general-problem-solving.md` §2). Then reread every
    comment the diff adds or edits: any that narrates the change rather than the current code gets
    deleted here, its story moved to the summary (Hard Rule 3).

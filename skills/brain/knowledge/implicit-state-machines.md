@@ -125,9 +125,14 @@ owner of severity for state-machine findings; the skill and `review-heuristics.m
   sends to a receiver that dedupes on the outbox row's id; a receiver that can't dedupe passes only
   when the handoff names it with the repeat that remains. Work that must finish before the closing
   write (a charge the transition records) runs in an in-flight state the row enters by a
-  conditional write that stores the receiver's key, which a reclaim reuses and the closing write
-  clears (§"Persisted transitions and deliveries"). An idempotent receiver called from the
-  handler after the write does not pass on its own. Important; Critical for money or messages.
+  conditional write that stores a new key for the receiver. A fenced reaper takes the row over in
+  that state and resends the request under the stored key, a response that leaves the outcome
+  unknown keeps the key, only the write that records a charge or a refusal (or the park) leaves
+  the state, and a row past the key's window or out of attempts, or whose receiver can't dedupe or
+  answers the resend with a stored error that leaves the outcome unknown, is parked for a lookup,
+  not resent (§"Work that must finish before the write"). An
+  idempotent receiver called from the handler after the write does not pass on its own.
+  Important; Critical for money or messages.
 - **F9 New state not propagated.** F1 at the moment a state is added: every repeated switch (S2),
   serializer, database check constraint, API contract, frontend union, and report, plus rows that
   older versions stored and, in a rolling or mixed-version deploy, old code reading the new value.
@@ -185,7 +190,10 @@ from the top and stop at the first rung that does it.
      throws, relying on "`never` turning up to do exhaustive checking." The throw is needed
      because the check is type-only ("Type annotations never change the runtime behavior of your
      program", Handbook, Erased Types), so a value from outside the type (a newer server, an old
-     row) would otherwise pass through.
+     row) would otherwise pass through. A reader that only produces a display label may instead
+     check the value with `value satisfies never;` and return `null`, declared in its return type
+     (`string | null`), for the view to show as "Unknown" (`angular/SKILL.md` §3); dispatch that
+     picks behavior throws, and a check that gates access names the states that allow.
    - Rust: `match` with no `_` arm; "the arms' patterns must cover all possibilities."
    - Python: a `match` or if-chain whose last branch calls `typing.assert_never` (3.11+), checked
      by the project's type checker.
@@ -263,9 +271,11 @@ the event and reads the object's current state from the source instead of applyi
 payload.
 
 A reclaimed in-flight state is such a cycle (`Processing` back to `Pending`, then `Processing`
-again under a second worker). The claim stores an attempt id, and every write the worker makes
-after it, success or failure, names that id beside the state (`AND attempt = @attempt`), so a
-worker whose row was reclaimed matches zero rows and leaves the row to the attempt that holds it.
+again under a second worker). Work that may already have reached a receiver is taken over in place
+instead (§"Work that must finish before the write"). Either way the claim stores a new attempt id,
+and every write the worker makes after it, success or failure, names that id beside the state
+(`AND attempt = @attempt`), so a worker whose row was reclaimed matches zero rows and leaves the
+row to the attempt that holds it.
 The attempt id is a token the writer carries from its own claim, as a client carries an `If-Match`
 from its own read; it fences that writer and is not the row's concurrency token the sequence rule
 excludes.
@@ -283,24 +293,63 @@ redelivery doesn't read as a duplicate.
 An effect that follows the status write commits with it, as a write in the same transaction or an
 outbox row that write inserts, which a relay outside the handler sends. The outbox row exists only
 when the transition applied, so the duplicate and late endings acknowledge without losing or
-repeating the effect. Work that must finish before the closing write, such as a charge the
-transition records, runs in an in-flight state the row enters by a conditional write (`Pending` to
-`Charging`). That write also stores the key the receiver dedupes on, keeping one already stored so
-a reclaim reuses it, and the write that closes the work clears it. The entry is the work's one
-first request: a second copy or a late replay matches zero rows before any work runs, and a cancel
-that expects `Pending` is rejected while the work is in flight. An outbox row's send follows
-§"Draining the outbox" instead.
+repeating the effect. Work that must finish before the closing write follows §"Work that must
+finish before the write"; an outbox row's send follows §"Draining the outbox".
+
+### Work that must finish before the write
+
+Work the closing write records, such as a charge, runs in an in-flight state of its own:
+
+- **Entry.** A conditional write (`Pending` to `Charging`) enters the state and stores the key the
+  receiver dedupes on, the first attempt id, and the entry time, which is also the first claim
+  time. The key is new per entry, never derived from the row or its period, which a renewal or a
+  retry after a refusal would repeat. The entry is the work's one first request: a second copy or
+  a late replay matches zero rows before any work runs (on a cycle, through the sequence the write
+  names), and a cancel that expects `Pending` is rejected while the work is in flight.
+- **Answers.** A charge says the work was done and a refusal (a decline) says it wasn't. Only the
+  write that records one of them, or the park below, leaves `Charging`, and the answer write
+  clears the key. A response that leaves the outcome unknown is no answer: a timeout, a dropped
+  connection, a 5xx, a conflict with a request still running under the key, or an error saying the
+  key was reused with other parameters. No answer leaves the row in `Charging` with its key.
+- **Resend.** Where the receiver dedupes on the key, an in-code retry or the takeover resends the
+  same request under the stored key. Where it can't, a send with no answer parks the row at once.
+- **Takeover.** A reaper takes over a `Charging` row whose latest claim is older than the state's
+  timeout, in a write that names `Charging` and the attempt id it read and checks the row count.
+  That write stores a new attempt id and claim time, never a new entry time, and counts the
+  attempt. A redelivered copy never takes over, since its entry matches zero rows. The row never
+  goes back to `Pending`, where a cancel or a replay would find work that may already have reached
+  the receiver.
+- **Window.** The key protects only inside the receiver's window for it, measured from the entry.
+  The state's timeout is longer than the whole send, the client's own retries included, and a
+  resend starts only while more than one whole send is left in the window.
+- **Park.** A row past the window or out of attempts, one sent with no answer to a receiver that
+  can't dedupe, one whose resend comes back with a stored error that leaves the outcome unknown,
+  or one whose key the receiver reports as reused with other parameters moves to a parked state of
+  its own, in a write that names `Charging` and the attempt id it read, and is logged at error so
+  an alert fires; a stored refusal is recorded as a refusal. The reaper never takes over a parked
+  row. A lookup settles it by a reference the request carried (the key, where the receiver can
+  find a request by it, or a local id sent in the request's metadata), in a write that names the
+  parked state, records the charge or refusal it finds, and clears the key. A lookup that finds no
+  request records a refusal only by a reference the receiver keeps for as long as the row can stay
+  parked (the local id, or the key only inside its window), and only once the latest claim is
+  older than the state's timeout; otherwise the row stays parked. A receiver with no lookup is
+  named in the handoff.
 
 ### Draining the outbox
 
 An outbox row is an in-flight state (F6). The relay claims the row in a write that counts the
-attempt before the send, so one relay sends a row at a time and a send that crashes the relay
-still counts. It deletes or marks the row only after the send succeeds, so a crash or a timed-out
-send repeats the send and never drops it, and a receiver that dedupes on the outbox row's id
-absorbs the repeat. A receiver that can't dedupe (an email or SMS provider with no idempotency
-key) is named in the handoff with the repeat that remains; where a repeat is worse than a loss, a
-row found claimed past its timeout is parked, not resent. The row records when it was written,
-and a bounded retry ends in a dead state with its own exit.
+attempt before the send and records the time of the first claim, so one relay sends a row at a
+time and a send that crashes the relay still counts. It deletes or marks the row only after the
+send succeeds, so a crash or a timed-out send repeats the send and never drops it, and a receiver
+that dedupes on the outbox row's id absorbs the repeat inside its window for that id, measured
+from the first claim. A resend starts only while more than one whole send is left in that window,
+and a row past it goes to the dead state, not resent; a row never claimed is sent at any age. A
+receiver that can't dedupe (an email or SMS provider with no idempotency key) is named in the
+handoff with the repeat that remains; where a repeat is worse than a loss, a row found claimed
+past its timeout goes to the dead state, not resent. The row records when it was written, and a
+bounded retry ends in the same dead state. Its exit resends only after checking with the receiver
+where the receiver can say whether the id arrived; otherwise the handoff names the repeat a
+requeue risks.
 
 ## Sources
 

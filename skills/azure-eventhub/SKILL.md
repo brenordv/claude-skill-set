@@ -163,10 +163,10 @@ await processor.StopProcessingAsync();
 The processor never catches exceptions thrown from `ProcessEventAsync`
 ([processor README](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/messaging.eventhubs.processor-readme)),
 so the handler catches its own: a failed event is parked, logged at error with its partition and
-sequence number, and then checkpointed. If parking fails too, the handler skips the checkpoint and
-signals the stop, and every event dispatched after that returns at the first line without being
-processed or checkpointed, so nothing moves the checkpoint past the unparked event before the stop
-lands. The hosting code calls `StopProcessingAsync`, which may wait for active partition reads to
+sequence number, and then checkpointed. If parking fails too, the handler skips the checkpoint,
+logs at critical, and signals the stop, and every event dispatched after that returns at the first
+line without being processed or checkpointed, so nothing moves the checkpoint past the unparked
+event before the stop lands. The hosting code calls `StopProcessingAsync`, which may wait for active partition reads to
 finish, so the handler never calls it itself. `ProcessErrorAsync` only observes errors the
 processor recovers from on its own, so a log is its whole job.
 
@@ -188,11 +188,14 @@ Per-language error-handling examples (C# send failures, Java processor errors): 
 **Key rule**: never checkpoint past an event you failed to process unless you parked it. A checkpoint
 records a position in the stream, so skipping one doesn't redeliver the failed event: the next
 successful checkpoint moves past it. An Event Hubs-triggered Azure Function advances the checkpoint
-with or without an exception, so with a host retry policy the function rethrows on earlier attempts
-and parks the event on the final one (the retry context carries the current and maximum retry
+with or without an exception, so with a host retry policy that has a maximum count (`-1` retries
+indefinitely and holds the partition) the function rethrows on earlier attempts and parks the
+event on the final one and logs at error (the retry context carries the current and maximum retry
 count), and without one it retries in code and parks after the loop
 ([reliable event processing](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reliable-event-processing),
 [error handling and retries](https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-error-pages)).
+If parking fails too, the function logs at critical with the partition and sequence number, since
+the checkpoint moves past the event either way.
 
 ## Performance Tuning
 

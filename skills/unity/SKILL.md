@@ -31,7 +31,9 @@ Build high-performance, maintainable games in Unity 6.3 using modern C# patterns
 
 - Designing game mechanics before implementation: use `game-developer` first
 - Working in Godot or Unreal Engine: use `godot` or `unreal-engine`
-- Writing pure C# with no Unity dependency: use `csharp` skill
+- Writing C# that Unity never compiles, such as a standalone .NET backend the game calls (a
+  matchmaking or REST service) or a command-line tool: use the `csharp` skill. A plain C# class
+  in the Unity project still goes through Unity's C# 9.0 compiler and stays with this skill.
 
 ## Instructions
 
@@ -105,12 +107,21 @@ Code demonstrations for all five rules: see `references/patterns.md` → "Perfor
 
 ### Modern C# Features Safe for Unity 6.x
 
-Unity 6.x supports C# 12 / .NET 8+. Use modern features freely:
+Unity 6.x compiles C# 9.0 with Roslyn, against .NET Standard 2.1 by default or .NET Framework 4.8,
+and doesn't support .NET 5 or later. Features from C# 10 on don't compile, including file-scoped
+namespaces, global usings, record structs, lambdas with a natural type (a lambda assigned to
+`var`), raw string literals, required members, primary constructors on classes and structs (a
+record's positional parameter list is C# 9), and collection expressions. Unity also lists some C# 9
+features as unsupported, among them covariant return types, module initializers, and init only
+setters; positional records fail for the same reason, because their generated properties are
+init-only. Keep records out of anything Unity serializes (inspector fields, ScriptableObject data),
+since Unity's serializer doesn't support them. For immutable runtime data, use a `readonly struct`
+with a constructor (RULE 3 in `references/patterns.md`) or a class whose get-only properties a
+constructor sets. Unity doesn't serialize `readonly` fields, and a get-only property's backing field
+is `readonly`, so data the inspector edits stays in `public` or `[SerializeField]` fields. These
+compile as written:
 
 ```csharp
-// Records for immutable game data
-public record WeaponStats(string Name, int Damage, float FireRate, float Range);
-
 // Pattern matching for state logic
 public float GetSpeedMultiplier(PlayerState state) => state switch
 {

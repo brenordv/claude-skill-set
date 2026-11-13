@@ -22,6 +22,15 @@ source of truth": when the repo itself violates one of them, the rule still wins
 write. Leave existing violations in untouched code alone (never mass-refactor), but nothing new may
 break these. Re-read this list before writing code, and walk it again at handoff (§18).
 
+C# that Unity compiles follows the `unity` skill where the two disagree. Unity stops at C# 9.0 and
+doesn't support init only setters, so rule 4 falls back to get-only properties and `readonly`,
+except for fields Unity serializes, which can't be `readonly`; rule 5 gives way on those fields
+too, whose types follow Unity's serialization rules (an array or a `List<T>` where rule 5 would
+pick `IReadOnlyList<T>`); Unity tests are NUnit, so rule 2's ban on Moq and FluentAssertions holds
+but its xUnit `Assert` becomes NUnit's; and rule 19's `NoWarn` and `WarningsAsErrors` settings
+become the `Assets/csc.rsp` flags in the unity skill's §2, since the `.csproj` files Unity
+generates aren't authoritative. Every other rule here still binds it.
+
 1. **One public type per file.** Never declare two public classes/records/enums/structs in the same file, even when neighboring files in the repo do.
 2. **Never use Moq or FluentAssertions. Ever.** Not one new usage, even in a repo already full of them. Assert with native xUnit `Assert`; replace mocking with small hand-rolled fakes/stubs that implement the interface.
 3. **Mark every test body with `// Arrange`, `// Act`, `// Assert`, and add no other comment.** All three markers are required, not optional: capitalized, one space after the slashes, each above its section, in that order. Act and Assert are always present, and Arrange whenever the test sets anything up, which is nearly always. A test written with the markers missing breaks this rule exactly as a stray explanatory comment does. No other comment appears in a test body: the test name and plainly written code carry the meaning, and a test that seems to need one is too clever, so rewrite it.

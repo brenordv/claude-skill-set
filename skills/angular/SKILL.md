@@ -160,13 +160,73 @@ Always use the built-in control flow over legacy structural directives.
 } @empty {
   <app-empty-state message="No items yet" />
 }
+```
 
-@switch (status()) {
-  @case ('active') { <span class="active">Active</span> }
-  @case ('inactive') { <span>Inactive</span> }
-  @default { <span>Unknown</span> }
+### Switching on a status
+
+A `@default` block that renders a fallback ("Unknown") also catches a member someone adds to the
+status type later, so the new state shows as "Unknown" everywhere and nothing fails the build. Put
+the dispatch in the component, where TypeScript checks it, and pick the default by what the status
+decides:
+
+- A display label returns `null` from its `default` for a value outside the type (a status from a
+  newer server). Interpolation renders `null` as an empty string, so the template's `?? 'Unknown'`
+  is what shows the fallback, and every other binding of the label (an `aria-label`) needs its own.
+- Dispatch that picks among behaviors by state (which request to send, which route to open) throws
+  in that `default` instead (`brain/knowledge/coding-general.md` ⛔ Hard Rule 12). Keep that
+  dispatch in an event handler or a service, not in anything the template evaluates (a computed,
+  a method it calls, a pipe).
+- A check that allows one action (Unpublish, Refund) names the states that allow it, such as
+  `status() === 'published'`, so a new or unknown value denies. Which buttons a state shows is the
+  same check, one per button, so a value outside the type shows none. The server authorizes every
+  action a button triggers, whatever the page shows.
+
+In a `switch`, `status satisfies never;` in the `default` branch fails to compile when a member has
+no `case`, and it leaves no unread variable for `noUnusedLocals` or a linter to flag.
+
+```typescript
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+
+type PublishStatus = 'draft' | 'published';
+
+@Component({
+  selector: 'app-publish-badge',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `<span [class.published]="status() === 'published'">{{ statusLabel() ?? 'Unknown' }}</span>`,
+})
+export class PublishBadgeComponent {
+  status = input.required<PublishStatus>();
+
+  /**
+   * Display label for the status, or null when the value is outside PublishStatus;
+   * not for access or behavior checks.
+   */
+  statusLabel = computed((): string | null => {
+    const status = this.status();
+    switch (status) {
+      case 'draft':
+        return 'Draft';
+      case 'published':
+        return 'Published';
+      default:
+        status satisfies never;
+        return null;
+    }
+  });
 }
 ```
+
+The `null` arm drops the raw value, which is the one clue to what the server started sending. Where
+that matters, log it once at warning level through the app's logging service at the point where the
+value arrives, never through `ErrorHandler`, whose errors Angular describes as unexpected. Drive the
+arm in a test with `fixture.componentRef.setInput('status', 'archived')` and assert the badge reads
+"Unknown".
+
+`@default never;` (Angular 21.2 and later) is the template's own exhaustiveness check. It is
+compile-time only: an unmatched value renders nothing, and it works only on a plain variable or
+field (for a signal, `@let s = status();`), not on a signal call like `status()`. On its own it
+doesn't meet Hard Rule 12's fail-closed default.
 
 ---
 

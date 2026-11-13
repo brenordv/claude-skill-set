@@ -66,8 +66,11 @@ list before writing code, and walk it again at handoff (§5).
    falls through, `contextlib.suppress` around work whose failure matters, an `__exit__` that
    returns `True`, and a `return`, `break`, or `continue` inside `finally`, which discards the
    in-flight exception ([try statement](https://docs.python.org/3/reference/compound_stmts.html)).
-   Never a bare `except:` or an `except BaseException` that doesn't re-raise: it absorbs
-   cancellation (`asyncio.CancelledError`) along with everything else. The test follows
+   The shape that regresses is the broad `except` of an SDK's base error that handles the expected
+   status and lets the rest fall through (an `except CosmosHttpResponseError` that returns `None`
+   on a 404 and only logs the others): end the others with a bare `raise`, or raise the repo's
+   error from it. Never a bare `except:` or an `except BaseException` that doesn't re-raise: it
+   absorbs cancellation (`asyncio.CancelledError`) along with everything else. The test follows
    `brain/knowledge/testing.md` ⛔ Hard Rule 1 and `testing-guidelines.md` §"Failure paths".
 9. **A state type you create is an `Enum` or a `Literal` union, and dispatch you write on one
    ends in `assert_never`.** This is `brain/knowledge/coding-general.md` ⛔ Hard Rule 12 in

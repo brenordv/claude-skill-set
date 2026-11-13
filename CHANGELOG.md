@@ -13,11 +13,16 @@
   CS8509 as an error recommended to the owner. Its "Persisted transitions and deliveries" section
   sorts a zero-row write into duplicate, late, and early deliveries. On a machine that returns to
   the expected state, the write names the source's sequence, and an attempt id fences a reclaimed
-  worker. Work that must finish before the write runs in an in-flight state whose conditional
-  entry stores the receiver's key. Effects commit in the same transaction or through an outbox row
-  the relay claims, counting the attempt, before the send and removes only after the send
-  succeeds; a receiver that can't dedupe is named in the handoff with the repeat that remains.
-  Every external source it cites was opened and checked.
+  worker. Work that must finish before the write has its own subsection: a conditional entry that
+  stores a new receiver key, a fenced reaper that takes the row over in place and counts attempts,
+  answers that clear the key (a charge or a refusal) against responses that leave the outcome
+  unknown and keep it, a state timeout inside the receiver's key window, and a parked state a
+  lookup settles, where a lookup that finds nothing counts as a refusal only by a reference the
+  receiver still keeps. Effects commit in the same transaction or through an outbox row the relay
+  claims, counting the attempt, before the send and removes only after the send succeeds; a
+  receiver that can't dedupe is named in the handoff with the repeat that remains, and a row past
+  the receiver's window for its id, measured from the first claim, goes to the dead state. Every
+  external source it cites was opened and checked.
 - The skill has two modes. Review mode takes a diff or a Stage 1 plan, traces every writer and
   reader of the state the change touches, and compares the transition table before and after.
   Audit mode sweeps a scope, maps each machine (states, transitions with `file:line`, guards,
@@ -40,17 +45,19 @@
   existing dispatch the checker can't verify keeps its form; a flag or field the change adds
   becomes part of the status it depends on, and a status field it adds has no default that names
   a real state (a never-assigned state for existing rows has a way out). A persisted status moves
-  only through a write conditional on the expected state (an ORM token or ETag counts only on a
-  row whose state the code checked). Zero rows is a recorded rejection that stops every effect
-  after it; a message or webhook handler acknowledges it only as a duplicate or late delivery, and
-  a caller that required the transition gets it reported. An effect that follows the write
-  commits with it, in the same transaction or through an outbox row. The rule keeps that intent
-  and points to the knowledge file's "Persisted transitions and deliveries" section for the
-  delivery mechanics. Webhooks are signature-checked before anything else and deduplicated by
-  event id, and the in-code state check is reserved for the status's only writer, one that never
-  runs twice at once on the same row, which a lease that can lapse doesn't guarantee. A persisted
-  in-flight state gets a measured, bounded exit and a reclaim that fences the worker it took the
-  row from, an outbox row's dead state has its own exit, and state that gates access fails
+  only through a write conditional on the expected state (a concurrency token, such as an ORM
+  version or an `If-Match` ETag, counts only on a row whose state the code checked). Zero rows
+  is a recorded rejection that stops every effect after it; a message or webhook handler
+  acknowledges it only as a duplicate or late delivery, and a caller that required the transition
+  gets it reported. An effect that follows the write commits with it, in the same transaction or
+  through an outbox row. The rule keeps that intent and points to the knowledge file's
+  "Persisted transitions and deliveries" section for the delivery mechanics. Webhooks are
+  signature-checked before anything else and deduplicated by event id, and the in-code state
+  check is reserved for the status's only writer, one that never runs twice at once on the same
+  row, which a lease that can lapse doesn't guarantee. A persisted in-flight state gets a reaper
+  that acts on a timeout from the row's latest claim and whose reclaim fences the worker it took
+  the row from; work that may already have reached a receiver is parked for a lookup, never
+  ended final; an outbox row's dead state has its own exit; and state that gates access fails
   closed, a reused one-time token included. Its tests include an effect that fails after the
   commit and is redelivered. §10's handoff walk names each new state's readers, write guards, and
   access paths, and, for each transition a message, webhook, or relay drives, its delivery
@@ -69,12 +76,46 @@
   an ordered lifecycle, or flags on one owner. A §2 subsection, "State machines in the design",
   asks the plan for state and transition tables with every reader, how each persisted write checks
   the current state and where a rejected write is recorded with the state it found, how duplicate,
-  late, and early deliveries are handled, the in-flight state and receiver key for work that must
-  finish before the write, each in-flight state's exit, reclaim fence, and where it lands after
-  the last retry, how an outbox row is claimed before its send and whether its receiver dedupes,
-  and the F14 details for state that gates access. The representation comes from the fix ladder,
-  smallest rung first. Step 6 and the Shared Knowledge line point at the subsection,
-  and the Validation Checklist gained a matching item.
+  late, and early deliveries are handled, the in-flight state, entry write, reaper, answers, key
+  window, and park for work that must finish before the write, each in-flight state's exit,
+  reclaim fence, and where it lands after the last retry, how an outbox row is claimed before its
+  send and whether its receiver dedupes, and the F14 details for state that gates access. The
+  representation comes from the fix ladder, smallest rung first. Step 6 and the Shared Knowledge
+  line point at the subsection, and the Validation Checklist gained a matching item.
+- The Unity skill states what Unity 6 compiles: C# 9.0 against .NET Standard 2.1 or .NET Framework
+  4.8, with no .NET 5 or later, where it used to claim C# 12 and .NET 8. It names the C# 10 and
+  later features that fail there and the C# 9 features Unity lists as unsupported (init only
+  setters among them, so positional records fail too), keeps records out of anything Unity
+  serializes, and points immutable runtime data at a `readonly struct` or get-only properties in
+  place of the deleted record sample, with inspector-edited data in non-`readonly` fields. Its
+  "Do Not Use" line sends to `csharp` only C# that Unity never compiles. `branch-review` reviews
+  `.cs` files in a Unity project against the unity skill plus csharp's Hard Rules, and a paragraph
+  after the `csharp` Hard Rules preamble names the four rules Unity overrides: rule 4 falls back
+  to get-only properties and `readonly` except on fields Unity serializes, rule 5 gives way on
+  those fields to Unity's serialization rules, rule 2's assertions are NUnit's, and rule 19's
+  `NoWarn` and `WarningsAsErrors` become the unity skill's `Assets/csc.rsp` flags.
+- The Angular skill's `@switch` sample with a catch-all `@default` became a status label computed
+  in the component. Its `default` branch runs `status satisfies never;`, so a union member added
+  without a `case` fails to compile, and returns `null` for a value from outside the type, which
+  the template shows as "Unknown". The new text says dispatch that picks among behaviors throws
+  there instead, from an event handler or a service rather than anything the template evaluates; a
+  check that allows one action, which buttons a state shows included, names the states that allow
+  it while the server authorizes the action; and `@default never;` (Angular 21.2 and later) is
+  compile-time only and renders nothing for an unmatched value. `implicit-state-machines.md`'s
+  TypeScript rung names the label form beside the throwing default.
+- `coding-general.md` states its Hard Rules without vendor mechanics. Hard Rule 10's handler
+  ending covers a host that moves past a message whether or not the handler throws: the handler
+  rethrows on earlier attempts under a bounded host retry policy or retries in code, parks the
+  message on the last attempt and logs at error, and, if the park fails too, logs at critical with
+  the message's position and holds the host where it can; that critical log is the third catch
+  exempt from "Logging is never an ending". It points to `azure-eventhub/SKILL.md` for the Event
+  Hubs trigger and processor, which already carried the mechanics with citations and now says a
+  trigger retry policy needs a maximum count (`-1` holds the partition) and that a failed park
+  logs at critical in both paragraphs. Service Bus and Storage queue triggers stay as the example
+  of a host that redelivers. The catch shape that regresses is named generically, covering both a
+  trailing broad catch and one catch that checks the status, and shown in csharp Hard Rule 17 and
+  python Hard Rule 8, which gained the `except CosmosHttpResponseError` form. Hard Rule 9 uses a
+  generic example: a queue a function reads.
 
 ## v17
 - Added three `coding-general.md` ⛔ Hard Rules. Hard Rule 9: a summary, docstring, or doc
