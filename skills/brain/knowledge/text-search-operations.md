@@ -223,6 +223,9 @@ and `search_text` in count mode adds `total_match_count`.
 - "What does this dependency's source actually do?": `find_files`/`search_text` with
   `cwd: "@nuget/<Package>/<version>"` (or another cache name from `describe_scope`).
 - "Is this file UTF-16? CRLF? Missing a final newline?": `inspect_files` with `paths: ["<the file>"]`.
+  On server v1.10.0+ an encoding is reported only when decoding the file and encoding it back gives
+  the same bytes; anything else comes back as `iso-8859-1` at confidence 0, which means "no reliable
+  guess", not "this file is Latin-1".
 - "Search default-ignored build output" (a `bin/` or `dist/` tree `git_grep` also won't show):
   `search_text` with an `include_ignored` glob naming that path. A `.gitignore`'d or agent-ignored file
   stays hidden regardless; `include_ignored` cannot reach it.

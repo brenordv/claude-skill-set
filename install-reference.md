@@ -32,7 +32,9 @@ These bind every step below.
 
 ## Prerequisites
 
-- git and the Claude Code CLI (`claude`) on PATH.
+- git and the Claude Code CLI (`claude`) on PATH. `git-ops` needs git 2.31.0 or later (mcp-toolset
+  `release/v24` onward); with an older git, every call that takes a `cwd` fails with
+  `NotAGitRepository`.
 - The `gh` CLI for downloading release assets (plain HTTPS against the pinned repos below also
   works).
 - On macOS/Linux, `perl`, which the `.sh` hooks use to parse their JSON input. It is present by

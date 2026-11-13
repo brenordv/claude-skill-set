@@ -176,6 +176,21 @@
 - `review-heuristics.md`'s log-and-fall-through finding names the catch shape generically (a
   trailing catch of a client library's base exception); the Cosmos form stays in csharp Hard Rule
   17.
+- Aligned the MCP knowledge files with mcp-toolset v24. `git-readonly-operations.md` maps
+  `git --version` to the new `git_version` (git-ops v2.25.0) and adds `NotAGitRepository` and
+  `GitNotInstalled` to the error codes. It says a `cwd` whose git directory belongs to another
+  checkout (through `core.worktree`, a `.git` file or link, or `commondir`) fails with
+  `NotAGitRepository` and is reported rather than ticketed, that the check needs git 2.31.0, that
+  `git_blame`'s `author_name` is now the recorded author with the mailmap name in
+  `mailmap_author_name`, that `statOnly` entries carry `is_binary`, that mailmap, replace refs,
+  grafts, and `submodule.recurse` no longer change results, that a `GitCommandError` with no
+  `git_exit_code` is unreadable output, and that a truncated reply leaves out a last record cut
+  inside an id or path. `text-search-operations.md` and `text-edit-operations.md` say an encoding
+  guess that doesn't round-trip comes back as `iso-8859-1` at confidence 0 (text-search v1.10.0,
+  text-edit v1.12.0), which text-edit refuses unless `source_encoding` reproduces the bytes.
+  `vault-operations.md` notes that file-vault v3.6.0 can infer a different default `project` on
+  Windows, so notes saved under the folder name are found with an unpinned `vault_list`.
+  `install-reference.md` lists the git 2.31.0 floor under Prerequisites.
 
 ## v17
 - Added three `coding-general.md` ⛔ Hard Rules. Hard Rule 9: a summary, docstring, or doc

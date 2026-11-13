@@ -62,6 +62,7 @@ holds even when you can't ask), file the ticket, and note the limitation in the 
 | `git reflog`                                                            | `git_reflog`                                                                                   |
 | `git stash list`                                                        | `git_stash_list`                                                                               |
 | `git stash show stash@{N}`                                              | `git_stash_show` (pass `index`)                                                                |
+| `git --version`                                                         | `git_version` (server v2.25.0+; no arguments, starts no git process, reports the git the server runs) |
 
 ### Usage notes
 
@@ -90,7 +91,25 @@ holds even when you can't ask), file the ticket, and note the limitation in the 
   ignored, so pass `follow: true` (v2.14.0+); and in a partial clone, a call that needs an object
   the clone never fetched fails with `GitCommandError` instead of fetching it (v2.17.0+; on some
   older gits, `git_grep` with `ref` leaves such a file out of its results instead). Report the last
-  one to the user rather than working around it.
+  one to the user rather than working around it. Since v2.24.0 the mailmap is off, so `git_log`'s
+  `author` matches the author recorded in the commit, and replace refs and `.git/info/grafts` no
+  longer change what any tool reads (a `.git/shallow` file still does). Since v2.28.0 `git_grep`
+  searches the superproject only, whatever `submodule.recurse` says; search a submodule by passing
+  its own path as `cwd`.
+- **`cwd` must resolve to a checkout's own git directory** (server v2.27.0+, widened in v2.28.0).
+  A repository whose `core.worktree`, `.git` file, `.git` link, or `commondir` points git at another
+  repository's git directory fails every tool with `NotAGitRepository`, and so does a linked
+  worktree moved or copied by hand until the user runs `git worktree repair`. That refusal is the
+  server protecting the user, not a gap: report it, don't ticket it or retry from another `cwd`.
+  These checks need git 2.31.0 or later; with an older git, every call that takes `cwd` fails with
+  `NotAGitRepository`, so a sudden wall of that code on plain repositories means the git is too
+  old. `git_version` says which git the server runs.
+- **`git_blame`'s `author_name` is the author recorded in the commit** (server v2.24.0+), the name
+  `git_log` and `git_show` report. A line whose author the repository's mailmap shows under another
+  name also carries that name in `mailmap_author_name`; older builds reported the mailmap name as
+  `author_name`.
+- `git_diff` with `statOnly: true` marks a binary change `is_binary: true` (server v2.25.0+); older
+  builds reported `false` for every entry.
 - Never `cd` and then run a git command for anything in the table above. The MCP call is the same regardless of the shell's current directory, and chaining `cd && git ...` defeats the point of having structured tools.
 - The structured output saves a parse step and the error codes are machine-readable; that's why even one-liners go through the MCP.
 - `git_file_at_ref` returns committed content as-is. git-ops has no secret denylist and no content
@@ -101,7 +120,7 @@ holds even when you can't ask), file the ticket, and note the limitation in the 
 
 Collection-returning tools wrap their payload in `{ results, count, filters_applied, truncated, repo_root, error }`.
 
-- Check `error` first. If it's `null`, work with `results`. If not, branch on `error.code` (stable values like `RefNotFound`, `PathNotFound`, `PathOutsideRepo`, `RejectedArgument`, `InvalidArgument`, `GitTimeout`, `GitCommandError`, `PcreUnavailable`), not on the message text.
+- Check `error` first. If it's `null`, work with `results`. If not, branch on `error.code` (stable values like `RefNotFound`, `PathNotFound`, `PathOutsideRepo`, `NotAGitRepository`, `RejectedArgument`, `InvalidArgument`, `GitTimeout`, `GitCommandError`, `GitNotInstalled`, `PcreUnavailable`), not on the message text. A `GitCommandError` with no `git_exit_code` means git exited 0 but printed output the server can't read safely (not whole records, or a pass the output cap cut too early); narrow the query rather than retrying it unchanged.
 - Argument-shape mistakes are rejected before the tool runs (server v2.1.0+), as `InvalidArgument`: an
   unknown argument name now fails the call instead of being silently ignored by the SDK, with
   `detail.unknown_arguments` naming each one (plus a `did_you_mean` when a schema name is close),
@@ -109,7 +128,7 @@ Collection-returning tools wrap their payload in `{ results, count, filters_appl
   argument of the wrong JSON type reports the same code with the SDK's fixed generic text in
   `detail.sdk_error`. Correct the call from the detail and retry; this is a caller error, never a
   capability gap, so no `gitops-gap` ticket in those cases.
-- `truncated: true` means git's output hit the 8 MB cap. Narrow the query (lower `maxCount`, restrict `paths`, tighten `since`/`until`) and call again rather than guessing what got cut. On `git_file_at_ref` it can also mean `maxBytes` cut the content; that one is paging, so continue from `next_byte_offset`.
+- `truncated: true` means git's output hit the 8 MB cap. Narrow the query (lower `maxCount`, restrict `paths`, tighten `since`/`until`) and call again rather than guessing what got cut. On server v2.27.0+ a last record the cap cut inside an id or a path is left out rather than returned with a cut one, since a cut id or path can name another object or file; a record cut later (inside a subject, say) still comes back cut short. On `git_file_at_ref` it can also mean `maxBytes` cut the content; that one is paging, so continue from `next_byte_offset`.
 - `GitTimeout` means the call ran past 30 s. Same fix: narrow the query.
 
 ### Common patterns
