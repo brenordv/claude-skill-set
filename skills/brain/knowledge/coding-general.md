@@ -175,20 +175,24 @@ Re-read this list before writing code and walk it again at handoff (§10).
       has sum types, set and cleared by the transitions in and out.
     - **A persisted status moves only from the state the writer expects.** The write names it
       (`UPDATE ... SET status = @next WHERE id = @id AND status = @expected`) and checks the row
-      count; an ORM concurrency token or an ETag precondition the server applies meets the same
-      intent. Zero rows is a rejected transition: it stops the transition and every effect after
-      it, is never a silent return, and is recorded with the expected and actual state, the
-      trigger, and the correlation id; a caller that required the transition gets it reported
-      per Hard Rule 10 (a 409 at a request boundary). A webhook is signature-checked before
-      anything else, and an effect that follows the write commits with it. How to tell
-      duplicate, late, and early deliveries apart and end each, how effects and outbox rows
-      commit and drain, what a machine that can return to an earlier state needs, and when a
-      single writer may check the state in code are in `implicit-state-machines.md`
-      §"Persisted transitions and deliveries".
+      count; an ORM concurrency token or an ETag precondition the server applies, on a row whose
+      state the code checked after reading it, meets the same intent. Zero rows is a rejected
+      transition: it stops the transition and every effect after it, is never a silent return,
+      and is recorded with the expected and actual state, the trigger, and the correlation id. A
+      message or webhook handler acknowledges it only as a duplicate or late delivery and
+      otherwise hands it back per Hard Rule 10; a caller that required the transition gets it
+      reported per Hard Rule 10 (a 409 at a request boundary). A webhook is signature-checked
+      before anything else and deduplicated by event id, and an effect that follows the write
+      commits with it, as a write in the same transaction or an outbox row that write inserts.
+      How to tell duplicate, late, and early deliveries apart and end each, how work before the
+      write is deduped and effects after it commit, how outbox rows drain, what a machine that
+      can return to the expected state needs, and when a single writer may check the state in
+      code are in `implicit-state-machines.md` §"Persisted transitions and deliveries".
     - **A persisted in-flight state has a way out** when the process dies mid-transition: a
-      timeout measured from an entered-at timestamp the transition writes, or a reaper, with a
-      bounded retry that ends in a failed state that is final or has its own exit. An outbox row
-      is one; its drain contract is in the same section.
+      timeout measured from an entered-at timestamp the transition writes, or a reaper whose
+      reclaim fences the worker it took the row from, with a bounded retry that ends in a failed
+      state that is final or has its own exit. An outbox row is one, and its dead state has its
+      own exit; the reclaim fence and the drain contract are in the same section.
     - **State that gates access fails closed**: verified, approved, active, locked, revoked, MFA,
       sessions, one-time tokens, and reset or checkout steps. Every path that authenticates or
       authorizes the principal is one of its readers, whether it reads the field yet or not. A
@@ -439,7 +443,10 @@ Before delivering work:
    call signature or a URL, and one that was exposed is flagged for rotation (Hard Rule 11). For
    each state value, flag, or persisted status write the diff adds, name its readers and how each
    handles it, the guard on each write and what its rejected path records, and, for state that
-   gates access, every path that grants on it (Hard Rule 12). When the ask stated a reason, name
+   gates access, every path that grants on it (Hard Rule 12). For each transition a message,
+   webhook, or outbox relay drives, name its delivery guarantee (at least once or at most once,
+   deduped or not) and the repeat that remains, such as a receiver that can't dedupe or a send
+   that timed out after the receiver took it (Hard Rule 12). When the ask stated a reason, name
    the way chosen and the one rejected (`general-problem-solving.md` §2). Then reread every
    comment the diff adds or edits: any that narrates the change rather than the current code gets
    deleted here, its story moved to the summary (Hard Rule 3).

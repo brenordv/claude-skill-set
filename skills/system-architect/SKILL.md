@@ -120,16 +120,20 @@ When the design adds or changes a status, an ordered lifecycle, or flags on one 
 
 - a state table: each state, the data valid in it, and whether it is final;
 - a transition table: from, to, trigger, guard, the one place that writes it, and its side
-  effects with how each commits with the write, plus every reader and what it does in each state
-  (an existing machine cites repo-relative `file:line`s);
+  effects with how each commits with the write (for work that must finish before the write, the
+  in-flight state it runs in and the key its receiver dedupes on), plus every reader and what it
+  does in each state (an existing machine cites repo-relative `file:line`s);
 - for a persisted status, how each write checks the current state and where a rejected write is
   recorded, with the state it found;
 - for each transition a message or webhook drives, how each delivery ending in the knowledge
   file's §"Persisted transitions and deliveries" is handled, an early one whose row doesn't exist
   yet included;
-- for each in-flight state and outbox row, its exit when the process dies, the timestamp its age
-  is measured from, and where it lands after the last retry (a final state or one with its own
-  exit); an outbox row is deleted or marked only after its send succeeds and counts failed sends;
+- for each in-flight state and outbox row, its exit when the process dies and how a reclaim
+  fences the worker it took the row from, the timestamp its age is measured from, and where it
+  lands after the last retry (a final state or one with its own exit; for an outbox row, one with
+  its own exit); an outbox row is claimed in a write that counts the attempt before its send and
+  is deleted or marked only after the send succeeds, and the plan says whether its receiver
+  dedupes on the row's id and, when it can't, the repeat that remains;
 - for state that gates access (the knowledge file's F14): every reader that grants on it, the
   server-side check at each step, the token's expiry and compare-and-set consume, and the request
   fields that can't set it.

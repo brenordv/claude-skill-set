@@ -11,10 +11,13 @@
   (security state is Critical by default), and a smallest-first fix ladder whose exhaustive-dispatch
   rung gives the per-language setup, including C# with no discard arm, CS8524 suppressed, and
   CS8509 as an error recommended to the owner. Its "Persisted transitions and deliveries" section
-  sorts a zero-row write into duplicate, late, and early deliveries, gives a machine that returns
-  to an earlier state an event id and a source sequence, and commits effects through an outbox
-  row the relay removes only after its send succeeds. Every external source it cites was opened
-  and checked.
+  sorts a zero-row write into duplicate, late, and early deliveries. On a machine that returns to
+  the expected state, the write names the source's sequence, and an attempt id fences a reclaimed
+  worker. Work that must finish before the write runs in an in-flight state whose conditional
+  entry stores the receiver's key. Effects commit in the same transaction or through an outbox row
+  the relay claims, counting the attempt, before the send and removes only after the send
+  succeeds; a receiver that can't dedupe is named in the handoff with the repeat that remains.
+  Every external source it cites was opened and checked.
 - The skill has two modes. Review mode takes a diff or a Stage 1 plan, traces every writer and
   reader of the state the change touches, and compares the transition table before and after.
   Audit mode sweeps a scope, maps each machine (states, transitions with `file:line`, guards,
@@ -37,20 +40,25 @@
   existing dispatch the checker can't verify keeps its form; a flag or field the change adds
   becomes part of the status it depends on, and a status field it adds has no default that names
   a real state (a never-assigned state for existing rows has a way out). A persisted status moves
-  only through a write conditional on the expected state; zero rows is a recorded rejection that
-  stops every effect after it and is reported to a caller that required the transition, and an
-  effect that follows the write commits with it. The rule keeps that intent and points to the
-  knowledge file's "Persisted transitions and deliveries" section for the delivery mechanics.
-  Webhooks are signature-checked before anything else, and the in-code state check is reserved
-  for the status's only writer, one that never runs twice at once on the same row, which a lease
-  that can lapse doesn't guarantee. A persisted in-flight state, an outbox row included, gets a
-  measured, bounded exit, and state that gates access fails closed, a reused one-time token
-  included. Its tests include an effect that fails after the commit and is redelivered. §10's
-  handoff walk names each new state's readers, write guards, and access paths. The language
-  skills mirror the dispatch part: csharp Hard Rule 19 (a switch expression with no discard arm,
-  CS8524 suppressed in the project file, CS8509 as an error only recommended in the handoff,
-  `var` for a delegate-valued switch), python Hard Rule 9 (`assert_never` as the last branch), and rust Hard Rule 7 (no `_`
-  arm on a crate-owned enum, and an error naming the value on a foreign `#[non_exhaustive]` one).
+  only through a write conditional on the expected state (an ORM token or ETag counts only on a
+  row whose state the code checked). Zero rows is a recorded rejection that stops every effect
+  after it; a message or webhook handler acknowledges it only as a duplicate or late delivery, and
+  a caller that required the transition gets it reported. An effect that follows the write
+  commits with it, in the same transaction or through an outbox row. The rule keeps that intent
+  and points to the knowledge file's "Persisted transitions and deliveries" section for the
+  delivery mechanics. Webhooks are signature-checked before anything else and deduplicated by
+  event id, and the in-code state check is reserved for the status's only writer, one that never
+  runs twice at once on the same row, which a lease that can lapse doesn't guarantee. A persisted
+  in-flight state gets a measured, bounded exit and a reclaim that fences the worker it took the
+  row from, an outbox row's dead state has its own exit, and state that gates access fails
+  closed, a reused one-time token included. Its tests include an effect that fails after the
+  commit and is redelivered. §10's handoff walk names each new state's readers, write guards, and
+  access paths, and, for each transition a message, webhook, or relay drives, its delivery
+  guarantee and the repeat that remains. The language skills mirror the dispatch part: csharp
+  Hard Rule 19 (a switch expression with no discard arm, CS8524 suppressed in the project file,
+  CS8509 as an error only recommended in the handoff, `var` for a delegate-valued switch), python
+  Hard Rule 9 (`assert_never` as the last branch), and rust Hard Rule 7 (no `_` arm on a
+  crate-owned enum, and an error naming the value on a foreign `#[non_exhaustive]` one).
   The Unity `PlayerState` sample dropped its discard arm and says how `Assets/csc.rsp` sets the
   two warnings, and the three state bullets in `review-heuristics.md` §Correctness cite the rule.
   `implicit-state-machines.md` rung 2 takes the same default (it fails when reached, and a
@@ -61,9 +69,11 @@
   an ordered lifecycle, or flags on one owner. A §2 subsection, "State machines in the design",
   asks the plan for state and transition tables with every reader, how each persisted write checks
   the current state and where a rejected write is recorded with the state it found, how duplicate,
-  late, and early deliveries are handled, each in-flight state's exit and where it lands after the
-  last retry, and the F14 details for state that gates access. The representation comes from the
-  fix ladder, smallest rung first. Step 6 and the Shared Knowledge line point at the subsection,
+  late, and early deliveries are handled, the in-flight state and receiver key for work that must
+  finish before the write, each in-flight state's exit, reclaim fence, and where it lands after
+  the last retry, how an outbox row is claimed before its send and whether its receiver dedupes,
+  and the F14 details for state that gates access. The representation comes from the fix ladder,
+  smallest rung first. Step 6 and the Shared Knowledge line point at the subsection,
   and the Validation Checklist gained a matching item.
 
 ## v17

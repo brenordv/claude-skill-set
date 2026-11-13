@@ -62,10 +62,10 @@ A signal marks a candidate, not a finding. Run the "Not a finding" guards before
 - An explicit machine: a transition table, a state-machine library, Erlang's `gen_statem`, a
   typestate API. It is not flagged as implicit, but it still gets the flaw catalog.
 - A status field with exactly one writer that guards every transition, where that writer never
-  runs twice at once on the same row (an actor, or a per-key queue inside one process); a request
-  handler two requests can enter at once is not one writer, and a lease or session lock that can
-  lapse mid-handler is not that guarantee. It is not flagged as implicit, but its readers still
-  get F1 and F9.
+  runs twice at once on the same row (an actor, or a per-key queue in the one process that writes
+  the status); a request handler two requests can enter at once is not one writer, and a lease or
+  session lock that can lapse mid-handler is not that guarantee. It is not flagged as implicit, but
+  its readers still get F1 and F9.
 
 ## Building the map
 
@@ -113,17 +113,21 @@ owner of severity for state-machine findings; the skill and `review-heuristics.m
   change."
 - **F7 Replay and reordering.** At-least-once delivery applies a transition twice, or events
   arrive out of order and an older event overwrites a newer state. Check each transition a message
-  drives for an idempotency key, and for a sequence the event carries from its source where the
-  machine can return to an earlier state (§"Persisted transitions and deliveries"). Important.
+  drives for an idempotency key, and, where the machine can return to the expected state, for a
+  write that names the sequence the event carries from its source, or a read of the object's
+  current state from a source that carries none (§"Persisted transitions and deliveries").
+  Important.
 - **F8 Side effect outside the transition.** The email, charge, or publish happens and the state
   write fails, or the reverse, and the retry repeats it; or the effect runs after the write and
   fails, and the redelivery is acknowledged as a duplicate, so the effect never runs. Check that
   the effect commits with the write, as a write in the same transaction or an outbox row that write
-  inserts, which a relay outside the handler sends to a receiver that dedupes on the outbox row's
-  id, and that work an in-flight state does before its closing write goes to a receiver that
-  dedupes on a key the row keeps across reclaims (§"Persisted transitions and deliveries"). An
-  idempotent receiver called from the handler after the write does not pass on its own.
-  Important; Critical for money or messages.
+  inserts. A relay outside the handler claims the row, counting the attempt, before it sends, and
+  sends to a receiver that dedupes on the outbox row's id; a receiver that can't dedupe passes only
+  when the handoff names it with the repeat that remains. Work that must finish before the closing
+  write (a charge the transition records) runs in an in-flight state the row enters by a
+  conditional write that stores the receiver's key, which a reclaim reuses and the closing write
+  clears (§"Persisted transitions and deliveries"). An idempotent receiver called from the
+  handler after the write does not pass on its own. Important; Critical for money or messages.
 - **F9 New state not propagated.** F1 at the moment a state is added: every repeated switch (S2),
   serializer, database check constraint, API contract, frontend union, and report, plus rows that
   older versions stored and, in a rolling or mixed-version deploy, old code reading the new value.
@@ -222,9 +226,10 @@ F8). `coding-general.md` ⛔ Hard Rule 12 states the rule and points here.
 ### A single writer that checks in code
 
 The status's only writer, one that never runs twice at once on the same row (an actor, or a
-per-key queue inside one process), may check the state in code instead of in the write, but it
-still checks it; a request handler two requests can enter at once is not that writer, and a lease
-or session lock that can lapse mid-handler is not that guarantee.
+per-key queue in the one process that writes the status), may check the state in code instead of
+in the write, but it still checks it, and a failed check ends as a zero-row write does; a request
+handler two requests can enter at once is not that writer, and a lease or session lock that can
+lapse mid-handler is not that guarantee.
 
 ### When the write matches zero rows
 
@@ -238,41 +243,64 @@ apart:
   `coding-general.md` Hard Rule 10.
 - A row in a state that still leads to the expected one is an early delivery. Hand it back for
   redelivery where the host redelivers until success or dead-letters
-  (`coding-general.md` Hard Rule 10's handler ending).
+  (`coding-general.md` Hard Rule 10's handler ending), and park it somewhere recoverable per Hard
+  Rule 10 where the host doesn't.
 - No row at all is early when another delivery creates the row, and a failure reported per
   `coding-general.md` Hard Rule 10 otherwise.
 
-### Machines that return to an earlier state
+### Machines that return to the expected state
 
 On a cycle (`PastDue` and `Active`, `Failed` back to `Pending` on a retry), the current state
 can't tell a replay or an older event from a new one. An idempotency key catches only a replay; an
-older event arriving for the first time needs a sequence the event carries from its source,
-compared with the last one the row applied, never the row's own concurrency token. On such a
-machine the event id or sequence, not the current state, sorts a zero-row result into duplicate,
-late, or early, and an acknowledged event still records its id or sequence.
+older event arriving for the first time needs a sequence the event carries from its source, never
+the row's own concurrency token, which counts the row's writes rather than the source's events.
+The write names the sequence beside the state (`AND last_seq < @seq`, setting `last_seq = @seq`),
+so an older event matches zero rows. A zero-row result is then a duplicate when its event id is
+recorded or its sequence equals the last applied, late when its sequence is lower, and early
+otherwise. An acknowledged event records its id, and the row's sequence only moves forward. Where
+the source carries no sequence, the handler records the event id in the transaction that applies
+the event and reads the object's current state from the source instead of applying the event's
+payload.
+
+A reclaimed in-flight state is such a cycle (`Processing` back to `Pending`, then `Processing`
+again under a second worker). The claim stores an attempt id, and every write the worker makes
+after it, success or failure, names that id beside the state (`AND attempt = @attempt`), so a
+worker whose row was reclaimed matches zero rows and leaves the row to the attempt that holds it.
+The attempt id is a token the writer carries from its own claim, as a client carries an `If-Match`
+from its own read; it fences that writer and is not the row's concurrency token the sequence rule
+excludes.
 
 ### Event ids
 
-A webhook is signature-checked before anything else. Event-id deduplication, for a webhook or a
-message, records the id in the transaction that applies the event, never before it: an id
-committed ahead of a write that then fails reads as done on the retry, and the transition never
-applies (F11).
+A webhook is signature-checked before anything else and deduplicated by event id. Event-id
+deduplication, for a webhook or a message, records the id in the transaction that applies the
+event, never before it: an id committed ahead of a write that then fails reads as done on the
+retry, and the transition never applies (F11). An early delivery handed back commits no id, so its
+redelivery doesn't read as a duplicate.
 
 ### Effects
 
 An effect that follows the status write commits with it, as a write in the same transaction or an
-outbox row that write inserts, which a relay outside the handler sends to a receiver that dedupes
-on the outbox row's id. The outbox row exists only when the transition applied, so the duplicate
-and late endings acknowledge without losing or repeating the effect. Work an in-flight state does
-before its closing write goes to a receiver that dedupes on a key the row stores when the work is
-first requested and keeps across reclaims.
+outbox row that write inserts, which a relay outside the handler sends. The outbox row exists only
+when the transition applied, so the duplicate and late endings acknowledge without losing or
+repeating the effect. Work that must finish before the closing write, such as a charge the
+transition records, runs in an in-flight state the row enters by a conditional write (`Pending` to
+`Charging`). That write also stores the key the receiver dedupes on, keeping one already stored so
+a reclaim reuses it, and the write that closes the work clears it. The entry is the work's one
+first request: a second copy or a late replay matches zero rows before any work runs, and a cancel
+that expects `Pending` is rejected while the work is in flight. An outbox row's send follows
+§"Draining the outbox" instead.
 
 ### Draining the outbox
 
-An outbox row is an in-flight state (F6). The relay deletes or marks the row only after the send
-succeeds, so a crash repeats the send for the receiver to dedupe and never drops it. The row
-records when it was written and how many sends failed, and a bounded retry ends in a failed or
-dead state with its own exit.
+An outbox row is an in-flight state (F6). The relay claims the row in a write that counts the
+attempt before the send, so one relay sends a row at a time and a send that crashes the relay
+still counts. It deletes or marks the row only after the send succeeds, so a crash or a timed-out
+send repeats the send and never drops it, and a receiver that dedupes on the outbox row's id
+absorbs the repeat. A receiver that can't dedupe (an email or SMS provider with no idempotency
+key) is named in the handoff with the repeat that remains; where a repeat is worse than a loss, a
+row found claimed past its timeout is parked, not resent. The row records when it was written,
+and a bounded retry ends in a dead state with its own exit.
 
 ## Sources
 
