@@ -29,7 +29,18 @@ too, whose types follow Unity's serialization rules (an array or a `List<T>` whe
 pick `IReadOnlyList<T>`); Unity tests are NUnit, so rule 2's ban on Moq and FluentAssertions holds
 but its xUnit `Assert` becomes NUnit's; and rule 19's `NoWarn` and `WarningsAsErrors` settings
 become the `Assets/csc.rsp` flags in the unity skill's §2, since the `.csproj` files Unity
-generates aren't authoritative. Every other rule here still binds it.
+generates aren't authoritative.
+
+§1 to §3 below, and `style-guidelines.md`, give way to the unity skill too. The `.editorconfig` that
+§1 copies in still sets formatting and naming, but a preference in it for a feature from C# 10 on
+(file-scoped namespaces, primary constructors, collection expressions, and others) loses to the
+C# 9.0 limit. Its `?.` and `??` preferences lose to the unity skill on a type that derives from
+`UnityEngine.Object`, as does its `readonly` preference on a field Unity serializes. §2's
+file-scoped namespaces and primary constructors and §3's collection expressions don't compile under
+C# 9.0, and §2's records follow the unity skill's §2: no positional records, and none in data Unity
+serializes. On a type that derives from `UnityEngine.Object`, §3's `is null` and `is not null`
+become `== null`, `!= null`, or the `bool` check (the unity skill's §2, "Null checks in Unity").
+Every other rule and section here still binds Unity C#.
 
 1. **One public type per file.** Never declare two public classes/records/enums/structs in the same file, even when neighboring files in the repo do.
 2. **Never use Moq or FluentAssertions. Ever.** Not one new usage, even in a repo already full of them. Assert with native xUnit `Assert`; replace mocking with small hand-rolled fakes/stubs that implement the interface.

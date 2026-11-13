@@ -147,8 +147,8 @@ general principle. Distilled from real review findings.
   comment inside is stripped at compile time. Put intent in a comment above the `try`. Not catching
   at all is one of `coding-general.md` ⛔ Hard Rule 10's endings.
 - **A catch that logs and falls through is a finding.** After the log, the method returns normally
-  or the caller's next step runs, so a failure reads as success: the trailing
-  `catch (CosmosException)` after specific handlers, an `except` that logs, an error arm that only
+  or the caller's next step runs, so a failure reads as success: a trailing catch of a client
+  library's base exception after the specific handlers, an `except` that logs, an error arm that only
   traces. At minimum Important; Critical when the caller then reports success (persists, acknowledges,
   returns a success status), or when the catch sits inside a security decision (an authn or authz
   check, signature, token, or input validation, a scan result), where it fails open. The legal

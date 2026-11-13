@@ -182,14 +182,17 @@ Re-read this list before writing code and walk it again at handoff (§10).
     - **A persisted status moves only from the state the writer expects.** The write names it
       (`UPDATE ... SET status = @next WHERE id = @id AND status = @expected`) and checks the row
       count; a concurrency token the store checks (an ORM version, an `If-Match` ETag), on a row
-      whose state the code checked after reading it, meets the same intent. Zero rows is a rejected
-      transition: it stops the transition and every effect after it, is never a silent return,
-      and is recorded with the expected and actual state, the trigger, and the correlation id. A
-      message or webhook handler acknowledges it only as a duplicate or late delivery and
-      otherwise hands it back per Hard Rule 10; a caller that required the transition gets it
-      reported per Hard Rule 10 (a 409 at a request boundary). A webhook is signature-checked
-      before anything else and deduplicated by event id, and an effect that follows the write
-      commits with it, as a write in the same transaction or an outbox row that write inserts.
+      whose state the code checked after reading it, meets the same intent, and a failed check,
+      the code's or the store's, ends as zero rows does. Zero rows is a rejected transition: it
+      stops the transition and every effect after it, is never a silent return, and is recorded
+      with the expected and actual state, the trigger, and the correlation id. A message or
+      webhook handler acknowledges it only as a duplicate or late delivery and otherwise hands it
+      back per Hard Rule 10; a caller that required the transition gets it reported per
+      Hard Rule 10 (a 409 at a request boundary). A webhook is signature-checked
+      before anything else and deduplicated by event id, and a handler that dedupes on an event
+      or message id records it in the transaction that applies the event. An effect that follows
+      the write commits with it, as a write in the same transaction or an outbox row that write
+      inserts.
       How to tell duplicate, late, and early deliveries apart and end each, how work before the
       write is deduped and effects after it commit, how outbox rows drain, what a machine that
       can return to the expected state needs, and when a single writer may check the state in
@@ -197,11 +200,11 @@ Re-read this list before writing code and walk it again at handoff (§10).
     - **A persisted in-flight state has a way out** when the process dies mid-transition: a
       reaper that acts on a timeout measured from the row's latest claim (the entered-at timestamp
       the transition writes, or the claim time a takeover writes), and whose reclaim fences the
-      worker it took the row from, with a bounded retry that ends in
-      a failed state that is final or has its own exit. An outbox row is one, and its dead state
-      has its own exit. Work that may already have reached a receiver never ends final: the last
-      retry parks it for a lookup. The reclaim fence, the park, and the drain contract are in the
-      same section.
+      worker it took the row from, with a bounded retry, counted at each claim, that ends in a
+      failed state that is final or has its own exit, which resets the attempt count but never
+      reuses an attempt id. An outbox row is one, and its dead state has its own exit. Work that
+      may already have reached a receiver never ends final: the last retry parks it for a lookup.
+      The reclaim fence, the park, and the drain contract are in the same section.
     - **State that gates access fails closed**: verified, approved, active, locked, revoked, MFA,
       sessions, one-time tokens, and reset or checkout steps. Every path that authenticates or
       authorizes the principal is one of its readers, whether it reads the field yet or not. A

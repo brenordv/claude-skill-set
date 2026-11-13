@@ -57,7 +57,7 @@ Per-language client authentication: see `references/csharp.md`, `references/java
 | Java | `EventHubProducerClient` / `AsyncClient` | `EventHubConsumerClient` / `AsyncClient` | `EventProcessorClient` |
 | Python | `EventHubProducerClient` | `EventHubConsumerClient` | `EventHubConsumerClient` + `BlobCheckpointStore` |
 | TypeScript | `EventHubProducerClient` | `EventHubConsumerClient` | `EventHubConsumerClient` + `BlobCheckpointStore` |
-| Rust | `ProducerClient` | `ConsumerClient` | `ConsumerClient` + checkpoint store |
+| Rust | `ProducerClient` | `ConsumerClient` | `EventProcessor` + `BlobCheckpointStore` |
 
 **Rule**: Never use a simple consumer client in production. Always use the processor/checkpoint-backed variant.
 

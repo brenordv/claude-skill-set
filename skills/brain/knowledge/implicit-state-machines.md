@@ -105,34 +105,38 @@ owner of severity for state-machine findings; the skill and `review-heuristics.m
   (`UPDATE ... SET state = @next WHERE id = @id AND state = @expected`) plus a row-count check.
   Important.
 - **F6 Stuck state.** An in-flight state (`Processing`, `Sending`, `Locked`) with no timeout,
-  reaper, or exit when the process dies mid-transition, or an error state with no way out.
-  Important. A persisted in-flight state with no entered-at timestamp, so its age can't be measured
-  or alerted on, is a Suggestion when the state has an exit and part of the Important finding when
-  it has none; never flag that on in-memory state. Erlang's `gen_statem` makes the explicit form
-  first-class: a state time-out "is automatically canceled when the state machine does a state
-  change."
+  reaper, or exit when the process dies mid-transition, or an error state with no way out. Check
+  that each claim, a takeover's included, counts the attempt, that a reclaim fences the worker it
+  took the row from, and that a failed or dead state's exit resets the count
+  (§"Persisted transitions and deliveries"). Important. A persisted in-flight state with no
+  entered-at timestamp, so its age can't be measured or alerted on, is a Suggestion when the state
+  has an exit and part of the Important finding when it has none; never flag that on in-memory
+  state. Erlang's `gen_statem` makes the explicit form first-class: a state time-out "is
+  automatically canceled when the state machine does a state change."
 - **F7 Replay and reordering.** At-least-once delivery applies a transition twice, or events
   arrive out of order and an older event overwrites a newer state. Check each transition a message
   drives for an idempotency key, and, where the machine can return to the expected state, for a
   write that names the sequence the event carries from its source, or a read of the object's
-  current state from a source that carries none (§"Persisted transitions and deliveries").
-  Important.
+  current state, one delivery per object at a time, from a source that carries none
+  (§"Persisted transitions and deliveries"). Important.
 - **F8 Side effect outside the transition.** The email, charge, or publish happens and the state
   write fails, or the reverse, and the retry repeats it; or the effect runs after the write and
   fails, and the redelivery is acknowledged as a duplicate, so the effect never runs. Check that
   the effect commits with the write, as a write in the same transaction or an outbox row that write
   inserts. A relay outside the handler claims the row, counting the attempt, before it sends, and
-  sends to a receiver that dedupes on the outbox row's id; a receiver that can't dedupe passes only
-  when the handoff names it with the repeat that remains. Work that must finish before the closing
-  write (a charge the transition records) runs in an in-flight state the row enters by a
-  conditional write that stores a new key for the receiver. A fenced reaper takes the row over in
-  that state and resends the request under the stored key, a response that leaves the outcome
-  unknown keeps the key, only the write that records a charge or a refusal (or the park) leaves
-  the state, and a row past the key's window or out of attempts, or whose receiver can't dedupe or
-  answers the resend with a stored error that leaves the outcome unknown, is parked for a lookup,
-  not resent (§"Work that must finish before the write"). An
-  idempotent receiver called from the handler after the write does not pass on its own.
-  Important; Critical for money or messages.
+  sends to a receiver that dedupes on the outbox row's id; a receiver that can't dedupe, or can't
+  say whether a request arrived, is a Suggestion naming the repeat that remains, which the handoff
+  carries, whatever the money-or-messages escalation; a resend where a repeat is worse than a loss
+  keeps the entry's severity, since §"Draining the outbox" sends that row to the dead state
+  instead. Work that must finish before the closing write (a charge the transition records) runs
+  in an in-flight state the row enters by a conditional write that stores a new key for the
+  receiver. A fenced reaper takes the row over in that state and resends the request under the
+  stored key, a response that leaves the outcome unknown keeps the key, only the write that
+  records a charge or a refusal (or the park) leaves the state, and a row past the key's window or
+  out of attempts, or whose receiver can't dedupe or answers the resend with a stored error that
+  leaves the outcome unknown, is parked for a lookup, not resent
+  (§"Work that must finish before the write"). An idempotent receiver called from the handler
+  after the write does not pass on its own. Important; Critical for money or messages.
 - **F9 New state not propagated.** F1 at the moment a state is added: every repeated switch (S2),
   serializer, database check constraint, API contract, frontend union, and report, plus rows that
   older versions stored and, in a rolling or mixed-version deploy, old code reading the new value.
@@ -260,22 +264,29 @@ apart:
 
 On a cycle (`PastDue` and `Active`, `Failed` back to `Pending` on a retry), the current state
 can't tell a replay or an older event from a new one. An idempotency key catches only a replay; an
-older event arriving for the first time needs a sequence the event carries from its source, never
-the row's own concurrency token, which counts the row's writes rather than the source's events.
-The write names the sequence beside the state (`AND last_seq < @seq`, setting `last_seq = @seq`),
-so an older event matches zero rows. A zero-row result is then a duplicate when its event id is
-recorded or its sequence equals the last applied, late when its sequence is lower, and early
-otherwise. An acknowledged event records its id, and the row's sequence only moves forward. Where
-the source carries no sequence, the handler records the event id in the transaction that applies
-the event and reads the object's current state from the source instead of applying the event's
-payload.
+older event arriving for the first time needs a sequence the event carries from its source, one
+value per source event (never a second-resolution timestamp or a version several events share),
+never the row's own concurrency token, which counts the row's writes rather than the source's
+events. The write names the sequence beside the state (`AND last_seq < @seq`, setting
+`last_seq = @seq`), so an older event matches zero rows. A zero-row result is then a duplicate or
+late delivery when the row is in a state from which the expected one can no longer be reached,
+whatever its sequence; otherwise it is a duplicate when its event id is recorded or its sequence
+equals the last applied, late when its sequence is lower, and early otherwise. An acknowledged
+event records its id, and the row's sequence only moves forward. Where the source carries no
+sequence, the handler records the event id in the transaction that applies the event, reads the
+object's current state from the source instead of applying the event's payload, and handles one
+delivery per object at a time, since two reads can commit in the reverse order: a row lock taken
+before the source read and held to the commit, with the source read under a timeout shorter than
+the lock's and a timeout on either handing the delivery back rather than acknowledging it. A
+per-key session or partition whose lock can lapse mid-handler is not that guarantee.
 
 A reclaimed in-flight state is such a cycle (`Processing` back to `Pending`, then `Processing`
 again under a second worker). Work that may already have reached a receiver is taken over in place
 instead (§"Work that must finish before the write"). Either way the claim stores a new attempt id,
-and every write the worker makes after it, success or failure, names that id beside the state
-(`AND attempt = @attempt`), so a worker whose row was reclaimed matches zero rows and leaves the
-row to the attempt that holds it.
+never one the row held before, and counts the attempt, as the relay's claim does, so a worker that
+dies mid-work still uses up a retry, and every write the worker makes after it, success or
+failure, names that id beside the state (`AND attempt = @attempt`), so a worker whose row was
+reclaimed matches zero rows and leaves the row to the attempt that holds it.
 The attempt id is a token the writer carries from its own claim, as a client carries an `If-Match`
 from its own read; it fences that writer and is not the row's concurrency token the sequence rule
 excludes.
@@ -301,11 +312,12 @@ finish before the write"; an outbox row's send follows §"Draining the outbox".
 Work the closing write records, such as a charge, runs in an in-flight state of its own:
 
 - **Entry.** A conditional write (`Pending` to `Charging`) enters the state and stores the key the
-  receiver dedupes on, the first attempt id, and the entry time, which is also the first claim
-  time. The key is new per entry, never derived from the row or its period, which a renewal or a
-  retry after a refusal would repeat. The entry is the work's one first request: a second copy or
-  a late replay matches zero rows before any work runs (on a cycle, through the sequence the write
-  names), and a cancel that expects `Pending` is rejected while the work is in flight.
+  receiver dedupes on, a new attempt id (never one the row held before) with an attempt count of
+  one, and the entry time, which is also the first claim time. The key is new per entry, never
+  derived from the row or its period, which a renewal or a retry after a refusal would repeat. The
+  entry is the work's one first request: a second copy or a late replay matches zero rows before
+  any work runs (on a cycle, through the sequence the write names), and a cancel that expects
+  `Pending` is rejected while the work is in flight.
 - **Answers.** A charge says the work was done and a refusal (a decline) says it wasn't. Only the
   write that records one of them, or the park below, leaves `Charging`, and the answer write
   clears the key. A response that leaves the outcome unknown is no answer: a timeout, a dropped
@@ -338,18 +350,22 @@ Work the closing write records, such as a charge, runs in an in-flight state of 
 ### Draining the outbox
 
 An outbox row is an in-flight state (F6). The relay claims the row in a write that counts the
-attempt before the send and records the time of the first claim, so one relay sends a row at a
-time and a send that crashes the relay still counts. It deletes or marks the row only after the
-send succeeds, so a crash or a timed-out send repeats the send and never drops it, and a receiver
-that dedupes on the outbox row's id absorbs the repeat inside its window for that id, measured
-from the first claim. A resend starts only while more than one whole send is left in that window,
-and a row past it goes to the dead state, not resent; a row never claimed is sent at any age. A
-receiver that can't dedupe (an email or SMS provider with no idempotency key) is named in the
-handoff with the repeat that remains; where a repeat is worse than a loss, a row found claimed
-past its timeout goes to the dead state, not resent. The row records when it was written, and a
-bounded retry ends in the same dead state. Its exit resends only after checking with the receiver
-where the receiver can say whether the id arrived; otherwise the handoff names the repeat a
-requeue risks.
+attempt before the send and records the claim's time, and, on a claim that finds no first-claim
+time, the first-claim time the window runs from, so one relay sends a row at a time and a send that
+crashes the relay still counts. It deletes or marks the row only after the send succeeds, so a
+crash or a timed-out send repeats the send once the latest claim is older than its timeout, and
+never drops it, and a receiver that dedupes on the outbox row's id absorbs the repeat inside its
+window for that id, measured from the first claim. A resend starts only while more than one whole
+send is left in that window, and a row past it goes to the dead state, not resent; a row never
+claimed is sent at any age. A receiver that can't dedupe (an email or SMS provider with no
+idempotency key) is named in the handoff with the repeat that remains; where a repeat is worse
+than a loss, a row whose latest claim is older than its timeout, or whose send ended with no answer
+(a timeout, a dropped connection, a 5xx), goes to the dead state, not resent. The row records when
+it was written, and a bounded retry ends in the same dead state. Every move to the dead state is
+logged at error with the row's id and attempt count, so an alert fires. The dead state's exit
+resets the attempt count and the first-claim time, and resends only after checking with the
+receiver where the receiver can say whether the id arrived; otherwise the handoff names the repeat
+a requeue risks.
 
 ## Sources
 

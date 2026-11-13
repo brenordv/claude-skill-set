@@ -137,20 +137,31 @@ ReadOnlySpan<char> extension = filePath.AsSpan()[filePath.LastIndexOf('.')..];
 ```
 
 With no discard arm, a new `PlayerState` member raises CS8509 here. By default Unity compiles with
-its own pipeline, and its documented route for compiler options is `Assets/csc.rsp`: `-nowarn:8524`
-there quiets the unnamed-value warning, and `-warnaserror+:8509` makes a missed member a compile
-error, a project-wide setting for the project's owner to choose. Player Settings' Additional
-Compiler Arguments takes the same flags; use one place, not both.
+its own pipeline, and one documented route for compiler options is a `csc.rsp` response file in
+`Assets`, in `csc.exe` syntax
+([Windows Player settings](https://docs.unity.com/en-us/engine/6000.3/manual/platform-specific/windows/playersettings),
+[errors and warnings options](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-options/errors-warnings)):
+`-nowarn:8524` there quiets the unnamed-value warning, and `-warnaserror+:8509` makes a missed
+member a compile error, a project-wide setting for the project's owner to choose. Player Settings'
+Additional Compiler Arguments takes the same flags; use one place, not both, since the Windows
+Player settings page warns that an argument defined in both can cause errors.
 
 ### Null checks in Unity
 
-Null checks `obj == null` are expensive, and Unity provides a sugar syntax that seems to help with performance:
+A type that derives from `UnityEngine.Object` (a component, `MonoBehaviour`, `ScriptableObject`,
+`GameObject`) overloads `==`, `!=`, and `bool`, so `obj == null`, `!obj`, and `if (obj)` give one
+answer and treat a destroyed object, or one whose asset or type is missing, as null
+([`Object`](https://docs.unity.com/en-us/engine/6000.3/script-reference/unityengine/object)).
+`?.`, `??`, `is null`, and `is not null` skip those overloads and see such an object as non-null
+(the compiler never calls an overloaded `==` for `is null`, per the
+[patterns reference](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/operators/patterns#constant-pattern)),
+so use them on these types only when the object can never be destroyed or missing. `!obj` doesn't
+compile on a plain C# class, which has no `bool` conversion; check one with `is null`.
 
 ```csharp
-if (!obj) { return "this is null"; }
+if (!_target) { return; }          // a component: also true once it's destroyed
+if (_config is null) { return; }   // a plain C# class
 ```
-
-Use this syntax whenever you need to check for nulls.
 
 ### Async Patterns in Unity
 

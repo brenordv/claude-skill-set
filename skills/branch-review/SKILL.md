@@ -67,7 +67,7 @@ Based on file extensions in the diff, apply the corresponding skill's standards:
 | Extensions | Apply Standards From |
 |------------|---------------------|
 | `.ts`, `.tsx`, `.js`, `.jsx` | reactjs, nextjs, or angular (based on imports) |
-| `.cs` in a Unity project (the project root holds `Assets/`, `Packages/manifest.json`, and `ProjectSettings/`, or the repo is a Unity package whose `package.json` has a `unity` field) | unity, plus csharp's Hard Rules with the Unity overrides the csharp skill names before rule 1 (rules 2, 4, 5, 19) |
+| `.cs` that Unity compiles (the file sits under `Assets/` or `Packages/` of its nearest enclosing Unity root, the closest directory above the file that holds `Assets/`, `Packages/manifest.json`, and `ProjectSettings/`, which in a mono-repo can sit below the repo root; or the nearest `package.json` above the file has a `unity` field) | unity, plus csharp's Hard Rules with the Unity overrides the csharp skill names before rule 1 (rules 2, 4, 5, 19) |
 | `.cs` (anything else) | csharp |
 | `.py` | python |
 | `.rs` | rust / rust-general |

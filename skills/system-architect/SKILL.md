@@ -132,13 +132,14 @@ When the design adds or changes a status, an ordered lifecycle, or flags on one 
 - for each transition a message or webhook drives, how each delivery ending in the knowledge
   file's §"Persisted transitions and deliveries" is handled, an early one whose row doesn't exist
   yet included;
-- for each in-flight state and outbox row, its exit when the process dies and how a reclaim
-  fences the worker it took the row from, the timestamp its age is measured from, and where it
-  lands after the last retry (a final state or one with its own exit; for an outbox row, one with
-  its own exit; for work that may already have reached a receiver, the park, never a final
-  state); an outbox row is claimed in a write that counts the attempt before its send and
-  is deleted or marked only after the send succeeds, and the plan says whether its receiver
-  dedupes on the row's id and inside what window, and, when it can't, the repeat that remains;
+- for each in-flight state and outbox row, its exit when the process dies, how a reclaim fences
+  the worker it took the row from and each claim counts the attempt, the timestamp its age is
+  measured from, and where it lands after the last retry (a final state or one with its own exit
+  that resets the attempt count; for an outbox row, one with its own exit that also resets the
+  first-claim time; for work that may already have reached a receiver, the park, never a final
+  state); an outbox row is claimed in a write that counts the attempt before its send and is
+  deleted or marked only after the send succeeds, and the plan says whether its receiver dedupes
+  on the row's id and inside what window, and, when it can't, the repeat that remains;
 - for state that gates access (the knowledge file's F14): every reader that grants on it, the
   server-side check at each step, the token's expiry and compare-and-set consume, and the request
   fields that can't set it.
