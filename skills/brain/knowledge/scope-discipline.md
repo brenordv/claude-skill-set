@@ -115,7 +115,8 @@ If cutting something would ship a real correctness, security, or data risk, it i
 
 ## The tiebreak
 
-When a scope-cut collides with an additive lens, correctness, security, and data-safety outrank the cut.
+When a scope-cut collides with an additive lens, correctness, data-safety, and in-model security
+findings (`security.md` ⛔ Hard Rules) outrank the cut.
 Don't ship unsafe to stay lean. But the cut has one legal counter-move: challenge the *feature that
 requires* the addition, not the addition itself. If the feature a hardening finding protects was never in
 the ask, cutting the feature resolves both at once, and the hardening leaves with it. Settle the scope

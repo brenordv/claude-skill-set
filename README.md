@@ -177,18 +177,19 @@ goes to an independent review panel, dispatched in parallel, where each reviewer
 through its own lens:
 
 - the relevant language or framework skill, for technical depth
-- `security`, reviewing as a security professional
+- `security`, reviewing as a security professional against a stated threat model
 - `observability-engineer`, recommending a sane level of monitoring and logging
 - `delivery-lead`, checking the plan against the original prompt for scope creep, gold-plating, and
   speculative work; the one lens that argues for less while the rest pull toward adding
 - any domain skill the plan actually touches (`postgres`, `reactjs`, `godot`, and so on), routed by
   what the plan does rather than a fixed list
 
-Findings are consolidated, de-duplicated, and split into **blocking** (correctness, security, data, or
-design flaws) and **suggestions**. Blocking findings send the plan back to the architect for revision;
+Findings are consolidated, de-duplicated, and split into **blocking** (correctness, data, or
+design flaws, and security findings that fall inside the threat model and rate high enough) and
+**suggestions**. Blocking findings send the plan back to the architect for revision;
 only the lenses whose concerns the revision touched re-review, not the whole panel. Suggestions worth
 taking are folded in directly. When the `delivery-lead`'s push to cut collides with a lens asking to add,
-correctness, security, and data-safety win; the delivery-lead's counter is to question whether the feature
+correctness, data-safety, and in-model security findings win; the delivery-lead's counter is to question whether the feature
 that needs the hardening belonged in the ask at all.
 
 **Stage 2: execute and verify.** The language skill implements the approved plan. Before any review

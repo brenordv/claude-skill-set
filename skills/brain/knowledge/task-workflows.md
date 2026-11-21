@@ -109,7 +109,9 @@ completes or when a loop cap is hit with unresolved issues (see issue handling b
    prompt, its ground truth):
    - `[skill: <appropriate programming language/framework skill>]`: technical review with in-depth
      knowledge of the relevant language(s).
-   - `[skill: security]`: review as a security professional.
+   - `[skill: security]`: review as a security professional against a stated threat model. The
+     review opens with the model, and every finding carries its attacker, entry point,
+     precondition, asset, and rating (`brain/knowledge/security.md` ⛔ Hard Rules).
    - `[skill: observability-engineer]`: recommend a reasonable level of observability to add.
    - `[skill: delivery-lead]`: scope-discipline review. Checks the plan against the *original user prompt*
      for scope creep, gold-plating, speculative generality, and work solving problems the ask never raised.
@@ -126,15 +128,20 @@ completes or when a loop cap is hit with unresolved issues (see issue handling b
      staying current.
 
 3. **Consolidate.** Merge the panel's findings, de-duplicate overlaps, and classify each as **blocking**
-   (a correctness, security, data, or design flaw that must be resolved) or **suggestion** (an optional
-   improvement). Every reviewer treats an assumption about external/third-party behavior that lacks a
+   (a correctness, data, or design flaw, or an in-model security finding rated blocking, that must
+   be resolved) or **suggestion** (an optional improvement). Every reviewer treats an assumption about external/third-party behavior that lacks a
    working link to official, version-current docs as a **blocking** finding: the plan cites its
    external-behavior claims and the citations resolve, or it does not pass. See
    `brain/knowledge/general-problem-solving.md` §"Back external assumptions with an official source".
+   Security findings are classified by `brain/knowledge/security.md` ⛔ Hard Rules: one blocks only
+   when it is inside the threat model and meets Hard Rule 6. A high-impact, low-likelihood finding
+   starts no revision cycle; it is recorded with its fix-or-accept question and raised at handoff.
+   The stated threat model, each out-of-model concern with its precondition, and each accepted risk
+   with its reason are recorded in the plan's notes.
 
    **Scope-vs-hardening tiebreak.** When the `delivery-lead`'s scope-trimming collides with an additive
-   lens (security, observability, a language rule), correctness, security, and data-safety findings
-   outrank the trim: don't ship unsafe to stay lean. But the delivery-lead's legal counter is to challenge
+   lens (security, observability, a language rule), correctness, data-safety, and in-model security
+   findings outrank the trim: don't ship unsafe to stay lean. But the delivery-lead's legal counter is to challenge
    the *feature that requires* the addition rather than the addition itself. If the feature a hardening
    finding protects was never in the ask, cutting the feature resolves both at once and the hardening
    leaves with it. Settle that scope question before spending a revision cycle hardening something that

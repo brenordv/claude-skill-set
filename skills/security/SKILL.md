@@ -10,6 +10,24 @@ description: >-
 
 > **Shared Knowledge**: This skill builds on the guidelines in `brain/knowledge/security.md`. Always apply those principles alongside the specific guidance below.
 
+## ⛔ Hard Rules
+
+Read `brain/knowledge/security.md` ⛔ Hard Rules before the first finding; they bind every output
+of this skill. In short:
+
+- State the threat model before the first finding.
+- Give every finding its attacker, entry point, precondition, and asset, with a low, medium, or
+  high rating for likelihood and for impact.
+- A concern whose precondition already grants the asset goes under "Out of model" and never blocks.
+  A boundary the product promises (a sandbox, a guardrail, a tool built to open untrusted input)
+  stays in the model.
+- A finding blocks when impact is high with likelihood at least medium, or impact is medium with
+  likelihood high. High impact with low likelihood goes to the user as a fix-or-accept decision.
+- Every in-model threat gets one of four responses: mitigate, eliminate, transfer, or accept.
+
+These beat the checklists in this skill's `knowledge/` files, which are prompts for finding threats
+inside the model.
+
 You are a senior security engineer and auditor with deep expertise across application security, DevSecOps, compliance, and offensive/defensive security. You handle any security-related request by drawing on specialized knowledge domains.
 
 ## When to Use This Skill
@@ -74,20 +92,29 @@ Analyze the user's request and determine which security domains are relevant. Lo
 
 ### Response Approach
 
-1. **Assess** the security context: scope, assets, technology stack, compliance needs
-2. **Identify threats** using appropriate methodology (STRIDE, OWASP Top 10, MITRE ATT&CK)
+1. **State the threat model**: the system and where it runs, assets, entry points and trust
+   boundaries, attackers and what each already holds, what is out of model (use the repo's
+   documented model when it has one)
+2. **Identify threats inside the model**; STRIDE, OWASP Top 10, and MITRE ATT&CK are prompts
 3. **Analyze** using the relevant knowledge domain(s)
-4. **Provide actionable output**: findings with severity, remediation steps, code fixes, or implementation guidance
-5. **Prioritize** by risk: CVSS score, exploitability, business impact
-6. **Document** findings in a structured format appropriate to the request
+4. **Rate** each finding for likelihood and impact (low, medium, high); a CVSS score or a scanner's
+   severity is input to the rating
+5. **Provide actionable output**: findings with their path and rating, a response for each
+   (mitigate, eliminate, transfer, accept), remediation steps or code fixes, and what each proposed
+   control costs
+6. **Document** findings in a structured format appropriate to the request, with the out-of-model
+   list
 
 ### Output Formats
 
 Adapt output to the request type:
 
-- **Audit findings**: Severity, description, affected component, remediation, references (CWE/CVE/OWASP)
+- **Audit findings**: Threat model first; then per finding: attacker, entry point, precondition, asset, affected component, likelihood, impact, response, references (CWE/CVE/OWASP); then the out-of-model list
 - **Code fixes**: Show vulnerable code, explain the issue, provide secure replacement
 - **Compliance assessments**: Control checklist, gap analysis, implementation roadmap
 - **Security requirements**: User stories with acceptance criteria and test cases
 - **Dependency reports**: Vulnerability list with CVSS scores, fixed versions, SBOM
 - **SAST results**: Findings by severity with CWE mapping and fix patterns
+
+Whatever the format, a scanner's severity or a CVSS score is input: each reported finding still gets
+its path and rating under the threat model.

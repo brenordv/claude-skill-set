@@ -28,6 +28,10 @@ general principle. Distilled from real review findings.
 
 ## Security
 
+- **A security finding without its path is not ready.** Each one names the attacker, the entry
+  point, the precondition, and the asset, and carries a low, medium, or high rating for likelihood
+  and for impact, under a threat model stated at the top of the review. A concern whose
+  precondition already grants the asset goes in Notes as out of model (`security.md` ⛔ Hard Rules).
 - **Don't expose error details at API boundaries.** Return generic, human-safe messages; log the details
   server-side. Exception text and internal descriptions hand an attacker a map of the system.
 - **No machine-identifying details in the diff.** Absolute local paths, drive-letter paths, UNC shares,

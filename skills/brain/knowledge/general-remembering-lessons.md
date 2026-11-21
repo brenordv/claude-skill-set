@@ -19,6 +19,29 @@ Do the lookup silently. **Disclose any lesson that materially shaped your answer
 - In the common case, follow the lesson and say so.
 - If you genuinely believe the lesson is outdated or wrong given current information, surface the conflict to the user and propose an update. Never silently ignore a lesson; never blindly follow one you have specific reason to doubt.
 
+### ⛔ A security lesson is input to the threat model, never a finding
+
+A lesson tagged `security` records what went wrong against one attacker in one system. Recalling
+it creates no finding, no requirement, and no "known issue" in the work in front of you. This binds
+in every context (main conversation, subagents, the review panel) and beats "the lesson says
+so". Before a security lesson shapes a plan or a review:
+
+1. **Read its `Applies when:` clause**, at the end of its summary: the attacker the lesson assumes
+   and what that attacker holds or supplies.
+2. **Check that against the threat model of the current work** (`security.md` ⛔ Hard Rules). When
+   that attacker is in the model and can reach the code in question, the lesson applies. What it
+   points at is then stated and rated like any other finding (Hard Rules 2, 5, and 6); the lesson
+   adds no severity of its own.
+3. **When the attacker is out of model, set the lesson aside.** Don't raise it, don't ticket it,
+   and don't carry it forward as a residual. If it materially shaped nothing, it needs no mention.
+4. **A security lesson with no `Applies when:` clause gets one before it is used.** Work it out
+   from the lesson's Origin, then save it with `vault_set_meta` so the next reader doesn't repeat
+   the work. If the Origin names no attacker (a library quirk, a testing trap), the lesson is an
+   ordinary one: use it as such, and never as a security requirement.
+
+**Self-check**: before a lesson appears in a security finding, ask "which attacker in this model
+does its `Applies when:` clause name?" If the answer is none, the lesson stays out.
+
 ## When to write: capture lessons automatically
 
 Save a lesson, without being asked, whenever:
@@ -78,7 +101,12 @@ To retro-link an existing top-level lesson under a new parent, use `vault_set_me
 ### Fields
 
 - **name**: `lesson-<kebab-slug>` (e.g. `lesson-test-isolation-shared-state`)
-- **summary**: one line, language-agnostic statement of the principle.
+- **summary**: one line, language-agnostic statement of the principle. A lesson tagged `security`
+  that defends against someone ends its summary with `Applies when:` and the attacker it assumes:
+  who they are and what they hold or supply (a file or repository someone else wrote, input from
+  outside the application, a network position, an account). Name the position that makes the lesson
+  moot too, when there is one. Example: `Applies when: the tool runs in a directory whose content
+  someone else supplied; a PATH the attacker had to change first is out of model.`
 - **format**: `markdown`
 - **parent** (optional): name of a more-general lesson this one specializes.
 - **content** template:
