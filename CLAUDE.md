@@ -62,6 +62,14 @@ yet. They bind in every context, main conversation and subagents alike, and beat
    tests" is a C# task and a testing task, and "it looked small" is the rationalization this rule
    exists for. If you can't name the skill file you read, you haven't loaded it. Full rule in
    `skills/brain/knowledge/task-workflows.md` ⛔ Hard Rules.
+10. **No security finding before the threat model.** A security review states its model first (the
+    system and where it runs, the assets, the entry points, the attackers and what each already
+    holds), and every finding names its attacker, entry point, precondition, and asset, with a low,
+    medium, or high rating for likelihood and for impact. A concern whose precondition already
+    grants the asset (the attacker already runs code as the user, or holds administrator or root
+    rights) is listed as out of model and never blocks. An attacker who supplies only data (a file,
+    a repository, a web page) holds no position, so what that data causes stays in model. Full rule,
+    with the blocking threshold, in `skills/brain/knowledge/security.md` ⛔ Hard Rules.
 
 Additional knowledge files live in `skills/brain/knowledge/`. Before starting
 work on a task, list that folder and read every file whose topic the task

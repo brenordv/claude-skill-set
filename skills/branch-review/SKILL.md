@@ -9,7 +9,7 @@ description: >-
 
 # Branch Review
 
-> **Shared Knowledge**: This skill builds on `brain/knowledge/code-review.md`, `brain/knowledge/coding-general.md`, `brain/knowledge/writing-style.md`, and `brain/knowledge/machine-privacy.md`. Apply the first two when evaluating changes; writing-style applies both to prose in the diff (Step 4) and to the review write-up itself. All git inspection goes through the `git-ops` MCP per `brain/knowledge/git-readonly-operations.md`; never shell git. Stack detection and layer rules come from `brain/knowledge/github-pr-stacks.md`: a branch that is part of a PR stack is reviewed layer by layer, never as one flat diff.
+> **Shared Knowledge**: This skill builds on `brain/knowledge/code-review.md`, `brain/knowledge/coding-general.md`, `brain/knowledge/writing-style.md`, and `brain/knowledge/machine-privacy.md`. Apply the first two when evaluating changes; writing-style applies both to prose in the diff (Step 4) and to the review write-up itself. All git inspection goes through the `git-ops` MCP per `brain/knowledge/git-readonly-operations.md`; never shell git. Stack detection and layer rules come from `brain/knowledge/github-pr-stacks.md`: a branch that is part of a PR stack is reviewed layer by layer, never as one flat diff. A security finding raised in a review follows the threat-model rules in `brain/knowledge/security.md` ⛔ Hard Rules.
 
 ## Purpose
 
@@ -87,6 +87,13 @@ For every changed file, evaluate it across the review dimensions defined in `bra
 - [ ] No unrelated changes mixed in (minimal diff principle)
 - [ ] No dead code introduced without justification
 - [ ] No secrets, credentials, or PII in the diff
+- [ ] **Security findings follow the threat model.** The fixed checks in this list and the
+  state-machine lens keep the severities they state. For any other security finding, read
+  `brain/knowledge/security.md` ⛔ Hard Rules, state the threat model in the Summary (the repo's
+  documented one when it exists), and give the finding its path and rating. One that blocks under
+  Hard Rule 6 is Critical; high impact with low likelihood is Important and carries the
+  fix-or-accept question for the user; any other in-model finding is a Suggestion. Out-of-model
+  concerns and accepted risks, each with its reason, go in Notes and never set the outcome.
 - [ ] Consistent style with the rest of the codebase
 - [ ] Dependencies added are justified and pinned
 - [ ] **Hard Rules hold on every added/modified line: the language-agnostic ⛔ block in

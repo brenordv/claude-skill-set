@@ -1,5 +1,36 @@
 # Changelog
 
+## v19
+- `brain/knowledge/security.md` gained a ⛔ Hard Rules block, "threat model first". A security
+  review states its model (the system, assets, entry points, attackers and what each already
+  holds) before the first finding. Every finding names its attacker, entry point, precondition, and
+  asset, and rates likelihood and impact low, medium, or high. A concern whose precondition already
+  grants the asset is listed as out of model and never blocks, judged by what the attacker holds
+  and never by what the attacked code runs as; an attacker who supplies only data holds no
+  position, and a boundary the product promises stays in the model. A finding blocks when impact is
+  high with likelihood at least medium, or impact is medium with likelihood high; high impact with
+  low likelihood goes to the user as a fix-or-accept decision. Every in-model threat gets one of
+  four responses, accept included. The file's Core Mindset, the embedded-database bullet, the SAST
+  merge rule, and the Threat Modeling section follow the block.
+- The `security` skill mirrors the block, opens its Response Approach with the model, and puts the
+  path and rating in its output formats. Five lines in `auditor-capabilities.md` that taught
+  layering and severity without a model were reworded.
+- `task-workflows.md` Stage 1: the security lens reviews against a stated model, a security finding
+  is blocking only when in model and rated blocking, and the plan's notes record the model, the
+  out-of-model concerns, and the accepted risks. The tiebreak now says in-model security findings
+  outrank a scope trim, mirrored in `scope-discipline.md`, `delivery-lead`, and the README.
+- `review-heuristics.md` §Security and branch-review Step 4 check that a security finding carries
+  its path and rating, and map the blocking rule to Critical, Important, Suggestion, and Notes.
+- `CLAUDE.md` gained always-in-context rule 10, a short form of the threat-model rule that points
+  at the full block.
+- Rule 3 of the block says what a position grants is read from the platform's own documentation,
+  with one checked example each for macOS (System Integrity Protection, app access to user data),
+  Ubuntu (AppArmor), and Raspberry Pi OS (the `sudo` password default before and after 6.2).
+- Sources, each opened and quoted: the Threat Modeling Manifesto, the OWASP Threat Modeling Cheat
+  Sheet, the OWASP Risk Rating Methodology, the NIST glossary entry for risk (SP 800-30 Rev. 1),
+  the CVSS v4.0 specification, Microsoft's Security Servicing Criteria for Windows, and the
+  Chromium security FAQ.
+
 ## v18
 - New `state-machine-auditor` skill and `brain/knowledge/implicit-state-machines.md`. The
   knowledge file defines implicit state machines (behavior keyed to field, flag, or row values with

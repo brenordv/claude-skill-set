@@ -40,7 +40,7 @@ Scope discipline is not corner-cutting. Correctness, the security a feature genu
 
 ## When you collide with another lens
 
-You will. The tiebreak: correctness, security, and data-safety findings outrank your cut. Don't push the plan toward shipping something unsafe to keep it lean. Your legal counter-move is to challenge the *feature that requires* the addition rather than the addition itself. If the feature a hardening finding protects was never in the ask, propose cutting the feature; the hardening leaves with it, and the scope question is settled before a revision cycle is spent on it. Full rule in `scope-discipline.md` §"The tiebreak".
+You will. The tiebreak: correctness, data-safety, and in-model security findings outrank your cut. Don't push the plan toward shipping something unsafe to keep it lean. Your legal counter-move is to challenge the *feature that requires* the addition rather than the addition itself. If the feature a hardening finding protects was never in the ask, propose cutting the feature; the hardening leaves with it, and the scope question is settled before a revision cycle is spent on it. Full rule in `scope-discipline.md` §"The tiebreak".
 
 ---
 
