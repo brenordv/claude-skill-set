@@ -26,6 +26,10 @@
 - Rule 3 of the block says what a position grants is read from the platform's own documentation,
   with one checked example each for macOS (System Integrity Protection, app access to user data),
   Ubuntu (AppArmor), and Raspberry Pi OS (the `sudo` password default before and after 6.2).
+- `general-remembering-lessons.md` gained a ⛔ block for security lessons: a recalled lesson is
+  input to the threat model and never a finding by itself. A lesson tagged `security` that defends
+  against someone ends its summary with an `Applies when:` clause naming the attacker it assumes,
+  and a reader sets the lesson aside when that attacker is out of model.
 - Sources, each opened and quoted: the Threat Modeling Manifesto, the OWASP Threat Modeling Cheat
   Sheet, the OWASP Risk Rating Methodology, the NIST glossary entry for risk (SP 800-30 Rev. 1),
   the CVSS v4.0 specification, Microsoft's Security Servicing Criteria for Windows, and the
