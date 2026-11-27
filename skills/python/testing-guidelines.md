@@ -124,6 +124,26 @@ def test_database_migration_applies_cleanly(db_session):
   (`uv run pytest ...` on a uv project; SKILL.md Hard Rule 7)
 - Focus coverage on business logic, not boilerplate
 
+## Test-weakening tells
+
+`brain/knowledge/testing.md` ⛔ Hard Rules 2 and 3 govern any change to an existing test, and
+`brain/knowledge/review-heuristics.md` §Testing ("Test integrity") lists the moves. In pytest
+they look like this, on a line the diff adds or changes:
+
+- `@pytest.mark.skip` or `@pytest.mark.skipif` on a test.
+- `@pytest.mark.xfail`: a failing xfail test doesn't fail the run. `strict=True` only makes an
+  unexpected pass fail it.
+- `pytest.skip(...)` or `pytest.xfail(...)` called in the test body or a fixture.
+- `pytest.importorskip(...)` added to a module whose import used to succeed.
+- A `parametrize` row removed.
+- A narrower `pytest` command than the baseline's: a path, or a marker selection like the
+  `integration` marker above used to leave tests out.
+- `--cov-threshold` or `--exclude` passed to the quality gate where the baseline had none.
+  `--skip-mutants` at handoff is this skill's own documented flow and is no tell.
+
+Each is a ledger entry with a disposition and a ground, or it doesn't happen. Reference:
+<https://docs.pytest.org/en/stable/how-to/skipping.html>.
+
 ## New-code quality gate
 
 `scripts/python_quality_gate.py` in this skill folder gates the lines a branch adds, diffing the
@@ -146,7 +166,9 @@ and two tool-backed gates:
 
 The threshold is a detection signal, and the coverage rule above holds: do not add tests purely to
 move the number. A failing gate means "look at what is untested and decide", never "pad until
-green".
+green". The decision is between writing the missing test and reporting the gap to the user;
+lowering `--cov-threshold` or adding an `--exclude` to pass is a weakening move that needs a
+ledger entry and a ground (`brain/knowledge/testing.md` ⛔ Hard Rule 3).
 
 The two halves run at different times. While iterating and at handoff, run only the coverage half
 (`--skip-mutants`). The mutation half is opt-in and refuses a dirty tree, and a commit is the

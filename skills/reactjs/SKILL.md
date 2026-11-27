@@ -668,6 +668,7 @@ src/
 ## 18. Checklist Before Shipping
 
 - [ ] TypeScript strict mode, no `any`, explicit return types
+- [ ] Lint and type-check findings the change introduced are fixed in the code, none silenced; any suppression has a ground and is in the handoff's suppression list (`brain/knowledge/coding-general.md` ⛔ Hard Rule 13)
 - [ ] Error boundaries at route and feature levels
 - [ ] Loading states use Suspense or skeleton (no layout shift)
 - [ ] Empty states for all collections

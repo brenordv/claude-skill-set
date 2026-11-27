@@ -154,6 +154,25 @@ RunUAT.bat Gauntlet -project=MyGame -testfilter="Game.Combat.*" -build=local
 
 Capture performance metrics with the `PerfFilter` automation flag and latent commands: load the map (`FLoadMap`), wait for streaming (`FWaitForMapToLoad`), capture frame-time stats over N frames (`FCapturePerformanceStats`), and assert the frame time stays within budget.
 
+## Test-weakening tells
+
+`brain/knowledge/testing.md` ⛔ Hard Rules 2 and 3 govern any change to an existing test, and
+`brain/knowledge/review-heuristics.md` §Testing ("Test integrity") lists the moves. In Unreal
+they look like this, on a line the diff adds or changes:
+
+- Automation Spec: an `x` prefix on `It`, `Describe`, `BeforeEach`, or `AfterEach`. `xIt`
+  disables the spec, and `xDescribe` disables everything inside it.
+- A `RunTest` that returns `true` early, or a parameter branch emptied in a complex test.
+- A narrower `-test` or `-testfilter` on the Gauntlet command than the baseline's.
+
+This list is short. Of the engine's own switches, only the spec prefixes are confirmed from
+Epic's documentation; the other two bullets describe the test code and the commands shown in
+this file. A test
+flag, config entry, or expected-error call that keeps a test from running or failing is the same
+move under the generic catalog. Each is a ledger entry with a disposition and a ground, or it
+doesn't happen. Reference:
+[Automation Spec](https://dev.epicgames.com/documentation/en-us/unreal-engine/automation-spec-in-unreal-engine).
+
 ## Key Principles
 
 - Use `IMPLEMENT_SIMPLE_AUTOMATION_TEST` for straightforward tests

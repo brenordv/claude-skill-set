@@ -107,6 +107,37 @@ test('user can complete checkout flow', async ({ page }) => {
 });
 ```
 
+## Test-weakening tells
+
+`brain/knowledge/testing.md` ⛔ Hard Rules 2 and 3 govern any change to an existing test, and
+`brain/knowledge/review-heuristics.md` §Testing ("Test integrity") lists the moves. In this stack
+they look like this, on a line the diff adds or changes:
+
+- Vitest: `test.skip` / `it.skip`, `describe.skip`, `test.skipIf`, `test.runIf`, or `skip()`
+  called on the test context.
+- Vitest: `test.only` or `describe.only` left in, so only the marked tests run. Vitest throws on
+  `only` when it detects CI, and `--allowOnly` turns that off.
+- Vitest: `test.todo` replacing a test that had a body, or `test.fails`, which passes when the
+  assertion fails.
+- Vitest command or config: `-t` / `--testNamePattern`, `--exclude` or `test.exclude`,
+  `--passWithNoTests`, `--retry.count` or a `retry` option, `-u` / `--update` rewriting
+  snapshots, or lower `coverage.thresholds`.
+- Playwright: `test.skip`, `test.fixme`, `test.fail` (the test passes only if it fails),
+  `test.slow` (triples the timeout), `test.only`, and the `test.describe.skip` / `.fixme` /
+  `.only` forms.
+- Playwright command or config: `--grep` / `grep`, `--grep-invert` / `grepInvert`,
+  `testIgnore`, `--retries` / `retries`, `-u` / `--update-snapshots`, `--pass-with-no-tests`, or
+  `forbidOnly` turned off.
+
+Each is a ledger entry with a disposition and a ground, or it doesn't happen. Reference: Vitest's
+[test API](https://vitest.dev/api/), [describe API](https://vitest.dev/api/describe),
+[exclude config](https://vitest.dev/config/exclude), [CLI](https://vitest.dev/guide/cli),
+[snapshot guide](https://vitest.dev/guide/snapshot), and
+[coverage config](https://vitest.dev/config/coverage); Playwright's
+[annotations](https://playwright.dev/docs/test-annotations),
+[CLI](https://playwright.dev/docs/test-cli), and
+[TestConfig](https://playwright.dev/docs/api/class-testconfig).
+
 ## Key Principles
 
 - Never test internal state (`component.state`) or lifecycle methods

@@ -709,6 +709,7 @@ ng e2e
 - [ ] Error, loading, and empty states handled
 - [ ] Buttons disabled during async operations
 - [ ] Accessibility: semantic HTML, ARIA, keyboard support
+- [ ] Lint, type-check, and template-check findings the change introduced are fixed in the code, none silenced; any suppression has a ground and is in the handoff's suppression list (`brain/knowledge/coding-general.md` ⛔ Hard Rule 13)
 
 ## Performance Review Checklist
 

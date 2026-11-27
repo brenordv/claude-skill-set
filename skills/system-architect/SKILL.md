@@ -110,6 +110,7 @@ Follow this sequence for every architecture engagement:
 - [ ] Security, observability, and operational concerns addressed
 - [ ] Cost estimation completed
 - [ ] Migration path defined (if evolving existing system)
+- [ ] Existing tests the change is expected to make stale are named, each with the behavior change that does it, or the plan says "none expected" (`brain/knowledge/general-problem-solving.md` §2)
 - [ ] Every status, lifecycle, or flag cluster the design adds or changes has its state and transition tables, readers, write guards, in-flight exits, and replay handling written down (`implicit-state-machines.md`)
 
 ### State machines in the design

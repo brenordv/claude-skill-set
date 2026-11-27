@@ -87,6 +87,28 @@ func test_weapon_resource_loads_correct_stats() -> void:
   ```
 - Run tests on every push to catch regressions early
 
+## Test-weakening tells
+
+`brain/knowledge/testing.md` ⛔ Hard Rules 2 and 3 govern any change to an existing test, and
+`brain/knowledge/review-heuristics.md` §Testing ("Test integrity") lists the moves. In Godot they
+look like this, on a line the diff adds or changes:
+
+- GUT: `pending()` in a test that used to assert. A pending test doesn't change the exit code,
+  so a run with nothing else failing still returns 0.
+- GUT: `pass_test()` standing in for an assertion.
+- GUT: `should_skip_script()` returning true or a string; GUT stops running the script and marks
+  it risky.
+- GUT command: `-gselect`, `-ginner_class`, `-gunit_test_name`, or a shorter `-gtest` / `-gdir`
+  list than the baseline's.
+- GdUnit4: a `_do_skip` argument on a test function, or on `before()` to skip the whole suite.
+- GdUnit4 command: `-i` / `--ignore`, or fewer `-a` / `--add` entries than the baseline's.
+
+Each is a ledger entry with a disposition and a ground, or it doesn't happen. Reference: GUT's
+[GutTest class](https://gut.readthedocs.io/en/latest/class_ref/class_guttest.html) and
+[command line](https://gut.readthedocs.io/en/latest/Command-Line.html); GdUnit4's
+[skipping tests](https://godot-gdunit-labs.github.io/gdUnit4/latest/advanced_testing/skip-tests/)
+and [command line tool](https://godot-gdunit-labs.github.io/gdUnit4/latest/advanced_testing/cmd/).
+
 ## Key Principles
 
 - Separate pure logic from scene-tree-dependent behavior for easier testing

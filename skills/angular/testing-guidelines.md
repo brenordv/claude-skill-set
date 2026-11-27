@@ -95,6 +95,37 @@ test('should show empty state when no items', async ({ page }) => {
 });
 ```
 
+## Test-weakening tells
+
+`brain/knowledge/testing.md` ⛔ Hard Rules 2 and 3 govern any change to an existing test, and
+`brain/knowledge/review-heuristics.md` §Testing ("Test integrity") lists the moves. In this stack
+they look like this, on a line the diff adds or changes:
+
+- Jasmine: `xit` or `xdescribe` (reported pending, never executed), or `pending()` called in a
+  spec, which makes its expectation results ignored.
+- Jasmine: `fit` or `fdescribe` left in. When anything is focused, only the focused specs run.
+- Jest: `test.skip` / `it.skip` / `xit` / `xtest`, `describe.skip` / `xdescribe`, `test.only` /
+  `fit`, `describe.only` / `fdescribe`, `test.todo` replacing a test that had a body, or
+  `test.failing`.
+- Jest command or config: `-t` / `--testNamePattern`, `testPathIgnorePatterns`,
+  `--passWithNoTests`, `-u` / `--updateSnapshot`, `jest.retryTimes`, a lower `coverageThreshold`,
+  or a new `coveragePathIgnorePatterns` entry.
+- Playwright: `test.skip`, `test.fixme`, `test.fail` (the test passes only if it fails),
+  `test.slow` (triples the timeout), `test.only`, and the `test.describe.skip` / `.fixme` /
+  `.only` forms.
+- Playwright command or config: `--grep` / `grep`, `--grep-invert` / `grepInvert`,
+  `testIgnore`, `--retries` / `retries`, `-u` / `--update-snapshots`, `--pass-with-no-tests`, or
+  `forbidOnly` turned off.
+
+Each is a ledger entry with a disposition and a ground, or it doesn't happen. Reference:
+Jasmine's [global API](https://jasmine.github.io/api/edge/global); Jest's
+[globals](https://jestjs.io/docs/api), [CLI](https://jestjs.io/docs/cli),
+[configuration](https://jestjs.io/docs/configuration), and
+[`jest.retryTimes`](https://jestjs.io/docs/jest-object); Playwright's
+[annotations](https://playwright.dev/docs/test-annotations),
+[CLI](https://playwright.dev/docs/test-cli), and
+[TestConfig](https://playwright.dev/docs/api/class-testconfig).
+
 ## Key Principles
 
 - Always call `fixture.detectChanges()` after setting inputs or triggering changes

@@ -26,6 +26,15 @@ As a high level, here are some examples:
   failure to fix, not noise to scroll past.
 - A deliberate change is the source of truth. When it breaks an old test, the test gets updated; the
   agent never reverts the change or relaxes a validation just to go green.
+- The tests get the same protection. A red test is diagnosed before it is touched, and "stale"
+  needs a sentence the user wrote that changed the behavior. Without one the agent fixes the code
+  or reports the test red; it never deletes, skips, or loosens the test. Every change to an
+  existing test lands in a ledger in the handoff, and the branch review rebuilds that list from
+  the diff with a subagent that didn't write the code.
+- "Lint clean, tests pass" is checked, not trusted. The author records each gate command with its
+  exit status, and the review re-runs those commands itself and compares; a mismatch blocks.
+- A finding is fixed, never silenced. A suppression, a relaxed tool setting, or a swallowed exit
+  status needs one of three stated grounds and lands in a list in the handoff.
 - Minimal diffs with a contained blast radius: solve what was asked, tighten only the thing being
   tightened, leave the rest alone.
 - File size follows per-language tiers. New code that would push a file past the "worth reviewing"
@@ -123,9 +132,13 @@ of four paths:
   migrations.
 - **Planning-only**: the user wants a plan or a design decision, not code. Runs Stage 1 of the
   full-work pipeline and stops there.
-- **Lightweight**: a small mechanical change (typo, config tweak, doc edit, rename). Skips the review
+- **Lightweight**: a small mechanical change (typo, config tweak, doc edit, rename). Skips the plan
   panel; the change still passes the verify gate and gets one focused self-review, and the language
-  skill and the topic's knowledge file still load. The path trims review, never the rules.
+  skill and the topic's knowledge file still load. The path trims planning, never the rules, and
+  never the diff's review: `branch-review` runs on every diff that isn't proven all prose (every
+  changed file a prose file no tool or agent loads as instructions or configuration, and no
+  change to a command the reader is told to run). The diff decides that, not the agent's sense
+  of how small the task is.
 - **None**: read-only questions and conversation run no workflow at all.
 
 Classification isn't final. A task that starts lightweight but turns out to touch behavior or multiple
@@ -136,7 +149,7 @@ flowchart TD
     T["incoming task"] --> Q{"what is being asked?"}
     Q -->|"non-trivial change,<br/>implemented end to end"| FW["full-work pipeline"]
     Q -->|"plan or design,<br/>no code"| PO["planning-only:<br/>Stage 1, then stop"]
-    Q -->|"small mechanical<br/>change"| LW["lightweight:<br/>change, verify gate,<br/>one self-review"]
+    Q -->|"small mechanical<br/>change"| LW["lightweight:<br/>change, verify gate,<br/>branch-review unless<br/>the diff is all prose"]
     Q -->|"read-only question<br/>or conversation"| NONE["no workflow"]
     LW -.->|"turns out to touch behavior,<br/>security, or multiple systems"| FW
 ```
@@ -194,8 +207,11 @@ that needs the hardening belonged in the ask at all.
 
 **Stage 2: execute and verify.** The language skill implements the approved plan. Before any review
 happens, a mandatory verify gate runs: formatter, build or typecheck, the test suite, and an end-to-end
-exercise of the change where it has a runtime surface. Review never starts on a red build, because
-reviewing unrun code is reviewing a guess. Once the gate is green, `branch-review` reviews the diff.
+exercise of the change where it has a runtime surface. The suite also runs once before the first
+edit, so a test that was already red is known by name. Review never starts on a red build or on a
+test the change turned red, because reviewing unrun code is reviewing a guess; a test that can't go
+green without being weakened ends the workflow as red, reported by name. Once the gate passes,
+`branch-review` reviews the diff, starting by re-running the recorded gate commands itself.
 Blocking findings loop back to a fix, another pass through the verify gate, and a re-review of the
 affected areas.
 

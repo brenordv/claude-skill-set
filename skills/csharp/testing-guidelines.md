@@ -279,8 +279,27 @@ Fakes stay minimal: implement only what the tests exercise, expose captured stat
 ## Coverage & Quality
 
 - Target **90%+** code coverage (but consider ROI -- don't test trivial getters/setters)
-- Always run `dotnet test` before handoff to verify all tests pass
+- Always run `dotnet test` before handoff and report what it shows. A red test is fixed in the code or reported red; it is never skipped, deleted, or loosened to make the run pass (`brain/knowledge/testing.md` ⛔ Hard Rule 2)
 - Every new feature or bug fix must include corresponding tests
+
+## Test-weakening tells
+
+`brain/knowledge/testing.md` ⛔ Hard Rules 2 and 3 govern any change to an existing test, and
+`brain/knowledge/review-heuristics.md` §Testing ("Test integrity") lists the moves. In xUnit they
+look like this, on a line the diff adds or changes:
+
+- `Skip` set on `[Fact]` or `[Theory]`, or on a `TheoryDataRow`.
+- `SkipWhen` or `SkipUnless` on the attribute (xUnit v3; each names a static bool property).
+- `Assert.Skip`, `Assert.SkipWhen`, or `Assert.SkipUnless` in the test body (xUnit v3).
+- An `[InlineData]` row or a `TheoryData` entry removed.
+- A filter on the `dotnet test` command that the baseline didn't have: a `--filter-not-*` or
+  narrower `--filter-*` switch on an MTP repo, a VSTest `--filter` expression on a v2 repo (both
+  in the MTP section below), or a single project where the baseline ran the solution.
+- `--cov-threshold` or `--exclude` passed to the quality gate where the baseline had none.
+  `--skip-mutants` at handoff is this skill's own documented flow and is no tell.
+
+Each is a ledger entry with a disposition and a ground, or it doesn't happen. Reference: the
+skip assertions and attribute properties at <https://xunit.net/docs/getting-started/v3/whats-new>.
 
 ## xUnit v3 and Microsoft.Testing.Platform repos
 
@@ -360,7 +379,9 @@ and two tool-backed gates:
 
 The threshold is a detection signal, and this file's standing rule holds: do not add tests purely
 to move the number. A failing gate means "look at what is untested and decide", never "pad until
-green".
+green". The decision is between writing the missing test and reporting the gap to the user;
+lowering `--cov-threshold` or adding an `--exclude` to pass is a weakening move that needs a
+ledger entry and a ground (`brain/knowledge/testing.md` ⛔ Hard Rule 3).
 
 The two halves run at different times. While iterating and at handoff, run only the coverage half
 (`--skip-mutants`). The mutation half is opt-in and wants committed work, and a commit is the

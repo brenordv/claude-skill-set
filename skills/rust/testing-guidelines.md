@@ -172,6 +172,28 @@ For workspace-wide checks:
 cargo test --workspace
 ```
 
+Report what the run shows. A red test is fixed in the code or reported red; it is never ignored,
+deleted, or loosened to make the run pass (`brain/knowledge/testing.md` ⛔ Hard Rule 2).
+
+## Test-weakening tells
+
+`brain/knowledge/testing.md` ⛔ Hard Rules 2 and 3 govern any change to an existing test, and
+`brain/knowledge/review-heuristics.md` §Testing ("Test integrity") lists the moves. In Rust they
+look like this, on a line the diff adds or changes:
+
+- `#[ignore]` on a test: it still compiles, and the harness doesn't run it by default.
+- `#[should_panic]` added to a test that used to assert a value, or its `expected` string
+  removed.
+- `--skip <filter>` after `--` on the `cargo test` command; it drops every test whose name
+  contains the filter.
+- The one-crate command above where the baseline ran the workspace.
+- `--cov-threshold` or `--exclude` passed to the quality gate where the baseline had none.
+  `--skip-mutants` at handoff is this skill's own documented flow and is no tell.
+
+Each is a ledger entry with a disposition and a ground, or it doesn't happen. Reference: the
+test attributes at <https://doc.rust-lang.org/reference/attributes/testing.html> and the harness
+flags at <https://doc.rust-lang.org/rustc/tests/index.html>.
+
 ## New-code quality gate
 
 `scripts/rust_quality_gate.py` in this skill folder gates the lines a branch adds, diffing the
@@ -194,7 +216,9 @@ and two tool-backed gates:
 
 The threshold is a detection signal, and this file's standing rule holds: do not add tests purely
 to move the number. A failing gate means "look at what is untested and decide", never "pad until
-green".
+green". The decision is between writing the missing test and reporting the gap to the user;
+lowering `--cov-threshold` or adding an `--exclude` to pass is a weakening move that needs a
+ledger entry and a ground (`brain/knowledge/testing.md` ⛔ Hard Rule 3).
 
 The two halves run at different times. While iterating and at handoff, run only the coverage half
 (`--skip-mutants`). The mutation half is opt-in, and a commit is the user's action alone: never
