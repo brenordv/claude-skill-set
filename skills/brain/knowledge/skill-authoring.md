@@ -69,6 +69,12 @@ it"). An example that could be mistaken for a mandate needs the sentence that sa
   caveats, user-specific bans); a rewrite that drops one silently relaxes it.
 - New guidance must pass its own bar: run the writing-style self-check and the machine-privacy
   self-check on skill prose before finalizing.
+- A rule that worked last month can stop working after an unrelated edit, and nothing shows it
+  until the output is wrong. The repo keeps trap cases for that under `evals/`: after a round that
+  changes a rule, the maintainer runs them by the procedure in `evals/README.md` and reports the
+  counts. When a rule regresses, or a new rule's behavior test is written, save the trap as a case
+  instead of throwing it away. This note is for whoever maintains the skill set; an agent doing
+  ordinary work in another repo has no reason to open that folder.
 - When a vault lesson gets promoted into this repo, purge the lesson afterward and sweep for
   references to its name; a pointer to a purged lesson is a dead link the next reader can't follow.
   This file is the standing home of the principle; it carries everything the lesson did.

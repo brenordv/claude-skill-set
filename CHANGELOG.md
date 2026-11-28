@@ -62,6 +62,15 @@
   tool or agent loads; a small task still skips the plan panel. For a task that declared the
   lightweight path, branch-review checks the diff for facts that say it was bigger and reports
   them. The handoff gained a `Path` line.
+- New `evals/` folder: regression cases for the guidance itself. Each case is a zip fixture, a
+  JSON case file that pins the archive and every member by SHA-256 and holds the prompt and the
+  checks, and a prose file describing the trap. `guidance_evals.py` (standard library, run through
+  uv) verifies the hashes, unpacks a fixture into a stamped run directory outside the repo, grades
+  a run's `result.json` with three mechanical check types, and prints counts per case. An agent
+  runs the cases on demand with fresh subagents by the procedure in `evals/README.md`; CI runs
+  only `verify`, the runner's tests, ruff, and mypy, on ubuntu and windows. Two review-side cases
+  ship: `review-test-integrity` and `review-verify-rerun`. `skill-authoring.md` gained a
+  maintenance note pointing at them, and `.gitattributes` marks `*.zip` binary.
 - Sources, each opened: pytest's skip and xfail guide, the Rust Reference's testing attributes,
   the rustc book's test harness flags, xUnit.net's "What's new in v3", the Vitest API, CLI,
   snapshot, and coverage pages, the Jest globals, CLI, configuration, and Jest object pages,

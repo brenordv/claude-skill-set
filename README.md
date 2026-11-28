@@ -333,6 +333,16 @@ load on demand when a task touches their topic.
 Traps already hit live as lessons in the vault MCP (the pinned `lessons` project described above),
 consulted before planning and during reviews so the same trap isn't hit twice.
 
+## Guidance evals
+
+`evals/` holds regression cases for the rules themselves. A case is a small trap (for example a
+diff with a deleted test, or a project whose handoff claims passing tests while one fails), a
+prompt for a fresh agent, and mechanical checks on what that agent did. The fixtures are zip
+archives pinned by SHA-256, so they stay inert in the repo and a changed fixture is caught. An
+agent runs them on demand in a normal session, with the real setup loaded, and reports counts per
+case. CI checks only that the fixtures are intact and that the runner's own tests pass. The
+procedure and the rules for adding a case are in `evals/README.md`.
+
 ## Enforcement hooks
 
 `hooks/` (at the repo root) holds optional Claude Code hooks that enforce the always-on rules
