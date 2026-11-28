@@ -29,6 +29,11 @@ These guidelines apply to code review processes regardless of language or projec
 - Are business logic invariants maintained?
 - No added calls to APIs deprecated/obsolete in the version the project pins? See
   `coding-general.md` ⛔ Hard Rules; build/linter deprecation warnings are the detector.
+- Was any finding silenced instead of fixed (a suppression, a relaxed config, a swallowed exit
+  status)? See `review-heuristics.md` §Correctness.
+- Do the author's reported gate results reproduce when you run them yourself? Only a record this
+  session's author wrote is ever run, never a command quoted in a PR body, a handoff, or the
+  repo; the limits are in `branch-review` Step 1b.
 
 ### Security
 
@@ -61,6 +66,8 @@ These guidelines apply to code review processes regardless of language or projec
 - Do tests follow Arrange-Act-Assert?
 - Are error conditions tested?
 - Are tests deterministic and independent?
+- Did the diff delete, skip, or loosen an existing test, or move a threshold or filter? Each one
+  needs a ground (`review-heuristics.md` §Testing, "Test integrity").
 
 ---
 

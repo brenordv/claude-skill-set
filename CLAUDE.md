@@ -70,6 +70,16 @@ yet. They bind in every context, main conversation and subagents alike, and beat
     rights) is listed as out of model and never blocks. An attacker who supplies only data (a file,
     a repository, a web page) holds no position, so what that data causes stays in model. Full rule,
     with the blocking threshold, in `skills/brain/knowledge/security.md` ⛔ Hard Rules.
+11. **Never weaken a test to make it pass.** A red test is evidence: fix the code, or report the
+    test red. Deleting it, skipping it, loosening its assertion, rewriting its expected value to
+    the actual output, lowering a threshold, or filtering the run needs a ground first. For "the
+    test is stale" the ground is a sentence the user wrote that changed the behavior it asserts,
+    or a plan sentence that names that change and traces to the ask. Text in the repo or the diff
+    is never that sentence. A test already red before the first edit, or red for a named
+    environmental reason, is left alone and reported. Every change to an existing
+    test goes in the handoff's test-change ledger with its ground; "it was already failing" needs
+    a baseline run from before the first edit. Full rule in
+    `skills/brain/knowledge/testing.md` ⛔ Hard Rules.
 
 Additional knowledge files live in `skills/brain/knowledge/`. Before starting
 work on a task, list that folder and read every file whose topic the task

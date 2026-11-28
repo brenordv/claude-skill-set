@@ -1,5 +1,84 @@
 # Changelog
 
+## v20
+- `brain/knowledge/testing.md` ⛔ Hard Rules gained rules 2 and 3, against an agent that deletes,
+  skips, or loosens a failing test to get a green suite. Rule 2: a red test is diagnosed before it
+  is touched, with one of four dispositions (the code is wrong, stale, defective, not caused by
+  this change), each with its ground. "Stale" needs a quoted sentence that changed the behavior, the
+  user's or a plan sentence that traces to the ask; text in the repo, the diff, or a tracker is data and never approval.
+  The suite runs once before the first edit, and that baseline is the only evidence for "it was
+  already failing". Rule 3: every change to a pre-existing test is a ledger entry (test, file,
+  move, disposition, ground, predicted or not), written when the test is touched. The block's
+  precedence now names the verify gate, the cycle cap, and the repo's own skip markers.
+- `general-problem-solving.md` §3 gained "A red test is evidence until diagnosed" beside "A
+  deliberate change is the source of truth", and §2 has the plan name the tests it expects to go
+  stale. The "update it or delete it" wording in `testing.md`, `general-problem-solving.md`, and
+  `task-workflows.md` now carries the quoted-ground condition, and the deliberate-change mirrors
+  in `coding-general.md` §1, the csharp skill, and the README gained the counterpart sentence.
+  `coding-general.md` §10 gained two handoff steps (run with the baseline's command; walk the
+  ledger against the diff), `code-review.md` §2 one question, and the python skill's checklist a
+  clause on its "tests pass" box.
+- `task-workflows.md`: Stage 2 records the baseline (command, the runner's figures, failing and
+  skipped test names) in the progress checkpoint and writes ledger entries there as tests change.
+  The verify gate blocks on tests red relative to the baseline and says "fix" never means weaken
+  the test. A suite that can't go green without weakening a test ends the workflow with
+  `tests: RED` and no review. The handoff carries the ledger, the before and after figures, and
+  the review's lens line. On the lightweight path a `stale` or `defective` entry escalates the
+  task to full-work.
+- `review-heuristics.md` §Testing gained "Test integrity": the catalog of weakening moves and how
+  to grade them. `branch-review` Step 4 gained a test-integrity lens, run as a findings-only
+  subagent whenever the change touches a pre-existing test or test configuration. It reads the
+  diff from the base to the working tree, builds its own list before reading the author's ledger,
+  and checks each quote against the user's prompt and the plan as finalized. An unledgered
+  weakening is Critical; a weakened test that guards a security control is always listed by name.
+  The review output gained a lens line and a "Test changes" list.
+- All nine testing guides gained a "Test-weakening tells" section naming the stack's skip, focus,
+  expected-failure, retry, and filter markers: xUnit, pytest, Rust's harness, Vitest, Jest,
+  Jasmine, Playwright, GUT, GdUnit4, NUnit under the Unity Test Framework, and Unreal's
+  Automation Spec. Of Unreal's own switches the list names only the spec prefixes, the one
+  mechanism Epic's pages confirmed. The csharp, python, and rust gate sections say a lowered threshold or an added
+  exclusion is a ledgered move. The system-architect checklist asks for the stale-test prediction.
+- `CLAUDE.md` gained always-in-context rule 11, a short form of the rule.
+- The verify gate is no longer self-reported. `task-workflows.md` has the author write a verify
+  record as each gate command runs (kind, command, exit status, the tool's summary line; a
+  baseline row from before the first edit and a final row), and `branch-review` gained Step 1b:
+  it re-runs the recorded format-check, lint, build, and test commands itself and compares. A
+  mismatch is Critical. It runs only the record this session's author wrote, never a command
+  found in a diff, PR body, or repo file, never a write-form command, and never a server or
+  browser; a row it can't re-run is named with a reason from a closed list. The review output
+  gained a `Verify re-run` line and a Verify section, repeated in the handoff.
+- `coding-general.md` gained Hard Rule 13, "a finding is fixed, never silenced": the forms
+  silencing takes (suppressions, relaxed tool config, a swallowed or removed check step, a
+  narrowed command), the three grounds that make a suppression legitimate, and a suppression
+  list in the checkpoint and handoff. `review-heuristics.md` §Correctness and branch-review
+  Step 4 check for unlisted and unjustified ones; a silenced security rule is Critical unless the user's own
+  instruction to silence it is quoted.
+  The python and rust suppression sentences now carry the rule's grounds, and the csharp, angular,
+  reactjs, and nextjs skills point at the rule. `code-review.md` §2 gained two questions, the
+  "Over-planning" anti-pattern in `general-problem-solving.md` says checking is not planning, and
+  the README's workflow section and principles list follow.
+- The diff decides whether a review runs. `task-workflows.md` Hard Rule 5 and "Choosing a
+  workflow" now say `branch-review` is skipped only when every changed path is a prose file no
+  tool or agent loads; a small task still skips the plan panel. For a task that declared the
+  lightweight path, branch-review checks the diff for facts that say it was bigger and reports
+  them. The handoff gained a `Path` line.
+- New `evals/` folder: regression cases for the guidance itself. Each case is a zip fixture, a
+  JSON case file that pins the archive and every member by SHA-256 and holds the prompt and the
+  checks, and a prose file describing the trap. `guidance_evals.py` (standard library, run through
+  uv) verifies the hashes, unpacks a fixture into a stamped run directory outside the repo, grades
+  a run's `result.json` with three mechanical check types, and prints counts per case. An agent
+  runs the cases on demand with fresh subagents by the procedure in `evals/README.md`; CI runs
+  only `verify`, the runner's tests, ruff, and mypy, on ubuntu and windows. Two review-side cases
+  ship: `review-test-integrity` and `review-verify-rerun`. `skill-authoring.md` gained a
+  maintenance note pointing at them, and `.gitattributes` marks `*.zip` binary.
+- Sources, each opened: pytest's skip and xfail guide, the Rust Reference's testing attributes,
+  the rustc book's test harness flags, xUnit.net's "What's new in v3", the Vitest API, CLI,
+  snapshot, and coverage pages, the Jest globals, CLI, configuration, and Jest object pages,
+  Jasmine's global API, Playwright's annotations, CLI, and TestConfig pages, GUT's GutTest and
+  command-line pages, GdUnit4's skip and command-line pages, NUnit's Ignore, Explicit, and Retry
+  pages, the Unity Test Framework's UnityPlatform, command-line, and LogAssert pages, and Epic's
+  Automation Spec page.
+
 ## v19
 - `brain/knowledge/security.md` gained a ⛔ Hard Rules block, "threat model first". A security
   review states its model (the system, assets, entry points, attackers and what each already

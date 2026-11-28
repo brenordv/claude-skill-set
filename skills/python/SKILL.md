@@ -25,8 +25,12 @@ list before writing code, and walk it again at handoff (§5).
 1. **The toolchain is ruff, ruff format, and mypy, and all of it runs green before handoff.**
    `ruff check`, `ruff format --check`, `mypy`, and `pytest` clean on the code you touched, even in
    a repo configured for black/isort/flake8/pylint (run those too if the repo's CI does; they don't
-   replace this gate). Never silence a finding to get there: a `# noqa` or `# type: ignore` without
-   a specific rule code and a real reason is a violation, not a fix.
+   replace this gate). Never silence a finding to get there: a `# noqa` or `# type: ignore` is a
+   violation, not a fix, unless it names the specific rule code, the finding is wrong for that
+   line or sits on a line you touched with a fix that needs code outside the change, the reason
+   sits beside it, and it is in the
+   handoff's suppression list (`brain/knowledge/coding-general.md` ⛔ Hard Rule 13, which also
+   covers config relaxations and the other ways a finding is made to disappear).
 2. **Type hints on every function signature you write**, parameters and return type, public or
    private, in modern syntax: `list[str]`, `dict[str, int]`, `X | None`. Never import `List`,
    `Dict`, `Optional`, or `Union` from `typing` for new code unless the project pins a Python
@@ -195,7 +199,7 @@ Run these checks before marking work complete:
 - [ ] No lint errors: `ruff check .` (ruff carries the flake8, isort, pylint-style, and bandit-style rule sets)
 - [ ] Formatting clean: `ruff format --check .` (run `ruff format .` to fix)
 - [ ] Type checking clean: `mypy src/`
-- [ ] Tests pass with coverage (>=80% for critical paths): `pytest --cov=src --cov-report=term-missing`
+- [ ] Tests pass with coverage (>=80% for critical paths): `pytest --cov=src --cov-report=term-missing`. A red test is fixed in the code or reported red, never skipped, deleted, or loosened to tick this box (`brain/knowledge/testing.md` ⛔ Hard Rule 2)
 - [ ] Every command above ran through the project's environment manager (`uv run` / `poetry run` / `pipenv run`, or the venv's `python -m`), not a `.venv` binary by path or a global install (Hard Rule 7)
 - [ ] Coverage half of the new-code quality gate run where the toolchain is available (`scripts/python_quality_gate.py --skip-mutants` in this skill folder). The mutation half is optional: never commit anything yourself; ask the user whether they want it and to commit the changes themselves first (see `testing-guidelines.md` §"New-code quality gate")
 - [ ] File-size gate clean: no new or cap-crossing production file hits the 1,500-line cap (warn at 800), and new code goes into a new module rather than growing a file past the cap (Hard Rule 6). The gate reports exit code 4 on a cap crossing and runs on git and the filesystem alone, so it works even where pytest is absent. Ruff has no file- or module-length rule; a greenfield project wanting a related lint signal can enable the function-level PLR0915 (too-many-statements) and C901 (complexity), but neither caps a file.

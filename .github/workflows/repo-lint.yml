@@ -78,3 +78,38 @@ jobs:
       - name: Run rust quality gate unit tests
         if: always()
         run: python3 -m unittest discover -s skills/rust/scripts
+
+  # The eval fixtures are zips pinned by hash in their case files, and the runner packs and unpacks
+  # them with path and header handling that differs by OS, so both run. Nothing here unpacks a case
+  # archive or runs anything from inside one: verify only hashes, and the tests build their own zips.
+  # Each step has if: always(), so a lint failure never hides a hash mismatch.
+  evals:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install the evals environment
+        run: uv sync --locked
+      - name: Verify eval fixtures against their case files
+        if: always()
+        run: uv run --locked python guidance_evals.py verify
+      - name: Run eval runner tests
+        if: always()
+        run: uv run --locked pytest
+      - name: Lint eval runner
+        if: always()
+        run: uv run --locked ruff check .
+      - name: Check eval runner formatting
+        if: always()
+        run: uv run --locked ruff format --check .
+      - name: Type-check eval runner
+        if: always()
+        run: uv run --locked mypy .

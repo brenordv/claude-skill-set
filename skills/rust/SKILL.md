@@ -41,8 +41,13 @@ list before writing code, and walk it again at handoff (§8).
    context get `#[instrument]`.
 4. **The four gates run clean before handoff, warnings as errors:** `cargo fmt --all -- --check`,
    `cargo clippy --all-targets --all-features -- -D warnings`, `cargo build`, `cargo test`. Never
-   silence a lint to get there: an `#[allow(...)]` without a stated, site-specific reason is a
-   violation, not a fix.
+   silence a lint to get there: an `#[allow(...)]` is a violation, not a fix, unless the lint is
+   wrong for that site, it sits on a line you touched and its fix needs code outside the change,
+   or this skill prescribes it (the
+   `too_many_lines` escape in §1); it then names the one lint, carries its site-specific reason,
+   and is in the handoff's suppression list (`brain/knowledge/coding-general.md` ⛔ Hard
+   Rule 13, which also covers config relaxations and the other ways a finding is made to
+   disappear).
 5. **File size: split new code into a new module; never mass-refactor an existing file for size.** A
    `.rs` file you create, or a pre-existing one your change grows across 1,500 lines (the hard cap;
    the warn tier starts at 700), goes into a new cohesive module instead of sailing past the cap. The

@@ -10,7 +10,9 @@ These bind every line of code you add or modify, in every language, and they bea
 conventions: an existing duplicate or an existing deprecated call in the repo is precedent, not
 permission. The scope boundary cuts both ways: leave pre-existing violations in untouched code
 alone (mention them in the handoff; never mass-refactor), but nothing new may break these.
-Re-read this list before writing code and walk it again at handoff (§10).
+Re-read this list before writing code and walk it again at handoff (§10). Rule 13 also beats
+the pull toward a clean gate: a lint error reported is a gap the user can act on, and one
+silenced to get a green run is not.
 
 1. **Search before you write.** Before adding any function, class, helper, mapping, or constant,
    search the repo for an existing implementation: the domain terms, the names you'd expect
@@ -24,7 +26,8 @@ Re-read this list before writing code and walk it again at handoff (§10).
    the pinned version in the official docs. This is the codegen-time extension of
    `general-problem-solving.md` §"Back external assumptions with an official source". Every
    deprecation warning the compiler, linter, or build emits on a line you touched is a blocking
-   failure to fix before handoff, not noise to scroll past.
+   failure to fix before handoff, not noise to scroll past, and never something to silence
+   (Hard Rule 13).
 3. **No change-narration comments.** A comment describes the code as it now stands: a constraint,
    an invariant, a domain fact the code can't show. It never describes the change that produced
    it: not the bug it fixes, the request or review finding that prompted it, the behavior it
@@ -226,6 +229,39 @@ Re-read this list before writing code and walk it again at handoff (§10).
     demand. Game code keeps the explicit machines `coding-gamedev.md` §3 prescribes. Tests drive
     each transition the change adds, one the machine must reject, and an effect that fails after
     the commit with the message redelivered.
+13. **A finding is fixed, never silenced.** When a compiler, linter, type-checker, analyzer, or
+    scanner reports something the change introduced, wherever it shows up (a changed signature
+    can warn at a call site you never opened), the fix goes in the code. Making the report go
+    away is a different act, and these are its forms:
+    - an inline suppression comment or attribute, or a file-level or project-level disable;
+    - a rule removed, its severity lowered, or a path excluded in the tool's configuration;
+    - warnings-as-errors turned off, or a strictness level or language mode lowered;
+    - a baseline or ignore file regenerated, or an entry added to a dependency-audit or
+      secret-scanner ignore list;
+    - a cast or assertion whose only job is to stop the checker checking;
+    - a marker that makes analyzers skip a file as generated;
+    - the check step removed from the gate or CI, made non-blocking, or its exit status
+      swallowed;
+    - the tool's scope narrowed on the command line, which no diff shows;
+    - the flagged code deleted or made unreachable so the finding has nothing to point at.
+
+    A suppression is legitimate on exactly three grounds: the finding is wrong for that site; it
+    sits on a line the change touches and its fix needs code outside the change's footprint; or
+    a rule in this skill set prescribes that suppression by name. It then names the specific
+    rule, covers the narrowest scope the tool allows, carries its site-specific reason beside it
+    (a fact about the code, so Hard Rule 3 allows the comment), and goes in the suppression list
+    when it is added: the checkpoint's "Suppressions" section on a full-work task, the handoff
+    otherwise. An entry holds the repo-relative file and line or config setting, the tool and
+    rule id, the scope (line, block, file, project), the ground, and the reason. A handoff with
+    none says `Suppressions: none`. Silencing a security rule is never yours to decide: stop and ask
+    the user, and quote their answer in the entry.
+
+    Three limits keep this from growing. A pre-existing finding in code the change doesn't touch
+    is left alone and reported, never suppressed and never fixed as a side effect. A fix larger
+    than the change's footprint is reported, not performed. And suppressions the repo already
+    has are precedent, not permission; they stay as they are. A test, coverage, or mutation gate
+    moved to pass is the same defect with its own record, the test-change ledger
+    (`testing.md` ⛔ Hard Rule 3); nothing is entered in both.
 
 ---
 
@@ -267,6 +303,7 @@ Re-read this list before writing code and walk it again at handoff (§10).
 - **Minimal changes**: Solve the problem asked. Don't add features, refactor surrounding code, or make "improvements" beyond what was requested. Minimal limits what you touch beyond the goal, never how well you meet a goal the user stated: when the ask gives a reason, `general-problem-solving.md` §2 decides which way of doing the step counts as done.
 - **Contain the blast radius**: A change that tightens or fixes one thing must not loosen or alter anything unrelated. Making one field's validation stricter must never make another field's more lenient. Keep a change's effect scoped to exactly what it targets.
 - **A deliberate change outranks stale tests and legacy code**: When behavior changes on purpose, conform failing tests and old assumptions to it; never revert it, relax a validation, or weaken code to satisfy a test or to match the code it replaced. Full statement in `general-problem-solving.md` §3.
+- **A red test outranks the wish for a green suite**: "Stale" needs a quoted sentence that changed the behavior. A red test with no ground for one of the other dispositions means the code is wrong; never delete, skip, or loosen the test to pass. Full rule in `testing.md` ⛔ Hard Rules 2 and 3.
 
 ### Modern Language Features & Hygiene
 
@@ -439,7 +476,10 @@ detail behind ⛔ Hard Rule 4; they are not a mandate to refactor existing files
 
 Before delivering work:
 
-1. Run the project's formatter and linters; fix all issues.
+1. Run the project's formatter and linters; fix every issue the change introduced, in the code.
+   A finding silenced is not a finding fixed, and one the baseline already had in untouched code
+   is reported, not fixed (Hard Rule 13). Record each command with its exit status and summary line as
+   it runs (`task-workflows.md` Stage 2, the verify record).
 2. Walk the ⛔ Hard Rules block at the top of this file: the build/linter output shows zero new
    deprecation warnings on lines you touched, and the pre-write reuse search happened. Name any
    near-duplicate you deliberately did not reuse in the summary, with the reason. Confirm the diff
@@ -459,14 +499,22 @@ Before delivering work:
    webhook, or outbox relay drives, name its delivery guarantee (at least once or at most once,
    deduped or not) and the repeat that remains, such as a receiver that can't dedupe or a send
    that timed out after the receiver took it, and any receiver with no lookup for a parked row
-   (Hard Rule 12). When the ask stated a reason, name
+   (Hard Rule 12). Search your own diff for every suppression, config relaxation, and swallowed
+   exit status it adds; each has an entry in the suppression list with its ground, or it comes
+   out (Hard Rule 13). When the ask stated a reason, name
    the way chosen and the one rejected (`general-problem-solving.md` §2). Then reread every
    comment the diff adds or edits: any that narrates the change rather than the current code gets
    deleted here, its story moved to the summary (Hard Rule 3).
 3. Ensure new code is covered by tests.
-4. Run the test suite; confirm nothing is broken.
-5. Summarize the change, its rationale, and any caveats or warnings.
-6. Report which skill files and knowledge files were read and which tools were used; the list is
+4. Run the test suite with the baseline's command and report what it shows. A test that is red
+   is fixed in the code or reported red by name; it is never deleted, skipped, or loosened to
+   make this step pass (`testing.md` ⛔ Hard Rule 2).
+5. Walk the test-change ledger against your own diff: every pre-existing test the diff changes
+   has an entry with its disposition and ground (one line per file for `moved` and
+   `mechanical`), and so does a changed test command, threshold, or filter. Put the ledger in the summary, or `Test changes: none`
+   (`testing.md` ⛔ Hard Rule 3).
+6. Summarize the change, its rationale, and any caveats or warnings.
+7. Report which skill files and knowledge files were read and which tools were used; the list is
    the evidence that the routing in Hard Rule 8 happened.
 
 ## 11. Interacting with git

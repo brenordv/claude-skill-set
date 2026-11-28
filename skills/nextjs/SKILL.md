@@ -742,6 +742,7 @@ See `references/deployment.md` for the standalone Dockerfile and the required `o
 | Barrel file imports from large libraries | Direct imports or `optimizePackageImports` |
 | Passing entire objects across Server/Client boundary | Pass only the fields the client needs |
 | `any` types | Use `unknown` with type narrowing |
+| Silencing a lint or type-check finding the change introduced | Fix it in the code; a suppression needs a ground and an entry in the handoff's suppression list (`brain/knowledge/coding-general.md` ⛔ Hard Rule 13) |
 | Skipping input validation on server | Always validate with Zod on server |
 | Mutating arrays/objects in state | Use immutable methods: `toSorted()`, spread, `with()` |
 | `&&` for conditional rendering with numbers | Use ternary: `count > 0 ? <Badge /> : null` |

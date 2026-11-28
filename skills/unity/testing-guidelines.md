@@ -142,6 +142,31 @@ public IEnumerator PickupItem_OnTriggerEnter_AddsToInventory()
 - Avoid tests that require many frames unless testing time-dependent behavior
 - Clean up all created GameObjects with `Object.Destroy()`
 
+## Test-weakening tells
+
+`brain/knowledge/testing.md` ⛔ Hard Rules 2 and 3 govern any change to an existing test, and
+`brain/knowledge/review-heuristics.md` §Testing ("Test integrity") lists the moves. In Unity they
+look like this, on a line the diff adds or changes:
+
+- `[Ignore("...")]` on a test or fixture; on a fixture it ignores every test inside.
+- `[Explicit]`: the test runs only when selected by name, so a normal run leaves it out.
+- `[Retry(n)]` on a failing test.
+- `[UnityPlatform]` with an `include` or `exclude` list that drops the platform CI runs on.
+- `LogAssert.ignoreFailingMessages = true`, which stops unexpected error logs from failing the
+  test.
+- Command line: a `-testFilter` or `-testCategory` the baseline didn't have (both negate with
+  `!`), or a `-testPlatform` that drops Edit Mode or Play Mode.
+
+Each is a ledger entry with a disposition and a ground, or it doesn't happen. Reference: NUnit's
+[Ignore](https://docs.nunit.org/articles/nunit/writing-tests/attributes/ignore.html),
+[Explicit](https://docs.nunit.org/articles/nunit/writing-tests/attributes/explicit.html), and
+[Retry](https://docs.nunit.org/articles/nunit/writing-tests/attributes/retry.html) attributes;
+the Unity Test Framework's
+[UnityPlatform](https://docs.unity3d.com/Packages/com.unity.test-framework@1.4/manual/reference-attribute-unityplatform.html),
+[command line](https://docs.unity3d.com/Packages/com.unity.test-framework@1.4/manual/reference-command-line.html),
+and [LogAssert](https://docs.unity3d.com/Packages/com.unity.test-framework@1.4/manual/reference-custom-assertion.html)
+pages.
+
 ## Key Principles
 
 - Use Edit Mode tests for pure logic (faster, no scene overhead)
